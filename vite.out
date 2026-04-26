@@ -1,0 +1,151 @@
+
+> react-frontend@0.0.0 dev
+> vite
+
+
+  VITE v8.0.7  ready in 290 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+12:56:35 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+12:56:38 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+12:56:45 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+12:56:48 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+12:56:54 PM [vite] (client) hmr update /src/index.css, /src/components/ExpenseTable.tsx
+12:57:01 PM [vite] (client) hmr update /src/index.css, /src/components/ExpenseTable.tsx
+1:00:26 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:00:26 PM [vite] (client) [Unhandled error] ReferenceError: applicationDate is not defined
+ > Dashboard src/pages/Dashboard.tsx:129:23
+    127 |                  id="application_date"
+    128 |                  type="date"
+    129 |                  value={applicationDate}
+        |                         ^
+    130 |                  onChange={(e) => saveApplicationDate(e.target.value)}
+    131 |                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-xs te...
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:16583:34
+
+1:00:26 PM [vite] (client) [console.warn] An error occurred in the <Dashboard> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+1:00:29 PM [vite] (client) [Unhandled error] ReferenceError: applicationDate is not defined
+ > Dashboard src/pages/Dashboard.tsx:129:23
+    127 |                  id="application_date"
+    128 |                  type="date"
+    129 |                  value={applicationDate}
+        |                         ^
+    130 |                  onChange={(e) => saveApplicationDate(e.target.value)}
+    131 |                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-xs te...
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:16583:34
+
+1:00:29 PM [vite] (client) [console.warn] An error occurred in the <Dashboard> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+1:00:33 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:00:34 PM [vite] (client) [Unhandled error] ReferenceError: applicationDate is not defined
+ > Dashboard src/pages/Dashboard.tsx:256:121
+    254 |  
+    255 |        <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTran...
+    256 |  ...ses} reports={reports} category={category} applicationDate={applicationDate} />
+        |                                                                 ^
+    257 |  
+    258 |        <SettingsModal
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:16583:34
+
+1:00:34 PM [vite] (client) [console.warn] An error occurred in the <Dashboard> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+1:00:38 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:00:38 PM [vite] (client) [Unhandled error] ReferenceError: applicationDate is not defined
+ > Dashboard src/pages/Dashboard.tsx:256:121
+    254 |  
+    255 |        <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTran...
+    256 |  ...ses} reports={reports} category={category} applicationDate={applicationDate} />
+        |                                                                 ^
+    257 |  
+    258 |        <SettingsModal
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:16583:34
+
+1:00:38 PM [vite] (client) [console.warn] An error occurred in the <Dashboard> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+1:00:43 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:00:48 PM [vite] (client) hmr update /src/index.css, /src/components/ExpenseTable.tsx
+1:00:56 PM [vite] (client) hmr update /src/index.css, /src/components/ExpenseTable.tsx
+1:01:01 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:01:07 PM [vite] (client) hmr update /src/index.css, /src/components/SettingsModal.tsx
+1:01:12 PM [vite] (client) hmr update /src/index.css, /src/components/SettingsModal.tsx
+1:01:13 PM [vite] (client) [console.error] The final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [false]
+Incoming: [false, 2026-04]
+1:01:18 PM [vite] (client) hmr update /src/index.css, /src/components/SettingsModal.tsx
+1:01:26 PM [vite] (client) hmr update /src/index.css, /src/components/SettingsModal.tsx
+11:55:47 PM [vite] http proxy error: /api/v1/work_reports?month=2026-04
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:47 PM [vite] http proxy error: /api/v1/expenses?month=2026-04
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:47 PM [vite] http proxy error: /api/v1/invoice_preview?month=2026-04&category=wings
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:47 PM [vite] http proxy error: /api/v1/me
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:47 PM [vite] http proxy error: /api/v1/me
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:47 PM [vite] http proxy error: /api/v1/me
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:47 PM [vite] http proxy error: /api/v1/me
+Error: connect ECONNREFUSED 127.0.0.1:3100
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)
+11:55:48 PM [vite] (client) [Unhandled rejection] AxiosError: Request failed with status code 502
+ > settle node_modules/axios/lib/core/settle.js:20:6
+ > XMLHttpRequest.onloadend node_modules/axios/lib/adapters/xhr.js:62:8
+
+11:55:50 PM [vite] (client) [Unhandled rejection] AxiosError: Request failed with status code 502
+ > settle node_modules/axios/lib/core/settle.js:20:6
+ > XMLHttpRequest.onloadend node_modules/axios/lib/adapters/xhr.js:62:8
+
