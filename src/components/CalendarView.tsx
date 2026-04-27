@@ -92,11 +92,16 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     })
 
     // 予定（自分のチーム予定から推計）
+    // person 名は team_schedules では「西野」「川村」「大隅」、currentSurname は display_name の先頭 token
+    // ("西野 鷹也" → "西野"、"川村卓也" → "川村卓也") なので互換マッチで判定
+    const personMatches = (person: string) =>
+      person === currentSurname || currentSurname.includes(person) || person.includes(currentSurname)
+
     let plannedLiving = 0
     let plannedTama = 0
     if (currentSurname) {
       teamSchedules.forEach((entry) => {
-        if (entry.person !== currentSurname) return
+        if (!personMatches(entry.person)) return
         if (entry.date < periodStart || entry.date > periodEnd) return
         const dt = new Date(entry.date)
         const eh = expectedHours(entry.status, dt.getDay())
