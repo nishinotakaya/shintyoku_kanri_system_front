@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 
 type InvoiceSetting = {
   client_name: string
+  honorific: string
   subject: string
   item_label: string
   unit_price: number
@@ -368,7 +369,20 @@ export default function SettingsModal({
               ))}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {fld('請求先 (御中)', 'client_name')}
+              <div className="flex gap-2 col-span-2">
+                <div className="flex-1">{fld('請求先', 'client_name')}</div>
+                <label className="block w-24">
+                  <span className="text-[11px] text-[var(--color-text-sub)]">敬称</span>
+                  <select
+                    value={inv?.honorific ?? '御中'}
+                    onChange={(e) => setInv((prev) => prev ? { ...prev, honorific: e.target.value } : prev)}
+                    className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm"
+                  >
+                    <option value="御中">御中</option>
+                    <option value="様">様</option>
+                  </select>
+                </label>
+              </div>
               {fld('件名', 'subject')}
               {fld('品目ラベル', 'item_label', 'text', 'col-span-1')}
               {fld('単価 (円/h)', 'unit_price', 'number', 'col-span-1')}

@@ -91,12 +91,25 @@ export default function Dashboard() {
   const [saveDirOpen, setSaveDirOpen] = useState(false)
   const [saveDir, setSaveDir] = useState<string>('')
   const [savingMsg, setSavingMsg] = useState<string | null>(null)
+  const [dirInfo, setDirInfo] = useState<{ path: string; exists: boolean; entries: string[] } | null>(null)
+
+  const fetchDirInfo = async (path: string) => {
+    if (!path) { setDirInfo(null); return }
+    try {
+      const r = await api.get('/exports/list_dirs', { params: { path, year, month, category } })
+      setDirInfo(r.data)
+    } catch (e: any) {
+      setDirInfo({ path: '', exists: false, entries: [] })
+    }
+  }
 
   const openSaveDirDialog = async () => {
     setSavingMsg(null)
     try {
       const r = await api.get('/me')
-      setSaveDir(r.data.local_save_dir ?? '')
+      const value = r.data.local_save_dir ?? ''
+      setSaveDir(value)
+      fetchDirInfo(value)
     } catch {}
     setSaveDirOpen(true)
   }
@@ -105,7 +118,10 @@ export default function Dashboard() {
     setSavingMsg(null)
     try {
       const r = await api.post('/exports/pick_dir')
-      if (r.data?.path) setSaveDir(r.data.path)
+      if (r.data?.path) {
+        setSaveDir(r.data.path)
+        fetchDirInfo(r.data.path)
+      }
     } catch (e: any) {
       setSavingMsg(`フォルダ選択失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
@@ -174,12 +190,17 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
-            {([['wings', 'Wings'], ['living', 'リビング'], ['techleaders', 'テックリーダーズ'], ['resystems', 'REシステムズ']] as const).map(([key, label]) => (
-              <button key={key} onClick={() => setCategory(key)}
-                className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                  category === key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] border border-[var(--color-border)]'
-                }`}>{label}</button>
-            ))}
+            {(() => {
+              const isAdmin = (me?.display_name ?? '').includes('西野')
+              const allCategories = [['wings', 'Wings'], ['living', 'リビング'], ['techleaders', 'テックリーダーズ'], ['resystems', 'REシステムズ']] as const
+              const visibleCategories = isAdmin ? allCategories : allCategories.filter(([key]) => key === 'wings' || key === 'living')
+              return visibleCategories.map(([key, label]) => (
+                <button key={key} onClick={() => setCategory(key)}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                    category === key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] border border-[var(--color-border)]'
+                  }`}>{label}</button>
+              ))
+            })()}
           </div>
           <button
             onClick={() => { setSettingsTab('account'); setSettingsOpen(true) }}
@@ -334,7 +355,7 @@ export default function Dashboard() {
               <textarea
                 rows={2}
                 value={saveDir}
-                onChange={(e) => setSaveDir(e.target.value)}
+                onChange={(e) => { setSaveDir(e.target.value); fetchDirInfo(e.target.value) }}
                 placeholder="/Users/.../12 請求書類/{year}年/{cat}/請求書"
                 className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-mono text-[var(--color-text)]"
               />
@@ -345,7 +366,49 @@ export default function Dashboard() {
                 <button onClick={pickFolderViaOs} className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs hover:bg-gray-50">
                   📂 macOS のフォルダ選択を開く
                 </button>
+                <button onClick={() => fetchDirInfo(saveDir)} className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs hover:bg-gray-50">
+                  🔄 配下のフォルダを再取得
+                </button>
               </div>
+
+              {dirInfo && (
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 space-y-2">
+                  <div className="text-[11px] text-[var(--color-text-sub)]">
+                    解決後パス: <span className="font-mono">{dirInfo.path || '(取得失敗)'}</span>
+                  </div>
+                  {!dirInfo.exists ? (
+                    <div className="text-[11px] text-amber-600">⚠️ このフォルダは存在しません（保存時に自動作成されます）</div>
+                  ) : (
+                    <>
+                      <div className="text-[11px] text-[var(--color-text-sub)]">配下のフォルダ（クリックで子階層に潜る）:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {dirInfo.entries.length === 0 && <span className="text-[11px] text-[var(--color-text-sub)]">（空）</span>}
+                        {dirInfo.entries.map((entry) => {
+                          const isMonth = entry === `${month}月`
+                          return (
+                            <button
+                              key={entry}
+                              type="button"
+                              onClick={() => {
+                                const next = `${dirInfo.path}/${entry}`
+                                setSaveDir(next)
+                                fetchDirInfo(next)
+                              }}
+                              className={`rounded px-2 py-1 text-[11px] border ${isMonth ? 'bg-emerald-100 border-emerald-300 text-emerald-700 font-semibold' : 'bg-white border-[var(--color-border)] hover:bg-gray-50'}`}
+                              title={isMonth ? '今月分のフォルダ' : ''}
+                            >
+                              📁 {entry}{isMonth && ' ✓'}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {!dirInfo.entries.includes(`${month}月`) && (
+                        <div className="text-[11px] text-amber-600">⚠️ <code>{month}月</code> フォルダは未作成（保存時に自動作成されます）</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
               {savingMsg && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 whitespace-pre-wrap">{savingMsg}</div>}
             </div>
             <div className="mt-5 flex gap-2 justify-end">

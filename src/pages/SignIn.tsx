@@ -75,7 +75,8 @@ export default function SignIn() {
             // hidden form で POST を送信（OmniAuth v2 は POST のみ受け付ける）
             const form = document.createElement('form')
             form.method = 'POST'
-            form.action = 'http://localhost:3001/api/v1/auth/auth/google_oauth2'
+            const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001').replace(/\/$/, '')
+            form.action = `${apiBase}/api/v1/auth/auth/google_oauth2`
             document.body.appendChild(form)
             form.submit()
           }}

@@ -15,9 +15,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 const NAV = [
-  { to: '/', label: '勤怠' },
+  { to: '/', label: 'カレンダー' },
+  { to: '/attendance', label: '勤怠' },
   { to: '/progress', label: '進捗管理' },
-  { to: '/calendar', label: 'カレンダー' },
 ]
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -31,7 +31,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 bg-white border-b border-[var(--color-border)] shadow-sm">
+      <header className="sticky top-0 z-30 bg-white border-b border-[var(--color-border)] shadow-sm">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-6">
             <Link to="/" className="flex items-center gap-2.5">
@@ -87,6 +87,16 @@ export default function App() {
         element={
           <RequireAuth>
             <Layout>
+              <CalendarPage />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/attendance"
+        element={
+          <RequireAuth>
+            <Layout>
               <Dashboard />
             </Layout>
           </RequireAuth>
@@ -104,13 +114,7 @@ export default function App() {
       />
       <Route
         path="/calendar"
-        element={
-          <RequireAuth>
-            <Layout>
-              <CalendarPage />
-            </Layout>
-          </RequireAuth>
-        }
+        element={<Navigate to="/" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
