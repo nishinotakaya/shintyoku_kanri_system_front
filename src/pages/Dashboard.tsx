@@ -92,41 +92,47 @@ export default function Dashboard() {
   const [lastSavedTo, setLastSavedTo] = useState<string | null>(null)
   const [savingBusy, setSavingBusy] = useState(false)
 
-  // テンプレート文字列をクライアント側で解決（Finder の default location 用）
-  const resolveTemplate = (template: string): string => {
-    const catFolder = ({ wings: 'TAMA', living: 'Living', techleaders: 'テックリーダーズ', resystems: 'REシステムズ' } as const)[category]
-    return template
-      .replace(/\{year\}/g, String(year))
-      .replace(/\{month\}/g, String(month))
-      .replace(/\{cat\}/g, catFolder)
-      .replace(/\{name\}/g, me?.display_name ?? '')
-  }
-
-  // 「📁 フォルダに保存」: Finder を直接開いて選んでもらう → 即保存
+  // 「📁 フォルダに保存」: ブラウザの File System Access API を使って
+  // ブラウザ画面の上にモーダルとしてフォルダ選択を出す → {月}月フォルダを自動作成 → blob を直接書き込み
   const pickFolderAndSave = async () => {
     if (savingBusy) return
+    const win = window as unknown as { showDirectoryPicker?: (opts?: any) => Promise<any> }
+    if (!win.showDirectoryPicker) {
+      setSavingMsg('お使いのブラウザはフォルダ選択 API 非対応です（Chrome / Edge / Brave をご利用ください）')
+      return
+    }
     setSavingBusy(true); setSavingMsg(null)
     try {
-      // 既存テンプレを default に
-      const meRes = await api.get('/me')
-      const currentTpl: string = meRes.data.local_save_dir ?? ''
-      const defaultPath = currentTpl ? resolveTemplate(currentTpl) : ''
+      const dirHandle: any = await win.showDirectoryPicker({ mode: 'readwrite' })
 
-      const pick = await api.post('/exports/pick_dir', null, { params: { default_path: defaultPath } })
-      if (pick.data?.canceled) { setSavingMsg('キャンセルしました'); return }
-      const picked: string | undefined = pick.data?.path
-      if (!picked) { setSavingMsg('フォルダが取得できませんでした'); return }
+      // {月}月 サブフォルダを取得 / 自動作成
+      const monthFolderName = `${month}月`
+      const monthDir: any = await dirHandle.getDirectoryHandle(monthFolderName, { create: true })
 
-      // 選んだパスを user.local_save_dir に固定値として保存（次回もデフォルトに）
-      await api.patch('/me', { user: { local_save_dir: picked } })
+      // PDF を blob で取得（save_local なしの通常ダウンロード経路）
+      const res = await api.get('/exports/invoice.pdf', {
+        params: { month: monthParam, category },
+        responseType: 'blob',
+      })
 
-      // 即 PDF 出力
-      const save = await api.get('/exports/invoice.pdf', { params: { month: monthParam, category, save_local: true } })
-      const saved = (save.data as any)?.saved_to ?? picked
-      setLastSavedTo(saved)
+      // ファイル名はサーバーが Content-Disposition に付けるが、簡易に手元で組む
+      const surname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+      const baseName = `請求書_${year}年_${month}月分.pdf`
+      const filename = surname ? `${surname}_${baseName}` : baseName
+
+      const fileHandle: any = await monthDir.getFileHandle(filename, { create: true })
+      const writable = await fileHandle.createWritable()
+      await writable.write(res.data as Blob)
+      await writable.close()
+
+      setLastSavedTo(`${dirHandle.name}/${monthFolderName}/${filename}`)
       setSavingMsg('保存しました')
     } catch (e: any) {
-      setSavingMsg(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      if (e?.name === 'AbortError') {
+        setSavingMsg('キャンセルしました')
+      } else {
+        setSavingMsg(`保存失敗: ${e?.message ?? ''}`)
+      }
     } finally {
       setSavingBusy(false)
     }
