@@ -95,7 +95,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
       }}
     >
       <div className="flex items-baseline justify-between gap-1">
-        <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-baseline gap-1 min-w-0 flex-1">
+        <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" draggable={false} className="flex items-baseline gap-1 min-w-0 flex-1">
           <span className="font-mono text-fuchsia-600">{task.issue_key}</span>
           {badge && <span className={`rounded px-1 text-[9px] ${badge.class}`}>{badge.label}</span>}
         </a>
@@ -142,7 +142,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
           ))}
         </div>
       </div>
-      <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" className="block text-[var(--color-text)] truncate">{task.summary}</a>
+      <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" draggable={false} className="block text-[var(--color-text)] truncate">{task.summary}</a>
       {(task.memo ?? '').trim().length > 0 && (
         <div className="mt-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-[var(--color-text)]">
           <button
@@ -566,17 +566,32 @@ export default function DayDetailModal({
               const isEditing = editing[report.id] != null
               const isWings = (report.category ?? 'wings') !== 'living'
               const dropHandlers = isWings ? {
-                onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' },
+                onDragOver: (e: React.DragEvent) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.dataTransfer.dropEffect = 'copy'
+                  e.currentTarget.classList.add('ring-2', 'ring-emerald-400', 'bg-emerald-50')
+                },
+                onDragLeave: (e: React.DragEvent) => {
+                  e.currentTarget.classList.remove('ring-2', 'ring-emerald-400', 'bg-emerald-50')
+                },
                 onDrop: async (e: React.DragEvent) => {
                   e.preventDefault()
+                  e.stopPropagation()
+                  e.currentTarget.classList.remove('ring-2', 'ring-emerald-400', 'bg-emerald-50')
                   try {
-                    const data = JSON.parse(e.dataTransfer.getData('application/json'))
-                    if (data?.issueKey) await addTaskToWorkReport(data.issueKey, String(data.hours ?? '1'), data.assignee)
-                  } catch {}
+                    const raw = e.dataTransfer.getData('application/json')
+                    if (!raw) { alert('ドロップデータが空です'); return }
+                    const data = JSON.parse(raw)
+                    if (!data?.issueKey) { alert('issueKey なし'); return }
+                    await addTaskToWorkReport(data.issueKey, String(data.hours ?? '1'), data.assignee)
+                  } catch (err: any) {
+                    alert(`ドロップ失敗: ${err?.message ?? err}`)
+                  }
                 },
               } : {}
               return (
-                <div key={report.id} {...dropHandlers} className={`rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs ${isWings ? 'hover:border-emerald-400' : ''}`}>
+                <div key={report.id} {...dropHandlers} className={`rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs transition ${isWings ? 'hover:border-emerald-400' : ''}`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="flex items-baseline gap-2">
                       <span className="font-mono tabular-nums">{report.hours ?? 0}h</span>
