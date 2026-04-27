@@ -8,6 +8,7 @@ import WorkReportTable from '../components/WorkReportTable'
 import ExpenseTable from '../components/ExpenseTable'
 import SettingsModal from '../components/SettingsModal'
 import PurchaseOrderList from '../components/PurchaseOrderList'
+import { getStoredDirHandle, saveDirHandle, ensureRwPermission, clearDirHandle } from '../lib/dirHandleStore'
 // CalendarView moved to /calendar page
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
@@ -74,68 +75,118 @@ export default function Dashboard() {
   }
 
   const downloadInvoice = async () => {
-    const res = await api.get('/exports/invoice.pdf', {
-      params: { month: monthParam, category: category },
-      responseType: 'blob',
-    })
-    const url = URL.createObjectURL(res.data as Blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `請求書_${year}年_${month}月分.pdf`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    if (savingBusy) return
+    setSavingBusy(true); setSavingMsg(null)
+    try {
+      const res = await api.get('/exports/invoice.pdf', {
+        params: { month: monthParam, category },
+        responseType: 'blob',
+      })
+      const surname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+      const baseName = `請求書_${year}年_${month}月分.pdf`
+      const filename = surname ? `${surname}_${baseName}` : baseName
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setLastSavedTo(`Downloads/${filename}`)
+      setSavingMsg('ダウンロードしました')
+    } catch (e: any) {
+      setSavingMsg(`失敗: ${e?.message ?? ''}`)
+    } finally {
+      setSavingBusy(false)
+    }
   }
 
   const [savingMsg, setSavingMsg] = useState<string | null>(null)
   const [lastSavedTo, setLastSavedTo] = useState<string | null>(null)
   const [savingBusy, setSavingBusy] = useState(false)
+  const [savedDirName, setSavedDirName] = useState<string | null>(null)
 
-  // 「📁 フォルダに保存」: ブラウザの File System Access API を使って
-  // ブラウザ画面の上にモーダルとしてフォルダ選択を出す → {月}月フォルダを自動作成 → blob を直接書き込み
+  const HANDLE_KEY = 'invoice-save-root'
+  const fsaSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+
+  // マウント時に保存済みハンドルがあれば復元（権限再取得は picker 押下時に行う）
+  useEffect(() => {
+    if (!fsaSupported) return
+    getStoredDirHandle(HANDLE_KEY).then((h) => { if (h) setSavedDirName(h.name) })
+  }, [fsaSupported])
+
+  // 共通: 渡された dirHandle に PDF を {月}月/ファイル名 で書き込む
+  const writeInvoiceTo = async (dirHandle: FileSystemDirectoryHandle): Promise<string> => {
+    const monthFolderName = `${month}月`
+    const monthDir = await dirHandle.getDirectoryHandle(monthFolderName, { create: true })
+
+    const res = await api.get('/exports/invoice.pdf', {
+      params: { month: monthParam, category },
+      responseType: 'blob',
+    })
+    const surname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+    const baseName = `請求書_${year}年_${month}月分.pdf`
+    const filename = surname ? `${surname}_${baseName}` : baseName
+
+    const fileHandle = await monthDir.getFileHandle(filename, { create: true })
+    const writable = await fileHandle.createWritable()
+    await writable.write(res.data as Blob)
+    await writable.close()
+    return `${dirHandle.name}/${monthFolderName}/${filename}`
+  }
+
+  // 「📁 ここに保存」: 既に記憶しているフォルダがあれば即書き込み（picker 出さない）
+  const saveToRememberedFolder = async () => {
+    if (savingBusy) return
+    setSavingBusy(true); setSavingMsg(null)
+    try {
+      const stored = await getStoredDirHandle(HANDLE_KEY)
+      if (!stored) { setSavingMsg('保存先が未設定です。「フォルダを変更」からどうぞ'); return }
+      const ok = await ensureRwPermission(stored)
+      if (!ok) { setSavingMsg('書き込み権限が拒否されました'); return }
+      const where = await writeInvoiceTo(stored)
+      setLastSavedTo(where); setSavingMsg('保存しました')
+    } catch (e: any) {
+      setSavingMsg(`保存失敗: ${e?.message ?? ''}`)
+    } finally {
+      setSavingBusy(false)
+    }
+  }
+
+  // 「📂 フォルダを変更（または初回設定）」: picker → IndexedDB に記憶 → 即書き込み
   const pickFolderAndSave = async () => {
     if (savingBusy) return
-    const win = window as unknown as { showDirectoryPicker?: (opts?: any) => Promise<any> }
-    if (!win.showDirectoryPicker) {
+    if (!fsaSupported) {
       setSavingMsg('お使いのブラウザはフォルダ選択 API 非対応です（Chrome / Edge / Brave をご利用ください）')
       return
     }
     setSavingBusy(true); setSavingMsg(null)
     try {
-      const dirHandle: any = await win.showDirectoryPicker({ mode: 'readwrite' })
-
-      // {月}月 サブフォルダを取得 / 自動作成
-      const monthFolderName = `${month}月`
-      const monthDir: any = await dirHandle.getDirectoryHandle(monthFolderName, { create: true })
-
-      // PDF を blob で取得（save_local なしの通常ダウンロード経路）
-      const res = await api.get('/exports/invoice.pdf', {
-        params: { month: monthParam, category },
-        responseType: 'blob',
-      })
-
-      // ファイル名はサーバーが Content-Disposition に付けるが、簡易に手元で組む
-      const surname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
-      const baseName = `請求書_${year}年_${month}月分.pdf`
-      const filename = surname ? `${surname}_${baseName}` : baseName
-
-      const fileHandle: any = await monthDir.getFileHandle(filename, { create: true })
-      const writable = await fileHandle.createWritable()
-      await writable.write(res.data as Blob)
-      await writable.close()
-
-      setLastSavedTo(`${dirHandle.name}/${monthFolderName}/${filename}`)
-      setSavingMsg('保存しました')
+      const win = window as unknown as { showDirectoryPicker: (opts?: any) => Promise<FileSystemDirectoryHandle> }
+      const dirHandle = await win.showDirectoryPicker({ mode: 'readwrite' })
+      await saveDirHandle(HANDLE_KEY, dirHandle)
+      setSavedDirName(dirHandle.name)
+      const where = await writeInvoiceTo(dirHandle)
+      setLastSavedTo(where); setSavingMsg('保存しました')
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         setSavingMsg('キャンセルしました')
+      } else if (typeof e?.message === 'string' && e.message.includes('system files')) {
+        setSavingMsg('Chrome の制約でこのフォルダは使えません。Documents 配下など、書き込み可能な場所を選んでください')
       } else {
         setSavingMsg(`保存失敗: ${e?.message ?? ''}`)
       }
     } finally {
       setSavingBusy(false)
     }
+  }
+
+  // 「保存先を解除」
+  const forgetSavedFolder = async () => {
+    await clearDirHandle(HANDLE_KEY)
+    setSavedDirName(null)
+    setSavingMsg('保存先を解除しました')
   }
 
   const [syncingWR, setSyncingWR] = useState(false)
@@ -242,17 +293,44 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <button
-              onClick={pickFolderAndSave}
-              disabled={savingBusy}
-              className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
-              title="Finder で保存先を選んで保存"
-            >
-              {savingBusy ? '保存中…' : '📁 フォルダに保存'}
-            </button>
+            <div className="flex gap-1.5">
+              {savedDirName && (
+                <button
+                  onClick={saveToRememberedFolder}
+                  disabled={savingBusy}
+                  className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+                  title={`記憶済み: ${savedDirName}/${month}月/`}
+                >
+                  {savingBusy ? '保存中…' : `📁 ${savedDirName}/${month}月 に保存`}
+                </button>
+              )}
+              <button
+                onClick={pickFolderAndSave}
+                disabled={savingBusy}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold shadow disabled:opacity-50 ${
+                  savedDirName ? 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50' : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
+                }`}
+                title="フォルダ選択ダイアログを開く"
+              >
+                {savedDirName ? '📂 フォルダを変更' : '📂 フォルダを選んで保存'}
+              </button>
+              <button
+                onClick={downloadInvoice}
+                disabled={savingBusy}
+                className="rounded-lg bg-white border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
+                title="ブラウザのダウンロードフォルダに保存"
+              >
+                📥 ダウンロード
+              </button>
+            </div>
+            {savedDirName && (
+              <button onClick={forgetSavedFolder} className="text-[10px] text-[var(--color-text-sub)] hover:text-red-500">
+                記憶済み保存先を解除
+              </button>
+            )}
             {(lastSavedTo || savingMsg) && (
               <div className="max-w-[420px] text-right text-[10px] text-[var(--color-text-sub)] break-all">
-                {savingMsg && <div className={savingMsg.startsWith('保存しました') ? 'text-emerald-600' : 'text-red-500'}>{savingMsg}</div>}
+                {savingMsg && <div className={savingMsg.startsWith('保存しました') || savingMsg.startsWith('ダウンロードしました') ? 'text-emerald-600' : 'text-red-500'}>{savingMsg}</div>}
                 {lastSavedTo && <div className="font-mono">{lastSavedTo}</div>}
               </div>
             )}
