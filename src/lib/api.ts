@@ -72,6 +72,9 @@ export type Me = {
   can_issue_orders?: boolean
   postal_code?: string | null
   address?: string | null
+  attendance_schedule_url?: string | null
+  local_save_dir?: string | null
+  admin?: boolean
 }
 
 export type Period = { from: string; to: string }

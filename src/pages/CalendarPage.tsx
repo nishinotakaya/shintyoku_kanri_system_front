@@ -40,7 +40,18 @@ export default function CalendarPage() {
   }, [didAlignToBilling])
 
   const isAdmin = (me?.display_name ?? '').includes('西野')
+  const isOsumi = (me?.display_name ?? '').includes('大隅')
   const currentSurname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+
+  // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
+  const [asUserId, setAsUserId] = useState<number | null>(null)
+  const [pickableUsers, setPickableUsers] = useState<{ id: number; display_name: string; email: string; admin: boolean }[]>([])
+  useEffect(() => {
+    if (!me?.admin) return
+    api.get('/users/pickable').then((r) => setPickableUsers(r.data)).catch(() => {})
+  }, [me?.admin])
+
+  const asUserParam = isAdmin && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
   const canEditPerson = (person: string) => isAdmin || person === currentSurname || currentSurname.includes(person)
 
   // 当月 + 翌月分も取得（カレンダー表示日が次の締日期間に属する分をカバー）
@@ -48,11 +59,11 @@ export default function CalendarPage() {
   const nmp = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}`
 
   const reportsQ = useQuery({
-    queryKey: ['work_reports_pair', mp, nmp],
+    queryKey: ['work_reports_pair', mp, nmp, asUserId],
     queryFn: async () => {
       const [current, next] = await Promise.all([
-        api.get<WorkReportResponse>('/work_reports', { params: { month: mp } }),
-        api.get<WorkReportResponse>('/work_reports', { params: { month: nmp } }),
+        api.get<WorkReportResponse>('/work_reports', { params: { month: mp, ...asUserParam } }),
+        api.get<WorkReportResponse>('/work_reports', { params: { month: nmp, ...asUserParam } }),
       ])
       const seen = new Set<number>()
       const reports = [...current.data.reports, ...next.data.reports].filter((r) => {
@@ -64,8 +75,8 @@ export default function CalendarPage() {
     },
   })
   const expensesQ = useQuery({
-    queryKey: ['expenses', mp],
-    queryFn: async () => (await api.get<ExpenseResponse>('/expenses', { params: { month: mp } })).data,
+    queryKey: ['expenses', mp, asUserId],
+    queryFn: async () => (await api.get<ExpenseResponse>('/expenses', { params: { month: mp, ...asUserParam } })).data,
   })
   // 前月+当月の team_schedules を取得（締日(25日)期間が前月26日から始まるため）
   const prevMonthDate = new Date(year, month - 2, 1)
@@ -167,6 +178,20 @@ export default function CalendarPage() {
           <button onClick={() => monthShift(1)} className="rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">→</button>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && pickableUsers.length > 0 && (
+            <select
+              value={asUserId ?? me?.id ?? 0}
+              onChange={(e) => setAsUserId(Number(e.target.value))}
+              className="rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
+              title="閲覧対象ユーザー"
+            >
+              {pickableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  👤 {u.display_name}{u.id === me?.id ? '（自分）' : ''}
+                </option>
+              ))}
+            </select>
+          )}
           {importMsg && <span className="text-xs text-emerald-600">{importMsg}</span>}
           <button
             onClick={importTeam}
@@ -175,13 +200,16 @@ export default function CalendarPage() {
           >
             {importing ? '取込中…' : '📥 シートから取込'}
           </button>
-          <button
-            onClick={exportTeam}
-            disabled={importing}
-            className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
-          >
-            📤 シートに書き戻し
-          </button>
+          {/* 大隅は書き戻し不可。admin (西野) のみ表示 */}
+          {isAdmin && !isOsumi && (
+            <button
+              onClick={exportTeam}
+              disabled={importing}
+              className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+            >
+              📤 シートに書き戻し
+            </button>
+          )}
         </div>
       </div>
 
