@@ -4,13 +4,15 @@ import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import CalendarView from '../components/CalendarView'
 import DayDetailModal from '../components/DayDetailModal'
+import { billingMonthForToday } from '../lib/billingMonth'
 
 type TeamScheduleEntry = { id?: number; date: string; person: string; status: string; location?: string | null; memo?: string | null }
 
 export default function CalendarPage() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const initial = billingMonthForToday(25)
+  const [year, setYear] = useState(initial.year)
+  const [month, setMonth] = useState(initial.month)
+  const [didAlignToBilling, setDidAlignToBilling] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [me, setMe] = useState<Me | null>(null)
@@ -27,8 +29,15 @@ export default function CalendarPage() {
   }
 
   useEffect(() => {
-    api.get<Me>('/me').then((r) => setMe(r.data)).catch(() => {})
-  }, [])
+    api.get<Me>('/me').then((r) => {
+      setMe(r.data)
+      if (!didAlignToBilling && r.data.closing_day && r.data.closing_day !== 25) {
+        const billing = billingMonthForToday(r.data.closing_day)
+        setYear(billing.year); setMonth(billing.month)
+      }
+      setDidAlignToBilling(true)
+    }).catch(() => {})
+  }, [didAlignToBilling])
 
   const isAdmin = (me?.display_name ?? '').includes('西野')
   const currentSurname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''

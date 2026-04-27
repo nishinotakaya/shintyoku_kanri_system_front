@@ -9,14 +9,17 @@ import ExpenseTable from '../components/ExpenseTable'
 import SettingsModal from '../components/SettingsModal'
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import FolderSaveButtons, { fetchExportBlob } from '../components/FolderSaveButtons'
+import { billingMonthForToday } from '../lib/billingMonth'
 // CalendarView moved to /calendar page
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
 export default function Dashboard() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  // 締日基準で今日が含まれる請求月を初期表示（closing_day=25 既定）
+  const initial = billingMonthForToday(25)
+  const [year, setYear] = useState(initial.year)
+  const [month, setMonth] = useState(initial.month)
+  const [didAlignToBilling, setDidAlignToBilling] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'account' | 'invoice'>('account')
   const [defaultTransit, setDefaultTransit] = useState<{ section: string; fee: number } | null>(null)
@@ -65,8 +68,14 @@ export default function Dashboard() {
       if (r.data.default_transit_from && r.data.default_transit_fee) {
         setDefaultTransit({ section: `${r.data.default_transit_from} ~ ${r.data.default_transit_to}`, fee: r.data.default_transit_fee })
       }
+      // 初回ロード時のみ、ユーザーの締日で「今日が属する請求月」を再算出（既定 25 と違う場合）
+      if (!didAlignToBilling && r.data.closing_day && r.data.closing_day !== 25) {
+        const billing = billingMonthForToday(r.data.closing_day)
+        setYear(billing.year); setMonth(billing.month)
+      }
+      setDidAlignToBilling(true)
     })
-  }, [year, month])
+  }, [year, month, didAlignToBilling])
 
   const refetchAll = () => {
     reportsQ.refetch()
