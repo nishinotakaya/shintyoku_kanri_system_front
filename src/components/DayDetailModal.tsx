@@ -682,9 +682,17 @@ export default function DayDetailModal({
                 {!existingCategories.has('wings') && (
                   <button
                     onClick={() => startCreate('wings')}
-                    className="flex-1 rounded-lg border-2 border-dashed border-fuchsia-300 px-3 py-1.5 text-xs text-fuchsia-600 hover:bg-fuchsia-50"
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+                    onDrop={async (e) => {
+                      e.preventDefault()
+                      try {
+                        const data = JSON.parse(e.dataTransfer.getData('application/json'))
+                        if (data?.issueKey) await addTaskToWorkReport(data.issueKey, String(data.hours ?? '1'), data.assignee)
+                      } catch {}
+                    }}
+                    className="flex-1 rounded-lg border-2 border-dashed border-fuchsia-300 px-3 py-1.5 text-xs text-fuchsia-600 hover:bg-fuchsia-50 hover:border-emerald-400"
                   >
-                    ＋ タマ を追加
+                    ＋ タマ を追加（タスクをドロップで追加）
                   </button>
                 )}
               </div>
