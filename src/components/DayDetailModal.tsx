@@ -46,6 +46,8 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentsError, setCommentsError] = useState<string | null>(null)
   const [latestComment, setLatestComment] = useState<TaskComment | null>(null)
+  const [memoOpen, setMemoOpen] = useState(false)
+  const [latestOpen, setLatestOpen] = useState(false)
 
   // 最新1件は自動で取得（メモ代わりに常時表示）
   useEffect(() => {
@@ -135,18 +137,46 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
       </div>
       <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" className="block text-[var(--color-text)] truncate">{task.summary}</a>
       {(task.memo ?? '').trim().length > 0 && (
-        <div className="mt-1 rounded bg-amber-50 border border-amber-200 px-2 py-1 text-[10px] text-[var(--color-text)]">
-          <span className="font-semibold text-amber-700">📝 メモ:</span> <span className="whitespace-pre-wrap break-words">{task.memo}</span>
+        <div className="mt-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-[var(--color-text)]">
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMemoOpen((v) => !v) }}
+            className="w-full flex items-center justify-between px-2 py-1 hover:bg-amber-100"
+          >
+            <span className="font-semibold text-amber-700">📝 メモ {memoOpen ? '▲' : '▼'}</span>
+            {!memoOpen && (
+              <span className="ml-2 truncate text-[var(--color-text-sub)] flex-1 text-left">
+                {task.memo!.replace(/\s+/g, ' ').slice(0, 30)}{task.memo!.length > 30 && '…'}
+              </span>
+            )}
+          </button>
+          {memoOpen && (
+            <div className="px-2 pb-1 whitespace-pre-wrap break-words">{task.memo}</div>
+          )}
         </div>
       )}
       {latestComment && (
-        <div className="mt-1 rounded bg-sky-50 border border-sky-200 px-2 py-1 text-[10px] text-[var(--color-text)]">
-          <div className="flex items-center gap-2 text-[var(--color-text-sub)]">
-            <span className="font-semibold text-sky-700">💬 最新</span>
-            <span className="font-semibold">{latestComment.created_user_name ?? '?'}</span>
-            {latestComment.created && <span className="text-[9px]">{new Date(latestComment.created).toLocaleString('ja-JP')}</span>}
-          </div>
-          <div className="whitespace-pre-wrap break-words line-clamp-3">{latestComment.content}</div>
+        <div className="mt-1 rounded bg-sky-50 border border-sky-200 text-[10px] text-[var(--color-text)]">
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLatestOpen((v) => !v) }}
+            className="w-full flex items-center justify-between px-2 py-1 hover:bg-sky-100"
+          >
+            <span className="font-semibold text-sky-700">💬 最新コメント {latestOpen ? '▲' : '▼'}</span>
+            {!latestOpen && (
+              <span className="ml-2 truncate text-[var(--color-text-sub)] flex-1 text-left">
+                {(latestComment.created_user_name ?? '?')}: {latestComment.content.replace(/\s+/g, ' ').slice(0, 30)}{latestComment.content.length > 30 && '…'}
+              </span>
+            )}
+          </button>
+          {latestOpen && (
+            <div className="px-2 pb-1">
+              <div className="text-[var(--color-text-sub)] text-[9px] mb-0.5">
+                {latestComment.created_user_name ?? '?'} {latestComment.created && new Date(latestComment.created).toLocaleString('ja-JP')}
+              </div>
+              <div className="whitespace-pre-wrap break-words">{latestComment.content}</div>
+            </div>
+          )}
         </div>
       )}
       {commentsOpen && (
