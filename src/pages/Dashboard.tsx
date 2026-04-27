@@ -88,62 +88,47 @@ export default function Dashboard() {
     URL.revokeObjectURL(url)
   }
 
-  const [saveDirOpen, setSaveDirOpen] = useState(false)
-  const [saveDir, setSaveDir] = useState<string>('')
   const [savingMsg, setSavingMsg] = useState<string | null>(null)
-  const [dirInfo, setDirInfo] = useState<{ path: string; exists: boolean; entries: string[] } | null>(null)
+  const [lastSavedTo, setLastSavedTo] = useState<string | null>(null)
+  const [savingBusy, setSavingBusy] = useState(false)
 
-  const fetchDirInfo = async (path: string) => {
-    if (!path) { setDirInfo(null); return }
-    try {
-      const r = await api.get('/exports/list_dirs', { params: { path, year, month, category } })
-      setDirInfo(r.data)
-    } catch (e: any) {
-      setDirInfo({ path: '', exists: false, entries: [] })
-    }
+  // テンプレート文字列をクライアント側で解決（Finder の default location 用）
+  const resolveTemplate = (template: string): string => {
+    const catFolder = ({ wings: 'TAMA', living: 'Living', techleaders: 'テックリーダーズ', resystems: 'REシステムズ' } as const)[category]
+    return template
+      .replace(/\{year\}/g, String(year))
+      .replace(/\{month\}/g, String(month))
+      .replace(/\{cat\}/g, catFolder)
+      .replace(/\{name\}/g, me?.display_name ?? '')
   }
 
-  const openSaveDirDialog = async () => {
-    setSavingMsg(null)
+  // 「📁 フォルダに保存」: Finder を直接開いて選んでもらう → 即保存
+  const pickFolderAndSave = async () => {
+    if (savingBusy) return
+    setSavingBusy(true); setSavingMsg(null)
     try {
-      const r = await api.get('/me')
-      const value = r.data.local_save_dir ?? ''
-      setSaveDir(value)
-      fetchDirInfo(value)
-    } catch {}
-    setSaveDirOpen(true)
-  }
+      // 既存テンプレを default に
+      const meRes = await api.get('/me')
+      const currentTpl: string = meRes.data.local_save_dir ?? ''
+      const defaultPath = currentTpl ? resolveTemplate(currentTpl) : ''
 
-  const pickFolderViaOs = async () => {
-    setSavingMsg(null)
-    try {
-      const r = await api.post('/exports/pick_dir')
-      if (r.data?.path) {
-        setSaveDir(r.data.path)
-        fetchDirInfo(r.data.path)
-      }
-    } catch (e: any) {
-      setSavingMsg(`フォルダ選択失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-    }
-  }
+      const pick = await api.post('/exports/pick_dir', null, { params: { default_path: defaultPath } })
+      if (pick.data?.canceled) { setSavingMsg('キャンセルしました'); return }
+      const picked: string | undefined = pick.data?.path
+      if (!picked) { setSavingMsg('フォルダが取得できませんでした'); return }
 
-  const persistSaveDir = async () => {
-    setSavingMsg(null)
-    try {
-      await api.patch('/me', { user: { local_save_dir: saveDir } })
-      setSavingMsg('保存先を更新しました')
-    } catch (e: any) {
-      setSavingMsg(`保存先の更新失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-    }
-  }
+      // 選んだパスを user.local_save_dir に固定値として保存（次回もデフォルトに）
+      await api.patch('/me', { user: { local_save_dir: picked } })
 
-  const saveInvoiceLocal = async () => {
-    setSavingMsg(null)
-    try {
-      const res = await api.get('/exports/invoice.pdf', { params: { month: monthParam, category: category, save_local: true } })
-      alert(`保存しました:\n${(res.data as any)?.saved_to}`)
+      // 即 PDF 出力
+      const save = await api.get('/exports/invoice.pdf', { params: { month: monthParam, category, save_local: true } })
+      const saved = (save.data as any)?.saved_to ?? picked
+      setLastSavedTo(saved)
+      setSavingMsg('保存しました')
     } catch (e: any) {
-      alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      setSavingMsg(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setSavingBusy(false)
     }
   }
 
@@ -250,21 +235,21 @@ export default function Dashboard() {
               発行日 {invoiceQ.data?.issue_date ?? '—'} ／ 支払期限 {invoiceQ.data?.due_date ?? '—'}
             </div>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex flex-col items-end gap-1">
             <button
-              onClick={openSaveDirDialog}
-              className="rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50"
-              title="保存先フォルダの設定"
+              onClick={pickFolderAndSave}
+              disabled={savingBusy}
+              className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+              title="Finder で保存先を選んで保存"
             >
-              ⚙ 保存先フォルダ
+              {savingBusy ? '保存中…' : '📁 フォルダに保存'}
             </button>
-            <button
-              onClick={saveInvoiceLocal}
-              className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
-              title="現在の保存先フォルダに保存"
-            >
-              📁 保存
-            </button>
+            {(lastSavedTo || savingMsg) && (
+              <div className="max-w-[420px] text-right text-[10px] text-[var(--color-text-sub)] break-all">
+                {savingMsg && <div className={savingMsg.startsWith('保存しました') ? 'text-emerald-600' : 'text-red-500'}>{savingMsg}</div>}
+                {lastSavedTo && <div className="font-mono">{lastSavedTo}</div>}
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -341,88 +326,6 @@ export default function Dashboard() {
         onSaved={refetchAll}
       />
 
-      {saveDirOpen && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-6 backdrop-blur" onClick={() => setSaveDirOpen(false)}>
-          <div className="glass w-full max-w-xl rounded-3xl p-7 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold">📁 保存先フォルダ</div>
-              <button onClick={() => setSaveDirOpen(false)} className="text-[var(--color-text-sub)]">×</button>
-            </div>
-            <div className="mt-4 space-y-3">
-              <label className="block text-xs text-[var(--color-text-sub)]">
-                フォルダパス（プレースホルダ可: <code>{'{year} {month} {cat} {name}'}</code>）
-              </label>
-              <textarea
-                rows={2}
-                value={saveDir}
-                onChange={(e) => { setSaveDir(e.target.value); fetchDirInfo(e.target.value) }}
-                placeholder="/Users/.../12 請求書類/{year}年/{cat}/請求書"
-                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-mono text-[var(--color-text)]"
-              />
-              <div className="text-[11px] text-[var(--color-text-sub)]">
-                末尾に <code>{`{月}月`}</code> フォルダが自動付与されます。最終保存先: <span className="font-mono">{saveDir.replace('{year}', String(year)).replace('{month}', String(month)).replace('{cat}', ({ wings: 'TAMA', living: 'Living', techleaders: 'テックリーダーズ', resystems: 'REシステムズ' } as const)[category])}/{month}月/</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={pickFolderViaOs} className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs hover:bg-gray-50">
-                  📂 macOS のフォルダ選択を開く
-                </button>
-                <button onClick={() => fetchDirInfo(saveDir)} className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs hover:bg-gray-50">
-                  🔄 配下のフォルダを再取得
-                </button>
-              </div>
-
-              {dirInfo && (
-                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 space-y-2">
-                  <div className="text-[11px] text-[var(--color-text-sub)]">
-                    解決後パス: <span className="font-mono">{dirInfo.path || '(取得失敗)'}</span>
-                  </div>
-                  {!dirInfo.exists ? (
-                    <div className="text-[11px] text-amber-600">⚠️ このフォルダは存在しません（保存時に自動作成されます）</div>
-                  ) : (
-                    <>
-                      <div className="text-[11px] text-[var(--color-text-sub)]">配下のフォルダ（クリックで子階層に潜る）:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {dirInfo.entries.length === 0 && <span className="text-[11px] text-[var(--color-text-sub)]">（空）</span>}
-                        {dirInfo.entries.map((entry) => {
-                          const isMonth = entry === `${month}月`
-                          return (
-                            <button
-                              key={entry}
-                              type="button"
-                              onClick={() => {
-                                const next = `${dirInfo.path}/${entry}`
-                                setSaveDir(next)
-                                fetchDirInfo(next)
-                              }}
-                              className={`rounded px-2 py-1 text-[11px] border ${isMonth ? 'bg-emerald-100 border-emerald-300 text-emerald-700 font-semibold' : 'bg-white border-[var(--color-border)] hover:bg-gray-50'}`}
-                              title={isMonth ? '今月分のフォルダ' : ''}
-                            >
-                              📁 {entry}{isMonth && ' ✓'}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {!dirInfo.entries.includes(`${month}月`) && (
-                        <div className="text-[11px] text-amber-600">⚠️ <code>{month}月</code> フォルダは未作成（保存時に自動作成されます）</div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-              {savingMsg && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 whitespace-pre-wrap">{savingMsg}</div>}
-            </div>
-            <div className="mt-5 flex gap-2 justify-end">
-              <button onClick={() => setSaveDirOpen(false)} className="rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-sm">閉じる</button>
-              <button
-                onClick={persistSaveDir}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2 text-sm font-semibold text-white shadow-md"
-              >
-                保存先を更新
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
