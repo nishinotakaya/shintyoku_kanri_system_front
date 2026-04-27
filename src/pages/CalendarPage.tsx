@@ -41,7 +41,7 @@ export default function CalendarPage() {
 
   const isAdmin = (me?.display_name ?? '').includes('西野')
   const isOsumi = (me?.display_name ?? '').includes('大隅')
-  const currentSurname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+  const myCurrentSurname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
 
   // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
   const [asUserId, setAsUserId] = useState<number | null>(null)
@@ -52,7 +52,11 @@ export default function CalendarPage() {
   }, [me?.admin])
 
   const asUserParam = isAdmin && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
-  const canEditPerson = (person: string) => isAdmin || person === currentSurname || currentSurname.includes(person)
+  // 閲覧対象ユーザーの苗字（admin が他人をセレクトしてる時は切替先の苗字、それ以外は自分）
+  const viewingUser = pickableUsers.find((u) => u.id === asUserId) ?? me
+  const viewingSurname = (viewingUser?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+  // 編集権限は常に自分基準（admin はすべて編集可）
+  const canEditPerson = (person: string) => isAdmin || person === myCurrentSurname || myCurrentSurname.includes(person)
 
   // 当月 + 翌月分も取得（カレンダー表示日が次の締日期間に属する分をカバー）
   const nextMonthDate = new Date(year, month, 1)
@@ -223,7 +227,7 @@ export default function CalendarPage() {
         onUpdateTeamSchedule={updateTeamSchedule}
         onCreateTeamSchedule={createTeamSchedule}
         canEditPerson={canEditPerson}
-        currentSurname={currentSurname}
+        currentSurname={viewingSurname}
       />
 
       {openDate && (
@@ -235,7 +239,7 @@ export default function CalendarPage() {
           teamSchedules={teamSchedules}
           onChanged={invalidateReports}
           canEditPerson={canEditPerson}
-          currentSurname={currentSurname}
+          currentSurname={viewingSurname}
         />
       )}
     </div>
