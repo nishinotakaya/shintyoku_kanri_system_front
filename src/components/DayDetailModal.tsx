@@ -226,6 +226,8 @@ export default function DayDetailModal({
   canEditPerson,
   currentSurname,
   asUserId,
+  onExportSchedule,
+  canExport,
 }: {
   date: string
   onClose: () => void
@@ -236,10 +238,24 @@ export default function DayDetailModal({
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
   asUserId?: number | null
+  onExportSchedule?: () => Promise<void> | void
+  canExport?: boolean
 }) {
   const asUserParam = asUserId ? { as_user_id: asUserId } : {}
   const allowEdit = (person: string) => (canEditPerson ? canEditPerson(person) : true)
   const isAdmin = (currentSurname ?? '').includes('西野')
+  const [exporting, setExporting] = useState(false)
+  const [exportMsg, setExportMsg] = useState<string | null>(null)
+  const handleExport = async () => {
+    if (!onExportSchedule || exporting) return
+    setExporting(true); setExportMsg(null)
+    try {
+      await onExportSchedule()
+      setExportMsg('書き戻しました')
+    } catch (e: any) {
+      setExportMsg(`失敗: ${e?.message ?? ''}`)
+    } finally { setExporting(false) }
+  }
   const [tasksByAssignee, setTasksByAssignee] = useState<Record<string, BacklogTask[]>>({})
   const [allTasks, setAllTasks] = useState<BacklogTask[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -495,9 +511,22 @@ export default function DayDetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 gap-2">
           <div className="text-base font-semibold text-[var(--color-text)]">{date} の詳細</div>
-          <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-[var(--color-text)]">×</button>
+          <div className="flex items-center gap-2">
+            {canExport && onExportSchedule && (
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50"
+                title="今月分のチーム予定をスプレッドシートに書き戻し"
+              >
+                {exporting ? '書き戻し中…' : '📤 シートに書き戻し'}
+              </button>
+            )}
+            {exportMsg && <span className="text-[10px] text-emerald-600">{exportMsg}</span>}
+            <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-[var(--color-text)]">×</button>
+          </div>
         </div>
 
         {/* チーム予定 */}

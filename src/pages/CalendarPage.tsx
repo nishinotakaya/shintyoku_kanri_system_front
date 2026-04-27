@@ -241,6 +241,8 @@ export default function CalendarPage() {
           canEditPerson={canEditPerson}
           currentSurname={viewingSurname}
           asUserId={asUserId}
+          onExportSchedule={exportTeam}
+          canExport={isAdmin && !isOsumi}
         />
       )}
     </div>
