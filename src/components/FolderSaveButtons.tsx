@@ -86,6 +86,34 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
     setBusy(true); setMsg(null)
     try {
       const { blob, filename } = fetchDownload ? await fetchDownload() : await fetchSpec()
+
+      // showSaveFilePicker が使えるなら、ダイアログ経由で同名上書き対応
+      const win = window as unknown as { showSaveFilePicker?: (opts?: any) => Promise<FileSystemFileHandle> }
+      if (win.showSaveFilePicker) {
+        try {
+          const ext = (filename.split('.').pop() ?? '').toLowerCase()
+          const accept: Record<string, string[]> = {}
+          if (ext === 'pdf') accept['application/pdf'] = ['.pdf']
+          else if (ext === 'xlsx') accept['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] = ['.xlsx']
+          else accept['application/octet-stream'] = ['.' + ext]
+          const handle = await win.showSaveFilePicker({
+            suggestedName: filename,
+            startIn: 'downloads',
+            types: [{ description: 'File', accept }],
+          })
+          const writable = await handle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+          setLastSavedTo(`(picker) ${(handle as any).name ?? filename}`)
+          setMsg('保存しました（同名は上書き）')
+          return
+        } catch (e: any) {
+          if (e?.name === 'AbortError') { setMsg('キャンセルしました'); return }
+          // 失敗したらレガシーダウンロードへフォールバック
+        }
+      }
+
+      // フォールバック: ブラウザ既定ダウンロード（重複時は (1) 等にリネーム）
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = filename
