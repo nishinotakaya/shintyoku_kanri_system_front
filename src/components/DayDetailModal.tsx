@@ -697,15 +697,30 @@ export default function DayDetailModal({
                 {!existingCategories.has('wings') && (
                   <button
                     onClick={() => startCreate('wings')}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.dataTransfer.dropEffect = 'copy'
+                      e.currentTarget.classList.add('ring-4', 'ring-emerald-400', 'bg-emerald-50', 'border-emerald-500')
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('ring-4', 'ring-emerald-400', 'bg-emerald-50', 'border-emerald-500')
+                    }}
                     onDrop={async (e) => {
                       e.preventDefault()
+                      e.stopPropagation()
+                      e.currentTarget.classList.remove('ring-4', 'ring-emerald-400', 'bg-emerald-50', 'border-emerald-500')
                       try {
-                        const data = JSON.parse(e.dataTransfer.getData('application/json'))
-                        if (data?.issueKey) await addTaskToWorkReport(data.issueKey, String(data.hours ?? '1'), data.assignee)
-                      } catch {}
+                        const raw = e.dataTransfer.getData('application/json')
+                        if (!raw) { alert('ドロップデータが空（リンク部分からのドラッグ等）'); return }
+                        const data = JSON.parse(raw)
+                        if (!data?.issueKey) { alert('issueKey なし'); return }
+                        await addTaskToWorkReport(data.issueKey, String(data.hours ?? '1'), data.assignee)
+                      } catch (err: any) {
+                        alert(`タマ追加失敗: ${err?.message ?? err}`)
+                      }
                     }}
-                    className="flex-1 rounded-lg border-2 border-dashed border-fuchsia-300 px-3 py-1.5 text-xs text-fuchsia-600 hover:bg-fuchsia-50 hover:border-emerald-400"
+                    className="flex-[2] rounded-lg border-2 border-dashed border-fuchsia-300 px-4 py-3 text-sm font-semibold text-fuchsia-600 hover:bg-fuchsia-50 hover:border-emerald-400 transition"
                   >
                     ＋ タマ を追加（タスクをドロップで追加）
                   </button>
