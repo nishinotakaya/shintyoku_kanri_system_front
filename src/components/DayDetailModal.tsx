@@ -30,7 +30,7 @@ const STATUS_BADGE: Record<number, { label: string; class: string }> = {
 
 type TaskComment = { id: number; content: string; created_user_name?: string | null; created?: string | null }
 
-function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings, editable = true }: {
+function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings, editable = true, assignee }: {
   task: BacklogTask
   badge?: { label: string; class: string }
   assignee?: string
@@ -86,7 +86,14 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
     } finally { setCommentsLoading(false) }
   }
   return (
-    <div className="rounded border border-[var(--color-border)] px-2 py-1 text-[11px] hover:bg-gray-50">
+    <div
+      className="rounded border border-[var(--color-border)] px-2 py-1 text-[11px] hover:bg-gray-50 cursor-grab active:cursor-grabbing"
+      draggable={editable}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('application/json', JSON.stringify({ issueKey: task.issue_key, hours, assignee }))
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
+    >
       <div className="flex items-baseline justify-between gap-1">
         <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-baseline gap-1 min-w-0 flex-1">
           <span className="font-mono text-fuchsia-600">{task.issue_key}</span>
@@ -557,8 +564,19 @@ export default function DayDetailModal({
             {dayReports.map((report) => {
               const categoryLabel = report.category === 'living' ? 'リビング' : 'タマ'
               const isEditing = editing[report.id] != null
+              const isWings = (report.category ?? 'wings') !== 'living'
+              const dropHandlers = isWings ? {
+                onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' },
+                onDrop: async (e: React.DragEvent) => {
+                  e.preventDefault()
+                  try {
+                    const data = JSON.parse(e.dataTransfer.getData('application/json'))
+                    if (data?.issueKey) await addTaskToWorkReport(data.issueKey, String(data.hours ?? '1'), data.assignee)
+                  } catch {}
+                },
+              } : {}
               return (
-                <div key={report.id} className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs">
+                <div key={report.id} {...dropHandlers} className={`rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs ${isWings ? 'hover:border-emerald-400' : ''}`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="flex items-baseline gap-2">
                       <span className="font-mono tabular-nums">{report.hours ?? 0}h</span>
