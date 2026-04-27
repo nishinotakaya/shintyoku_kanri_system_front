@@ -225,6 +225,7 @@ export default function DayDetailModal({
   onChanged,
   canEditPerson,
   currentSurname,
+  asUserId,
 }: {
   date: string
   onClose: () => void
@@ -234,7 +235,9 @@ export default function DayDetailModal({
   onChanged?: () => void
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
+  asUserId?: number | null
 }) {
+  const asUserParam = asUserId ? { as_user_id: asUserId } : {}
   const allowEdit = (person: string) => (canEditPerson ? canEditPerson(person) : true)
   const isAdmin = (currentSurname ?? '').includes('西野')
   const [tasksByAssignee, setTasksByAssignee] = useState<Record<string, BacklogTask[]>>({})
@@ -285,7 +288,7 @@ export default function DayDetailModal({
         category: creatingCategory,
         hours: draftNew.hours === '' ? null : Number(draftNew.hours),
         content: finalContent,
-      })
+      }, { params: asUserParam })
       onChanged?.()
       cancelCreate()
     } catch (e: any) {
@@ -304,7 +307,7 @@ export default function DayDetailModal({
         issue_key: issueKey,
         hours: Number(hours),
         target_assignee: assignee,
-      })
+      }, { params: asUserParam })
       if (creatingCategory === 'wings') cancelCreate()
       onChanged?.()
     } catch (e: any) {
@@ -364,7 +367,7 @@ export default function DayDetailModal({
       await api.patch(`/work_reports/${report.id}`, {
         hours: draft.hours === '' ? null : Number(draft.hours),
         content: finalContent,
-      })
+      }, { params: asUserParam })
       onChanged?.()
       cancelEdit(report.id)
     } catch (e: any) {

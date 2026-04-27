@@ -240,6 +240,7 @@ export default function CalendarPage() {
           onChanged={invalidateReports}
           canEditPerson={canEditPerson}
           currentSurname={viewingSurname}
+          asUserId={asUserId}
         />
       )}
     </div>

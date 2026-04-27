@@ -51,6 +51,7 @@ export default function WorkReportTable({
   onChanged,
   defaultTransit,
   category = 'wings',
+  asUserId,
 }: {
   year: number
   month: number
@@ -59,7 +60,9 @@ export default function WorkReportTable({
   onChanged: () => void
   defaultTransit?: { section: string; fee: number } | null
   category?: string
+  asUserId?: number | null
 }) {
+  const asUserParam = asUserId ? { as_user_id: asUserId } : {}
   const filtered = reports.filter((r) => (r.category ?? 'wings') === category)
   const days = daysInPeriod(period)
   const byDate = new Map<string, WorkReport>(filtered.map((r) => [r.work_date, r]))
@@ -96,7 +99,7 @@ export default function WorkReportTable({
       transit_section: row.transit_section,
       transit_fee: row.transit_fee === '' ? null : Number(row.transit_fee),
       category,
-    })
+    }, { params: asUserParam })
     setSavedAt((p) => ({ ...p, [date]: Date.now() }))
     onChanged()
   }

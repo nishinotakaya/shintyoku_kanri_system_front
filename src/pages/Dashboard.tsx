@@ -26,15 +26,25 @@ export default function Dashboard() {
   const [category, setCategory] = useState<'wings' | 'living' | 'techleaders' | 'resystems'>('wings')
   const [me, setMe] = useState<Me | null>(null)
 
+  // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
+  const [asUserId, setAsUserId] = useState<number | null>(null)
+  const [pickableUsers, setPickableUsers] = useState<{ id: number; display_name: string; email: string; admin: boolean }[]>([])
+  useEffect(() => {
+    if (!me?.admin) return
+    api.get('/users/pickable').then((r) => setPickableUsers(r.data)).catch(() => {})
+  }, [me?.admin])
+  const isAdmin = !!me?.admin
+  const asUserParam = isAdmin && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
+
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
 
   const reportsQ = useQuery({
-    queryKey: ['work_reports', monthParam],
-    queryFn: async () => (await api.get<WorkReportResponse>('/work_reports', { params: { month: monthParam } })).data,
+    queryKey: ['work_reports', monthParam, asUserId],
+    queryFn: async () => (await api.get<WorkReportResponse>('/work_reports', { params: { month: monthParam, ...asUserParam } })).data,
   })
   const expensesQ = useQuery({
-    queryKey: ['expenses', monthParam],
-    queryFn: async () => (await api.get<ExpenseResponse>('/expenses', { params: { month: monthParam } })).data,
+    queryKey: ['expenses', monthParam, asUserId],
+    queryFn: async () => (await api.get<ExpenseResponse>('/expenses', { params: { month: monthParam, ...asUserParam } })).data,
   })
 
   const reports = reportsQ.data?.reports ?? []
@@ -50,8 +60,8 @@ export default function Dashboard() {
   }, [period])
 
   const invoiceQ = useQuery({
-    queryKey: ['invoice_preview', monthParam, category],
-    queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: category } })).data,
+    queryKey: ['invoice_preview', monthParam, category, asUserId],
+    queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category, ...asUserParam } })).data,
   })
 
   const totals = useMemo(() => {
@@ -134,9 +144,20 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && pickableUsers.length > 0 && (
+            <select
+              value={asUserId ?? me?.id ?? 0}
+              onChange={(e) => setAsUserId(Number(e.target.value))}
+              className="rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
+              title="閲覧対象ユーザー"
+            >
+              {pickableUsers.map((u) => (
+                <option key={u.id} value={u.id}>👤 {u.display_name}{u.id === me?.id ? '（自分）' : ''}</option>
+              ))}
+            </select>
+          )}
           <div className="flex gap-1">
             {(() => {
-              const isAdmin = (me?.display_name ?? '').includes('西野')
               const allCategories = [['wings', 'Wings'], ['living', 'リビング'], ['techleaders', 'テックリーダーズ'], ['resystems', 'REシステムズ']] as const
               const visibleCategories = isAdmin ? allCategories : allCategories.filter(([key]) => key === 'wings' || key === 'living')
               return visibleCategories.map(([key, label]) => (
@@ -257,7 +278,7 @@ export default function Dashboard() {
 
       <VoiceCommand onApplied={refetchAll} />
 
-      <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} />
+      <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
       <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} />
 
       {me?.can_issue_orders && <PurchaseOrderList me={me} category={category} />}
