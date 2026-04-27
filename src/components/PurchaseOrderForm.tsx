@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
+import FolderSaveButtons from './FolderSaveButtons'
 
 type Item = { description: string; qty: number; unit: string; unit_price: number; amount: number }
 
@@ -355,35 +356,12 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
     remarks,
   })
 
-  const submit = async () => {
-    setLoading(true); setErr(null)
-    try {
-      const res = await api.post('/exports/purchase_order.pdf', buildPayload(), { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data as Blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `発注書_${CATEGORY_LABEL[category]}_${orderNo}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch (e: any) {
-      setErr(e?.response?.data?.error?.toString() ?? '発注書 PDF の生成に失敗しました')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const saveLocal = async () => {
-    setLoading(true); setErr(null)
-    try {
-      const res = await api.post('/exports/purchase_order.pdf?save_local=true', buildPayload())
-      alert(`保存しました:\n${(res.data as any)?.saved_to}`)
-    } catch (e: any) {
-      setErr(e?.response?.data?.error?.toString() ?? '保存に失敗しました')
-    } finally {
-      setLoading(false)
-    }
+  // 共通 FolderSaveButtons に渡す: POST で blob を取得
+  const purchaseOrderFetchSpec = async () => {
+    const res = await api.post('/exports/purchase_order.pdf', buildPayload(), { responseType: 'blob' })
+    const filename = `発注書_${CATEGORY_LABEL[category]}_${orderNo}.pdf`
+    const monthFolderName = `${new Date().getMonth() + 1}月`
+    return { blob: res.data as Blob, filename, monthFolderName }
   }
 
   const fmtYen = (n: number) => '¥' + n.toLocaleString()
@@ -450,22 +428,14 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
             >
               📅 契約期間を変更
             </button>
-            <button
-              onClick={submit}
-              disabled={loading || items.length === 0}
-              className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 disabled:opacity-50"
-            >
-              {loading ? '生成中…' : '📄 発注書 PDF 出力'}
-            </button>
-            <button
-              onClick={saveLocal}
-              disabled={loading || items.length === 0}
-              className="rounded-xl bg-white border border-emerald-400 px-4 py-2.5 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
-              title="/Users/.../12 請求書類/.../川村さん/注文/ に保存"
-            >
-              📁 フォルダに保存
-            </button>
           </div>
+          {items.length > 0 && (
+            <FolderSaveButtons
+              label="発注書"
+              monthFolderName={`${new Date().getMonth() + 1}月`}
+              fetchSpec={purchaseOrderFetchSpec}
+            />
+          )}
           {!cfg.recipientName && <span className="text-[11px] text-amber-500">※「宛先 氏名」が空のまま出力できます</span>}
         </div>
       </div>

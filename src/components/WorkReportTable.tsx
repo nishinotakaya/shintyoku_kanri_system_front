@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
-import { api, downloadXlsx, saveToFolder } from '../lib/api'
+import { api } from '../lib/api'
 import type { Period, WorkReport } from '../lib/api'
+import FolderSaveButtons, { fetchExportBlob } from './FolderSaveButtons'
 
 const wd = '日月火水木金土'
 
@@ -131,39 +132,16 @@ export default function WorkReportTable({
             業務報告 — {year}年 {month}月分
             {period && <span className="ml-2 text-[11px] text-[var(--color-text-sub)]">({period.from} 〜 {period.to})</span>}
           </div>
-        <div className="flex gap-1.5 items-center">
-          <button
-            onClick={async () => {
-              try {
-                const r = await api.get('/me')
-                const current = r.data.local_save_dir ?? ''
-                const next = prompt('保存先フォルダ（{year} {month} {cat} プレースホルダ可）', current)
-                if (next == null) return
-                await api.patch('/me', { user: { local_save_dir: next } })
-              } catch (e: any) {
-                alert(`保存先の更新失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-              }
-            }}
-            className="rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50"
-            title="保存先フォルダの設定"
-          >
-            ⚙ 保存先フォルダ
-          </button>
-          <button
-            onClick={async () => {
-              try {
-                const dest = await saveToFolder(`/exports/work_report.xlsx?month=${year}-${String(month).padStart(2, '0')}&category=${category}`)
-                alert(`保存しました:\n${dest}`)
-              } catch (e: any) {
-                alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-              }
-            }}
-            className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
-            title="現在の保存先フォルダに保存"
-          >
-            📁 保存
-          </button>
-        </div>
+        <FolderSaveButtons
+          label="業務報告"
+          monthFolderName={`${month}月`}
+          fetchSpec={async () => {
+            const monthParam = `${year}-${String(month).padStart(2, '0')}`
+            const fallback = `業務報告書_${year}年_${month}月分.xlsx`
+            const { blob, filename } = await fetchExportBlob('/exports/work_report.xlsx', { month: monthParam, category }, fallback)
+            return { blob, filename, monthFolderName: `${month}月` }
+          }}
+        />
         </div>
       </div>
       <div className="max-h-[520px] overflow-auto">

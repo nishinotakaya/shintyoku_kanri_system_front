@@ -1,18 +1,6 @@
 import { useMemo, useState } from 'react'
-import { api, downloadXlsx, saveToFolder } from '../lib/api'
 import type { Expense, WorkReport } from '../lib/api'
-
-async function downloadPdf(path: string, filename: string) {
-  const res = await api.get(path, { responseType: 'blob' })
-  const url = URL.createObjectURL(res.data as Blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
+import FolderSaveButtons, { fetchExportBlob } from './FolderSaveButtons'
 
 const CATEGORIES = [
   { key: 'wings', label: 'Wings' },
@@ -58,35 +46,25 @@ export default function ExpenseTable({
           <div className="text-xs font-semibold text-[var(--color-text)]">立替金 — {year}年 {month}月分</div>
           <div className="text-[11px] text-[var(--color-text-sub)]">※ 業務報告の乗車区間・交通費から自動計算</div>
         </div>
-        <div className="flex gap-1.5">
-          {(() => {
-            const saveLocal = async (path: string) => {
-              try { const dest = await saveToFolder(path); alert(`保存しました:\n${dest}`) }
-              catch (e: any) { alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
-            }
-            const changeSaveDir = async () => {
-              try {
-                const r = await api.get('/me')
-                const current = r.data.local_save_dir ?? ''
-                const next = prompt('保存先フォルダ（{year} {month} {cat} プレースホルダ可）', current)
-                if (next == null) return
-                await api.patch('/me', { user: { local_save_dir: next } })
-              } catch (e: any) {
-                alert(`保存先の更新失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-              }
-            }
-            return (
-              <>
-                <button onClick={changeSaveDir}
-                  className="rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50"
-                  title="保存先フォルダの設定">⚙ 保存先フォルダ</button>
-                <button onClick={() => saveLocal(`/exports/expense.xlsx?month=${mp}&category=${category}`)}
-                  className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow">📁 Excel 保存</button>
-                <button onClick={() => saveLocal(`/exports/expense.pdf?month=${mp}&category=${category}`)}
-                  className="rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow">📁 PDF 保存</button>
-              </>
-            )
-          })()}
+        <div className="flex flex-col gap-1 items-end">
+          <FolderSaveButtons
+            label="立替金Excel"
+            monthFolderName={`${month}月`}
+            fetchSpec={async () => {
+              const fallback = `立替金_${year}年_${month}月分.xlsx`
+              const { blob, filename } = await fetchExportBlob('/exports/expense.xlsx', { month: mp, category }, fallback)
+              return { blob, filename, monthFolderName: `${month}月` }
+            }}
+          />
+          <FolderSaveButtons
+            label="立替金PDF"
+            monthFolderName={`${month}月`}
+            fetchSpec={async () => {
+              const fallback = `立替金_${year}年_${month}月分.pdf`
+              const { blob, filename } = await fetchExportBlob('/exports/expense.pdf', { month: mp, category }, fallback)
+              return { blob, filename, monthFolderName: `${month}月` }
+            }}
+          />
         </div>
       </div>
 
