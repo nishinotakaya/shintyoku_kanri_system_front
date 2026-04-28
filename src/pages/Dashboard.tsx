@@ -9,6 +9,7 @@ import ExpenseTable from '../components/ExpenseTable'
 import SettingsModal from '../components/SettingsModal'
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import FolderSaveButtons, { fetchExportBlob } from '../components/FolderSaveButtons'
+import InvoiceSubmissionPanel from '../components/InvoiceSubmissionPanel'
 import { billingMonthForToday } from '../lib/billingMonth'
 // CalendarView moved to /calendar page
 
@@ -34,6 +35,7 @@ export default function Dashboard() {
     api.get('/users/pickable').then((r) => setPickableUsers(r.data)).catch(() => {})
   }, [me?.admin])
   const isAdmin = !!me?.admin
+  const isOsumi = (me?.display_name ?? '').includes('大隅')
   const asUserParam = isAdmin && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
 
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
@@ -100,6 +102,17 @@ export default function Dashboard() {
   const invoiceFetchSpec = async () => {
     const { blob, filename } = await fetchExportBlob('/exports/invoice.pdf', { month: monthParam, category }, invoiceFilename)
     return { blob, filename, monthFolderName }
+  }
+
+  // 請求書 PDF を一度でも DL/保存したら、その (年月×カテゴリ) で申請ボタンを解放
+  const invoiceDlKey = `invoice_dl_${year}_${month}_${category}`
+  const [invoicePdfDownloaded, setInvoicePdfDownloaded] = useState(false)
+  useEffect(() => {
+    setInvoicePdfDownloaded(localStorage.getItem(invoiceDlKey) === '1')
+  }, [invoiceDlKey])
+  const markInvoiceDownloaded = () => {
+    localStorage.setItem(invoiceDlKey, '1')
+    setInvoicePdfDownloaded(true)
   }
 
   const [syncingWR, setSyncingWR] = useState(false)
@@ -216,7 +229,7 @@ export default function Dashboard() {
               発行日 {invoiceQ.data?.issue_date ?? '—'} ／ 支払期限 {invoiceQ.data?.due_date ?? '—'}
             </div>
           </div>
-          <FolderSaveButtons label="請求書" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} />
+          <FolderSaveButtons label="請求書" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} onDownloaded={markInvoiceDownloaded} />
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2">
@@ -261,6 +274,15 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <InvoiceSubmissionPanel
+        isAdmin={isAdmin}
+        isOsumi={isOsumi}
+        year={year}
+        month={month}
+        category={category}
+        pdfDownloaded={invoicePdfDownloaded}
+      />
 
       <div className="glass rounded-xl px-3 py-2 shadow-md flex items-center justify-between">
         <div>

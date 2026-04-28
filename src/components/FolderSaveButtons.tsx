@@ -20,9 +20,11 @@ type Props = {
   fetchSpec: () => Promise<FetchSpec>
   // ダウンロード用（save_local 不可な単純 blob 取得）— 省略時は fetchSpec を使う
   fetchDownload?: () => Promise<{ blob: Blob; filename: string }>
+  // 保存/DL 成功時に呼ばれる（呼び出し側で「DL済」フラグ管理に使う）
+  onDownloaded?: () => void
 }
 
-export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, fetchDownload }: Props) {
+export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, fetchDownload, onDownloaded }: Props) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [lastSavedTo, setLastSavedTo] = useState<string | null>(null)
@@ -54,6 +56,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
       if (!(await ensureRwPermission(stored))) { setMsg('書き込み権限が拒否されました'); return }
       const where = await writeTo(stored)
       setLastSavedTo(where); setMsg('保存しました')
+      onDownloaded?.()
     } catch (e: any) {
       setMsg(`保存失敗: ${e?.message ?? ''}`)
     } finally { setBusy(false) }
@@ -70,6 +73,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
       setSavedDirName(dirHandle.name)
       const where = await writeTo(dirHandle)
       setLastSavedTo(where); setMsg('保存しました')
+      onDownloaded?.()
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         setMsg('キャンセルしました')
@@ -106,6 +110,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
           await writable.close()
           setLastSavedTo(`(picker) ${(handle as any).name ?? filename}`)
           setMsg('保存しました（同名は上書き）')
+          onDownloaded?.()
           return
         } catch (e: any) {
           if (e?.name === 'AbortError') { setMsg('キャンセルしました'); return }
@@ -120,6 +125,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
       setLastSavedTo(`Downloads/${filename}`); setMsg('ダウンロードしました')
+      onDownloaded?.()
     } catch (e: any) {
       setMsg(`失敗: ${e?.message ?? ''}`)
     } finally { setBusy(false) }
