@@ -39,8 +39,8 @@ function expectedHours(status: string, dow: number): { living: number; tama: num
   const s = status || ''
   if (!s || s.includes('休み') || s.includes('定休')) return { living: 0, tama: 0 }
   // 午前/午後 等で分割パターン
-  if (s.includes('午前') && s.includes('リビング')) return { living: 5, tama: 3.5 }
-  if (s.includes('リビング') && /[/／]/.test(s)) return { living: 5, tama: 3.5 }
+  if (s.includes('午前') && s.includes('リビング')) return { living: 5, tama: 3 }
+  if (s.includes('リビング') && /[/／]/.test(s)) return { living: 5, tama: 3 }
   // リビング単独（リビング リモート 等）
   if (s.includes('リビング')) return { living: 8, tama: 0 }
   // 火曜のリビング併用パターンが status に "リビング" 含まなければ通常タマ
