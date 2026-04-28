@@ -52,6 +52,8 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [approved, setApproved] = useState<Submission[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // 承認済リストの「ラボップ宛」DL 用、申請ごとの税込合計入力（空なら override なし）
+  const [labopAmount, setLabopAmount] = useState<Record<number, string>>({})
 
   const loadAll = async () => {
     if (isAdmin) {
@@ -116,16 +118,40 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
     }
   }
 
+  // 申請者本人の請求書をそのまま (admin が as_user_id で他ユーザーとして) DL
+  const downloadAsApplicant = async (s: Submission) => {
+    setBusy(true); setMsg(null)
+    try {
+      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+      const surname = s.user_display_name.split(/[\s　]/)[0] ?? ''
+      const filename = `${surname}_請求書_${s.year}年_${s.month}月分.pdf`
+      const { blob, filename: fn } = await fetchExportBlob('/exports/invoice.pdf', {
+        month: monthParam,
+        category: s.category,
+        as_user_id: s.user_id,
+      }, filename)
+      downloadBlob(blob, fn)
+      setMsg('ダウンロードしました')
+    } catch (e: any) {
+      setMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const downloadAsLabop = async (s: Submission) => {
     setBusy(true); setMsg(null)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
       const filename = `${s.user_display_name.split(/[\s　]/)[0] ?? ''}_請求書_${s.year}年_${s.month}月分_株式会社ラボップ.pdf`
-      const { blob, filename: fn } = await fetchExportBlob('/exports/invoice.pdf', {
+      const totalRaw = (labopAmount[s.id] ?? '').toString().replace(/[^\d]/g, '')
+      const params: Record<string, any> = {
         month: monthParam,
         category: s.category,
         invoice_submission_id: s.id,
-      }, filename)
+      }
+      if (totalRaw) params.total_override = totalRaw
+      const { blob, filename: fn } = await fetchExportBlob('/exports/invoice.pdf', params, filename)
       downloadBlob(blob, fn)
       setMsg('ダウンロードしました')
     } catch (e: any) {
@@ -225,25 +251,52 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       )}
       {approved.length > 0 && (
         <div className="glass rounded-xl px-3 py-2 shadow-md">
-          <div className="text-xs font-semibold text-[var(--color-text)] mb-1">承認済み（株式会社ラボップ宛 DL 可能）</div>
+          <div className="text-xs font-semibold text-[var(--color-text)] mb-1">承認済み</div>
           <ul className="divide-y divide-[var(--color-border)]">
-            {approved.map((s) => (
-              <li key={s.id} className="py-1.5 flex items-center justify-between gap-2 text-xs">
-                <div>
-                  <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
-                  <span className="ml-2 text-[var(--color-text-sub)]">{s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
-                  {s.reviewed_at && <span className="ml-2 text-[10px] text-[var(--color-text-sub)]">承認: {new Date(s.reviewed_at).toLocaleString('ja-JP')}</span>}
-                </div>
-                <button
-                  onClick={() => downloadAsLabop(s)}
-                  disabled={busy}
-                  className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                >
-                  📥 ラボップ宛 DL
-                </button>
-              </li>
-            ))}
+            {approved.map((s) => {
+              const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
+              return (
+                <li key={s.id} className="py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div>
+                    <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
+                    <span className="ml-2 text-[var(--color-text-sub)]">{s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
+                    {s.reviewed_at && <span className="ml-2 text-[10px] text-[var(--color-text-sub)]">承認: {new Date(s.reviewed_at).toLocaleString('ja-JP')}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => downloadAsApplicant(s)}
+                      disabled={busy}
+                      className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                      title={`${surname}さん本人の請求書（オリジナル宛先・発行者）`}
+                    >
+                      📥 {surname}さんの請求書
+                    </button>
+                    <div className="flex items-center gap-1 rounded-md border border-sky-300 bg-white pl-2 pr-1 py-0.5">
+                      <span className="text-[10px] text-[var(--color-text-sub)]">税込合計 ¥</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={labopAmount[s.id] ?? ''}
+                        onChange={(e) => setLabopAmount((prev) => ({ ...prev, [s.id]: e.target.value.replace(/[^\d,]/g, '') }))}
+                        placeholder="自動"
+                        className="w-20 bg-transparent text-right text-[11px] font-mono tabular-nums focus:outline-none"
+                      />
+                      <button
+                        onClick={() => downloadAsLabop(s)}
+                        disabled={busy}
+                        className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                      >
+                        📥 ラボップ宛
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
+          <div className="mt-1 text-[10px] text-[var(--color-text-sub)]">
+            ※ ラボップ宛の「税込合計」は空欄なら元の請求金額をそのまま使用。明細は「{`{姓}`} 開発業務 1式」、消費税は 10% 内税表示、発行者・印鑑・振込先は西野になります。
+          </div>
         </div>
       )}
     </div>
