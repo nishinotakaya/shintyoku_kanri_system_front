@@ -16,6 +16,12 @@ type Submission = {
   reviewer_id: number | null
   reviewer_display_name: string | null
   note: string | null
+  total_override: number | null
+  item_label_override: string | null
+  subject_override: string | null
+  default_total: number | null
+  default_item_label: string | null
+  default_subject: string | null
 }
 
 type Props = {
@@ -52,8 +58,42 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [approved, setApproved] = useState<Submission[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  // 承認済リストの「ラボップ宛」DL 用、申請ごとの税込合計入力（空なら override なし）
-  const [labopAmount, setLabopAmount] = useState<Record<number, string>>({})
+  // ラボップ宛モーダル
+  const [labopModalFor, setLabopModalFor] = useState<Submission | null>(null)
+  const [labopForm, setLabopForm] = useState<{ total: string; itemLabel: string; subject: string }>({ total: '', itemLabel: '', subject: '' })
+  const [labopSaving, setLabopSaving] = useState(false)
+  const [labopMsg, setLabopMsg] = useState<string | null>(null)
+
+  const openLabopModal = (s: Submission) => {
+    setLabopMsg(null)
+    setLabopForm({
+      total: String(s.total_override ?? s.default_total ?? ''),
+      itemLabel: s.item_label_override ?? s.default_item_label ?? '',
+      subject: s.subject_override ?? s.default_subject ?? '',
+    })
+    setLabopModalFor(s)
+  }
+  const closeLabopModal = () => setLabopModalFor(null)
+
+  const saveLabop = async (s: Submission): Promise<Submission | null> => {
+    setLabopSaving(true); setLabopMsg(null)
+    try {
+      const totalRaw = labopForm.total.replace(/[^\d]/g, '')
+      const r = await api.patch<Submission>(`/invoice_submissions/${s.id}`, {
+        total_override: totalRaw === '' ? '' : totalRaw,
+        item_label_override: labopForm.itemLabel,
+        subject_override: labopForm.subject,
+      })
+      setLabopMsg('保存しました')
+      await loadAll()
+      return r.data
+    } catch (e: any) {
+      setLabopMsg(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      return null
+    } finally {
+      setLabopSaving(false)
+    }
+  }
 
   const loadAll = async () => {
     if (isAdmin) {
@@ -140,24 +180,21 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   }
 
   const downloadAsLabop = async (s: Submission) => {
-    setBusy(true); setMsg(null)
+    setLabopSaving(true); setLabopMsg(null)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
       const filename = `${s.user_display_name.split(/[\s　]/)[0] ?? ''}_請求書_${s.year}年_${s.month}月分_株式会社ラボップ.pdf`
-      const totalRaw = (labopAmount[s.id] ?? '').toString().replace(/[^\d]/g, '')
-      const params: Record<string, any> = {
+      const { blob, filename: fn } = await fetchExportBlob('/exports/invoice.pdf', {
         month: monthParam,
         category: s.category,
         invoice_submission_id: s.id,
-      }
-      if (totalRaw) params.total_override = totalRaw
-      const { blob, filename: fn } = await fetchExportBlob('/exports/invoice.pdf', params, filename)
+      }, filename)
       downloadBlob(blob, fn)
-      setMsg('ダウンロードしました')
+      setLabopMsg('ダウンロードしました')
     } catch (e: any) {
-      setMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      setLabopMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
-      setBusy(false)
+      setLabopSaving(false)
     }
   }
 
@@ -261,6 +298,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
                     <span className="ml-2 text-[var(--color-text-sub)]">{s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
                     {s.reviewed_at && <span className="ml-2 text-[10px] text-[var(--color-text-sub)]">承認: {new Date(s.reviewed_at).toLocaleString('ja-JP')}</span>}
+                    {s.total_override != null && (
+                      <span className="ml-2 text-[10px] text-sky-600">ラボップ向け ¥{s.total_override.toLocaleString()} 設定済</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -271,31 +311,102 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     >
                       📥 {surname}さんの請求書
                     </button>
-                    <div className="flex items-center gap-1 rounded-md border border-sky-300 bg-white pl-2 pr-1 py-0.5">
-                      <span className="text-[10px] text-[var(--color-text-sub)]">税込合計 ¥</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={labopAmount[s.id] ?? ''}
-                        onChange={(e) => setLabopAmount((prev) => ({ ...prev, [s.id]: e.target.value.replace(/[^\d,]/g, '') }))}
-                        placeholder="自動"
-                        className="w-20 bg-transparent text-right text-[11px] font-mono tabular-nums focus:outline-none"
-                      />
-                      <button
-                        onClick={() => downloadAsLabop(s)}
-                        disabled={busy}
-                        className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                      >
-                        📥 ラボップ宛
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => openLabopModal(s)}
+                      disabled={busy}
+                      className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                    >
+                      📥 ラボップ宛
+                    </button>
                   </div>
                 </li>
               )
             })}
           </ul>
-          <div className="mt-1 text-[10px] text-[var(--color-text-sub)]">
-            ※ ラボップ宛の「税込合計」は空欄なら元の請求金額をそのまま使用。明細は「{`{姓}`} 開発業務 1式」、消費税は 10% 内税表示、発行者・印鑑・振込先は西野になります。
+        </div>
+      )}
+
+      {labopModalFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeLabopModal}>
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <div className="text-sm font-semibold text-[var(--color-text)]">📥 ラボップ宛 請求書</div>
+                <div className="text-[11px] text-[var(--color-text-sub)]">
+                  {labopModalFor.user_display_name} ／ {labopModalFor.year}年{labopModalFor.month}月（{CATEGORY_LABELS[labopModalFor.category] ?? labopModalFor.category}）
+                </div>
+              </div>
+              <button onClick={closeLabopModal} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block">
+                <div className="text-[11px] font-semibold text-[var(--color-text)] mb-0.5">税込合計（¥）</div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={labopForm.total}
+                  onChange={(e) => setLabopForm((p) => ({ ...p, total: e.target.value.replace(/[^\d]/g, '') }))}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  placeholder={labopModalFor.default_total != null ? String(labopModalFor.default_total) : ''}
+                />
+                <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
+                  消費税 10% 内税で逆算（小計 = 税込 ÷ 1.1）。空欄なら元の請求金額をそのまま使用。
+                </div>
+              </label>
+
+              <label className="block">
+                <div className="text-[11px] font-semibold text-[var(--color-text)] mb-0.5">明細の品目名</div>
+                <input
+                  type="text"
+                  value={labopForm.itemLabel}
+                  onChange={(e) => setLabopForm((p) => ({ ...p, itemLabel: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  placeholder={labopModalFor.default_item_label ?? ''}
+                />
+              </label>
+
+              <label className="block">
+                <div className="text-[11px] font-semibold text-[var(--color-text)] mb-0.5">件名（任意）</div>
+                <input
+                  type="text"
+                  value={labopForm.subject}
+                  onChange={(e) => setLabopForm((p) => ({ ...p, subject: e.target.value }))}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  placeholder={labopModalFor.default_subject ?? ''}
+                />
+              </label>
+
+              <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[10px] text-[var(--color-text-sub)]">
+                宛先: 株式会社ラボップ ／ 発行者・印鑑・振込先: 西野（自動）
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className={`text-[11px] ${labopMsg?.includes('失敗') ? 'text-red-500' : 'text-emerald-600'}`}>{labopMsg ?? ''}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const updated = await saveLabop(labopModalFor)
+                    if (updated) setLabopModalFor(updated)
+                  }}
+                  disabled={labopSaving}
+                  className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                >
+                  💾 保存
+                </button>
+                <button
+                  onClick={async () => {
+                    const updated = await saveLabop(labopModalFor)
+                    if (updated) await downloadAsLabop(updated)
+                  }}
+                  disabled={labopSaving}
+                  className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+                >
+                  📥 ダウンロード
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
