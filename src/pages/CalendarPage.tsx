@@ -205,7 +205,7 @@ export default function CalendarPage() {
             {importing ? '取込中…' : '📥 シートから取込'}
           </button>
           {/* 大隅は書き戻し不可。admin (西野) のみ表示 */}
-          {isAdmin && !isOsumi && (
+          {!isOsumi && (
             <button
               onClick={exportTeam}
               disabled={importing}
@@ -242,7 +242,7 @@ export default function CalendarPage() {
           currentSurname={viewingSurname}
           asUserId={asUserId}
           onExportSchedule={exportTeam}
-          canExport={isAdmin && !isOsumi}
+          canExport={!isOsumi}
         />
       )}
     </div>
