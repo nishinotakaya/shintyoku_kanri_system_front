@@ -35,7 +35,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <aside className="w-56 shrink-0 border-r border-[var(--color-border)] bg-white flex flex-col sticky top-0 h-screen">
         <Link to="/" className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--color-border)]">
           <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md" />
-          <div className="text-base font-bold tracking-tight text-[var(--color-text)] leading-tight">進捗管理<br/>システム</div>
+          <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">進捗管理システム</div>
         </Link>
         <nav className="flex-1 px-3 py-3 space-y-0.5">
           {NAV.map((n) => {
