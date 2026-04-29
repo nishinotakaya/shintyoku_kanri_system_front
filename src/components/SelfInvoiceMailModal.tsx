@@ -21,6 +21,7 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
+  const [includeExpense, setIncludeExpense] = useState(true)
   const [drafting, setDrafting] = useState(false)
   const [sending, setSending] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -36,6 +37,7 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
       const r = await api.post<{ subject: string; body: string }>('/emails/self_invoice_draft', {
         month: monthParam, category,
         recipient_name: recipientName,
+        include_expense: includeExpense,
       })
       setSubject(r.data.subject)
       setBody(r.data.body)
@@ -63,6 +65,7 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
       fd.append('to', to)
       fd.append('subject', subject)
       fd.append('body', body)
+      fd.append('include_expense', includeExpense ? '1' : '0')
       extraFiles.forEach((f) => fd.append('extra_files[]', f))
       const r = await api.post<{ ok: boolean; sent_to: string; attachments: string[] }>('/emails/self_invoice_send', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -119,7 +122,11 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
         </label>
 
         <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)]">
-          自動添付: 請求書 PDF (オリジナル宛先・発行者で生成)
+          <label className="flex items-center gap-2 cursor-pointer mb-1">
+            <input type="checkbox" checked={includeExpense} onChange={(e) => setIncludeExpense(e.target.checked)} className="accent-emerald-500" />
+            <span className="font-semibold">立替金 (PDF + Excel) も同梱する</span>
+          </label>
+          自動添付: 請求書 PDF{includeExpense ? ' + 立替金 PDF + 立替金 Excel' : ''}（オリジナル宛先・発行者で生成）
         </div>
 
         <div className="mt-2">
