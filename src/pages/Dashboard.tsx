@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import ClockCard from '../components/ClockCard'
-import VoiceCommand from '../components/VoiceCommand'
 import WorkReportTable from '../components/WorkReportTable'
 import ExpenseTable from '../components/ExpenseTable'
 import SettingsModal from '../components/SettingsModal'
@@ -134,19 +133,6 @@ export default function Dashboard() {
     setExpensePdfDownloaded(true)
   }
   const [selfMailOpen, setSelfMailOpen] = useState(false)
-
-  const [syncingWR, setSyncingWR] = useState(false)
-  const [syncWRMsg, setSyncWRMsg] = useState<string | null>(null)
-
-  const syncToWorkReports = async () => {
-    setSyncingWR(true); setSyncWRMsg(null)
-    try {
-      const { data } = await api.post('/backlog/sync_to_work_reports', { month: monthParam })
-      setSyncWRMsg(`${data.applied} 日分を反映しました`)
-      refetchAll()
-    } catch (e: any) { setSyncWRMsg(e?.response?.data?.error ?? '反映失敗') }
-    finally { setSyncingWR(false) }
-  }
 
   const fmtYen = (n: number | null | undefined) =>
     n == null ? '—' : '¥' + Math.round(n).toLocaleString()
@@ -313,22 +299,6 @@ export default function Dashboard() {
         kind="invoice"
         pdfDownloaded={invoicePdfDownloaded}
       />
-
-      <div className="glass rounded-xl px-3 py-2 shadow-md flex items-center justify-between">
-        <div>
-          <div className="text-xs font-semibold text-[var(--color-text)]">勤怠に同期</div>
-          <div className="text-[11px] text-[var(--color-text-sub)]">バックログのタスク（SAP番号 + 期間）から業務報告を自動生成</div>
-        </div>
-        <div className="flex items-center gap-2">
-          {syncWRMsg && <span className="text-[11px] text-emerald-600">{syncWRMsg}</span>}
-          <button onClick={syncToWorkReports} disabled={syncingWR}
-            className="rounded-md bg-gradient-to-r from-[var(--color-primary)] to-fuchsia-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
-            {syncingWR ? '反映中…' : '📋 勤怠に反映'}
-          </button>
-        </div>
-      </div>
-
-      <VoiceCommand onApplied={refetchAll} />
 
       <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
       <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={markExpenseDownloaded} />
