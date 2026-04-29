@@ -388,9 +388,14 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
 
   // 共通 FolderSaveButtons に渡す: POST で blob を取得
   const purchaseOrderFetchSpec = async () => {
-    const res = await api.post('/exports/purchase_order.pdf', buildPayload(), { responseType: 'blob' })
+    const payload = buildPayload()
+    const res = await api.post('/exports/purchase_order.pdf', payload, { responseType: 'blob' })
     const filename = `発注書_${CATEGORY_LABEL[category]}_${orderNo}.pdf`
     const monthFolderName = `${new Date().getMonth() + 1}月`
+    // 発行履歴に DB 保存 (失敗しても DL 自体は止めない)
+    try {
+      await api.post('/purchase_order_histories', { category, position, payload })
+    } catch (e) { /* noop */ }
     return { blob: res.data as Blob, filename, monthFolderName }
   }
 
