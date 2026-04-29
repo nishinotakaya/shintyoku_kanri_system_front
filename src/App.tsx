@@ -15,9 +15,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 const NAV = [
-  { to: '/', label: 'カレンダー' },
-  { to: '/attendance', label: '勤怠' },
-  { to: '/progress', label: '進捗管理' },
+  { to: '/', label: 'カレンダー', icon: '📅' },
+  { to: '/attendance', label: '勤怠', icon: '🕒' },
+  { to: '/progress', label: '進捗管理', icon: '📊' },
 ]
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -30,34 +30,40 @@ function Layout({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-30 bg-white border-b border-[var(--color-border)] shadow-sm">
-        <div className="mx-auto max-w-7xl flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md" />
-              <div className="text-lg font-bold tracking-tight text-[var(--color-text)]">進捗管理システム</div>
-            </Link>
-            <nav className="flex gap-1">
-              {NAV.map((n) => {
-                const active = loc.pathname === n.to
-                return (
-                  <Link
-                    key={n.to}
-                    to={n.to}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                      active
-                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
-                        : 'text-[var(--color-text-sub)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)]'
-                    }`}
-                  >
-                    {n.label}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-          <div className="flex items-center gap-4">
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <aside className="w-56 shrink-0 border-r border-[var(--color-border)] bg-white flex flex-col sticky top-0 h-screen">
+        <Link to="/" className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--color-border)]">
+          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md" />
+          <div className="text-base font-bold tracking-tight text-[var(--color-text)] leading-tight">進捗管理<br/>システム</div>
+        </Link>
+        <nav className="flex-1 px-3 py-3 space-y-0.5">
+          {NAV.map((n) => {
+            const active = loc.pathname === n.to
+            return (
+              <Link
+                key={n.to}
+                to={n.to}
+                aria-current={active ? 'page' : undefined}
+                className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition ${
+                  active
+                    ? 'bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] text-white font-semibold shadow-md'
+                    : 'text-[var(--color-text-sub)] font-medium hover:text-[var(--color-text)] hover:bg-[var(--color-bg)]'
+                }`}
+              >
+                <span className="text-base leading-none">{n.icon}</span>
+                <span>{n.label}</span>
+                {active && <span className="ml-auto text-xs opacity-80">●</span>}
+              </Link>
+            )
+          })}
+        </nav>
+      </aside>
+
+      {/* Main area */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="sticky top-0 z-20 bg-white border-b border-[var(--color-border)] shadow-sm">
+          <div className="flex items-center justify-end gap-4 px-6 py-3">
             <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
             <button
               onClick={async () => {
@@ -69,9 +75,9 @@ function Layout({ children }: { children: React.ReactNode }) {
               ログアウト
             </button>
           </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+        </header>
+        <main className="flex-1 px-6 py-6">{children}</main>
+      </div>
     </div>
   )
 }
