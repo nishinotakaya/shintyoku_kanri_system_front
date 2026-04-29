@@ -263,6 +263,26 @@ export default function DayDetailModal({
       setExportMsg(`失敗: ${e?.message ?? ''}`)
     } finally { setExporting(false) }
   }
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const handleBacklogSync = async () => {
+    if (syncing) return
+    setSyncing(true); setSyncMsg(null)
+    try {
+      const { data } = await api.post('/backlog/sync')
+      setSyncMsg(`${data.synced} 件同期`)
+      // 当日タスクを再取得
+      const [n, k] = await Promise.all([
+        api.get<BacklogTask[]>('/backlog/tasks_on_date', { params: { date, assignee: '西野' } }),
+        api.get<BacklogTask[]>('/backlog/tasks_on_date', { params: { date, assignee: '川村' } }),
+      ])
+      setTasksByAssignee({ '西野': n.data, '川村': k.data })
+      const all = await api.get<BacklogTask[]>('/backlog/tasks')
+      setAllTasks(all.data)
+    } catch (e: any) {
+      setSyncMsg(`同期失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setSyncing(false) }
+  }
   const [tasksByAssignee, setTasksByAssignee] = useState<Record<string, BacklogTask[]>>({})
   const [allTasks, setAllTasks] = useState<BacklogTask[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -530,11 +550,20 @@ export default function DayDetailModal({
         <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 gap-2">
           <div className="text-base font-semibold text-[var(--color-text)]">{date} の詳細</div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleBacklogSync}
+              disabled={syncing}
+              className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50"
+              title="バックログから当日タスクを再取得"
+            >
+              {syncing ? '同期中…' : '🔄 バックログ同期'}
+            </button>
+            {syncMsg && <span className="text-[10px] text-emerald-600">{syncMsg}</span>}
             {canExport && onExportSchedule && (
               <button
                 onClick={handleExport}
                 disabled={exporting}
-                className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50"
+                className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50"
                 title="今月分のチーム予定をスプレッドシートに書き戻し"
               >
                 {exporting ? '書き戻し中…' : '📤 シートに書き戻し'}
