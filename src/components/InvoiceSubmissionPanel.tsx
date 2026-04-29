@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { fetchExportBlob } from './FolderSaveButtons'
+import LabopMailModal from './LabopMailModal'
 
 type SubmissionKind = 'invoice' | 'expense'
 
@@ -96,6 +97,13 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [previewFor, setPreviewFor] = useState<Submission | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+
+  // ラボップ宛 メール送付モーダル (invoice + 同月 expense をセットで送付)
+  const [mailModalFor, setMailModalFor] = useState<Submission | null>(null)
+  const matchingExpense = (s: Submission): Submission | null => {
+    if (s.kind !== 'invoice') return null
+    return approved.find((x) => x.kind === 'expense' && x.year === s.year && x.month === s.month && x.category === s.category) ?? null
+  }
 
   // ラボップ宛モーダル (invoice 限定)
   const [labopModalFor, setLabopModalFor] = useState<Submission | null>(null)
@@ -344,7 +352,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
             onClick={submit}
             disabled={busy || alreadySubmitted || blockedByPdf}
             title={blockedByPdf ? `先に${kindLabel} PDF をダウンロードしてください` : undefined}
-            className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? '送信中…' : myCurrent?.status === 'pending' ? '申請中' : myCurrent?.status === 'approved' ? '承認済' : '📤 申請する'}
           </button>
@@ -385,21 +393,21 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     <button
                       onClick={() => openPreview(s)}
                       disabled={busy}
-                      className="rounded-md border border-sky-400 bg-white px-3 py-1 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+                      className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-3 py-1 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
                     >
                       🔍 確認
                     </button>
                     <button
                       onClick={() => approve(s.id)}
                       disabled={busy}
-                      className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
                     >
                       ✅ 承認
                     </button>
                     <button
                       onClick={() => reject(s.id)}
                       disabled={busy}
-                      className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
+                      className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
                     >
                       却下
                     </button>
@@ -430,33 +438,43 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     <button
                       onClick={() => openPreview(s)}
                       disabled={busy}
-                      className="rounded-md border border-sky-400 bg-white px-3 py-1 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+                      className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-3 py-1 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
                     >
                       🔍 確認
                     </button>
                     <button
                       onClick={() => downloadAsApplicant(s)}
                       disabled={busy}
-                      className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                      className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
                       title={`${surname}さん本人の${kindLabel}（オリジナル）`}
                     >
                       📥 {surname}さんの{kindLabel}
                     </button>
                     {s.kind === 'invoice' && (
-                      <button
-                        onClick={() => openLabopModal(s)}
-                        disabled={busy}
-                        className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                      >
-                        📥 ラボップ宛
-                      </button>
+                      <>
+                        <button
+                          onClick={() => openLabopModal(s)}
+                          disabled={busy}
+                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                        >
+                          📥 ラボップ宛
+                        </button>
+                        <button
+                          onClick={() => setMailModalFor(s)}
+                          disabled={busy}
+                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                          title="ラボップへメール送付（請求書+立替金 を添付）"
+                        >
+                          📧 ラボップへ送付
+                        </button>
+                      </>
                     )}
                     {s.kind === 'expense' && (
                       <>
                         <button
                           onClick={() => downloadExpenseAsLabop(s, 'pdf')}
                           disabled={busy}
-                          className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
                           title="立替金 PDF を株式会社ラボップ宛 / 西野発行で出力"
                         >
                           📥 ラボップ宛 PDF
@@ -464,7 +482,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                         <button
                           onClick={() => downloadExpenseAsLabop(s, 'xlsx')}
                           disabled={busy}
-                          className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
                           title="立替金 Excel を株式会社ラボップ宛 / 西野発行で出力"
                         >
                           📥 ラボップ宛 Excel
@@ -504,11 +522,11 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="text-[11px] text-[var(--color-text-sub)]">{previewFor.status === 'pending' ? '未承認' : `ステータス: ${previewFor.status}`}</span>
               <div className="flex items-center gap-2">
-                <button onClick={closePreview} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">閉じる</button>
+                <button onClick={closePreview} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">閉じる</button>
                 {previewFor.status === 'pending' && (
                   <>
-                    <button onClick={() => reject(previewFor.id)} disabled={busy} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">却下</button>
-                    <button onClick={() => approve(previewFor.id)} disabled={busy} className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
+                    <button onClick={() => reject(previewFor.id)} disabled={busy} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">却下</button>
+                    <button onClick={() => approve(previewFor.id)} disabled={busy} className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
                   </>
                 )}
               </div>
@@ -518,6 +536,14 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       )}
 
       {/* === ラボップ宛モーダル (請求書のみ): 明細・金額・件名・申請日 編集 === */}
+      {mailModalFor && (
+        <LabopMailModal
+          invoice={mailModalFor}
+          expense={matchingExpense(mailModalFor)}
+          onClose={() => setMailModalFor(null)}
+        />
+      )}
+
       {labopModalFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeLabopModal}>
           <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -574,7 +600,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                 <div className="text-[11px] font-semibold text-[var(--color-text)]">明細</div>
                 <button
                   onClick={addItemRow}
-                  className="rounded-md border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50"
+                  className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50"
                 >+ 行追加</button>
               </div>
               <table className="w-full text-[11px] border-collapse">
@@ -667,7 +693,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     if (updated) setLabopModalFor(updated)
                   }}
                   disabled={labopSaving}
-                  className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
                 >
                   💾 保存
                 </button>
@@ -677,7 +703,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     if (updated) await downloadAsLabop(updated)
                   }}
                   disabled={labopSaving}
-                  className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
                 >
                   📥 ダウンロード
                 </button>

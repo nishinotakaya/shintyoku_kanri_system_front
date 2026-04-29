@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import FolderSaveButtons from './FolderSaveButtons'
+import PurchaseOrderMailModal from './PurchaseOrderMailModal'
 
 type Item = { description: string; qty: number; unit: string; unit_price: number; amount: number }
 
@@ -259,6 +260,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
   const [err, setErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [mailModalOpen, setMailModalOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   // 契約期間変更モーダル
@@ -436,9 +438,30 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
               fetchSpec={purchaseOrderFetchSpec}
             />
           )}
+          {items.length > 0 && (
+            <button
+              onClick={() => setMailModalOpen(true)}
+              className="rounded-lg whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
+              title="川村へ発注書をメールで送付"
+            >
+              📧 川村へ送付
+            </button>
+          )}
           {!cfg.recipientName && <span className="text-[11px] text-amber-500">※「宛先 氏名」が空のまま出力できます</span>}
         </div>
       </div>
+
+      {mailModalOpen && (
+        <PurchaseOrderMailModal
+          orderNo={orderNo}
+          subjectHint={cfg.subject}
+          fetchPdfBlob={async () => {
+            const spec = await purchaseOrderFetchSpec()
+            return spec.blob
+          }}
+          onClose={() => setMailModalOpen(false)}
+        />
+      )}
 
       {contractAlert && (
         <div className="mt-4 rounded-2xl border-2 border-amber-500 bg-amber-50 px-6 py-4 shadow-md">

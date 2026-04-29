@@ -144,7 +144,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
           <button
             onClick={saveToRemembered}
             disabled={busy}
-            className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+            className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap text-white shadow disabled:opacity-50"
             title={`記憶済み: ${savedDirName}/${monthFolderName}/`}
           >
             {busy ? '保存中…' : `📁 ${savedDirName}/${monthFolderName} に${label ?? ''}保存`}
@@ -153,7 +153,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
         <button
           onClick={pickAndSave}
           disabled={busy}
-          className={`rounded-lg px-3 py-1.5 text-xs font-semibold shadow disabled:opacity-50 ${
+          className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap shadow disabled:opacity-50 ${
             savedDirName ? 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50' : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
           }`}
           title="フォルダ選択ダイアログを開く"
@@ -163,7 +163,7 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
         <button
           onClick={download}
           disabled={busy}
-          className="rounded-lg bg-white border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-lg bg-white border border-[var(--color-border)] px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
           title="ブラウザの既定ダウンロード先に保存"
         >
           📥 ダウンロード
