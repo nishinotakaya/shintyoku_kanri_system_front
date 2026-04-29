@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 
 type Submission = {
@@ -13,8 +13,9 @@ type Submission = {
 }
 
 type Props = {
-  invoice: Submission // 承認済の invoice (必須)
-  expense: Submission | null // 同月の承認済 expense (任意)
+  // 全ての承認済み (invoice + expense) を渡す
+  invoices: Submission[]
+  expenses: Submission[]
   onClose: () => void
 }
 
@@ -25,8 +26,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   resystems: 'REシステムズ',
 }
 
-export default function LabopMailModal({ invoice, expense, onClose }: Props) {
-  const [to, setTo] = useState('k-osumi@rabop.jp')
+export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
+  // 既定で全選択
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
+  const [to, setTo] = useState('takaya777boxing@gmail.com') // テスト送信先を初期値に
   const [recipientName, setRecipientName] = useState('大隅')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -36,18 +40,25 @@ export default function LabopMailModal({ invoice, expense, onClose }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
   const [draftLoaded, setDraftLoaded] = useState(false)
 
-  // 開いた直後に AI 下書き取得
-  useEffect(() => {
-    void requestDraft()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const selectedInvoices = useMemo(() => invoices.filter((s) => selectedInvoiceIds.has(s.id)), [invoices, selectedInvoiceIds])
+  const selectedExpenses = useMemo(() => expenses.filter((s) => selectedExpenseIds.has(s.id)), [expenses, selectedExpenseIds])
+
+  useEffect(() => { void requestDraft() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [])
+
+  const toggle = (kind: 'invoice' | 'expense', id: number) => {
+    if (kind === 'invoice') {
+      setSelectedInvoiceIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+    } else {
+      setSelectedExpenseIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+    }
+  }
 
   const requestDraft = async () => {
     setDrafting(true); setMsg(null)
     try {
       const r = await api.post<{ subject: string; body: string }>('/emails/labop_draft', {
-        invoice_submission_id: invoice.id,
-        expense_submission_id: expense?.id,
+        invoice_submission_ids: Array.from(selectedInvoiceIds),
+        expense_submission_ids: Array.from(selectedExpenseIds),
         recipient_name: recipientName,
         extra_count: extraFiles.length,
       })
@@ -69,23 +80,21 @@ export default function LabopMailModal({ invoice, expense, onClose }: Props) {
   const removeExtra = (i: number) => setExtraFiles((prev) => prev.filter((_, idx) => idx !== i))
 
   const send = async () => {
-    if (!subject.trim() || !body.trim()) {
-      setMsg('件名・本文を入力してください')
-      return
-    }
+    if (!subject.trim() || !body.trim()) { setMsg('件名・本文を入力してください'); return }
+    if (selectedInvoiceIds.size === 0 && selectedExpenseIds.size === 0) { setMsg('送付対象を1件以上選択してください'); return }
     setSending(true); setMsg(null)
     try {
       const fd = new FormData()
-      fd.append('invoice_submission_id', String(invoice.id))
-      if (expense) fd.append('expense_submission_id', String(expense.id))
+      Array.from(selectedInvoiceIds).forEach((id) => fd.append('invoice_submission_ids[]', String(id)))
+      Array.from(selectedExpenseIds).forEach((id) => fd.append('expense_submission_ids[]', String(id)))
       fd.append('to', to)
       fd.append('subject', subject)
       fd.append('body', body)
       extraFiles.forEach((f) => fd.append('extra_files[]', f))
-      const r = await api.post<{ ok: boolean; sent_to: string }>('/emails/labop_send', fd, {
+      const r = await api.post<{ ok: boolean; sent_to: string; attachments: string[] }>('/emails/labop_send', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setMsg(`✅ 送信しました (実宛先: ${r.data.sent_to})`)
+      setMsg(`✅ 送信しました (実宛先: ${r.data.sent_to}, 添付 ${r.data.attachments.length} 件)`)
     } catch (e: any) {
       setMsg(`送信失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
@@ -98,10 +107,9 @@ export default function LabopMailModal({ invoice, expense, onClose }: Props) {
       <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-2">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text)]">📧 ラボップへメール送付</div>
+            <div className="text-sm font-semibold text-[var(--color-text)]">📧 ラボップへ一括送付</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
-              {invoice.user_display_name} ／ {invoice.year}年{invoice.month}月（{CATEGORY_LABELS[invoice.category] ?? invoice.category}）
-              {expense ? ' ／ 立替金もあり' : ' ／ 立替金なし'}
+              請求書 {selectedInvoiceIds.size}/{invoices.length} 件 ／ 立替金 {selectedExpenseIds.size}/{expenses.length} 件
             </div>
           </div>
           <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
@@ -111,11 +119,44 @@ export default function LabopMailModal({ invoice, expense, onClose }: Props) {
           <label className="block">
             <div className="text-[11px] font-semibold mb-0.5">宛先</div>
             <input value={to} onChange={(e) => setTo(e.target.value)} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+            <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
+              テストは <code>takaya777boxing@gmail.com</code> ／ 本番は <code>k-osumi@rabop.jp</code>
+            </div>
           </label>
           <label className="block">
             <div className="text-[11px] font-semibold mb-0.5">宛名 (xxx様)</div>
             <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
           </label>
+        </div>
+
+        <div className="rounded-md border border-[var(--color-border)] px-2 py-1.5 mb-2">
+          <div className="text-[11px] font-semibold mb-1">送付対象を選択</div>
+          {invoices.length > 0 && (
+            <div className="mb-1">
+              <div className="text-[10px] text-sky-600 font-semibold">請求書（ラボップ宛 PDF）</div>
+              {invoices.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                  <input type="checkbox" checked={selectedInvoiceIds.has(s.id)} onChange={() => toggle('invoice', s.id)} />
+                  <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
+                  {s.total_override != null && <span className="text-sky-600">¥{s.total_override.toLocaleString()}</span>}
+                </label>
+              ))}
+            </div>
+          )}
+          {expenses.length > 0 && (
+            <div>
+              <div className="text-[10px] text-emerald-600 font-semibold">立替金（PDF + Excel）</div>
+              {expenses.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                  <input type="checkbox" checked={selectedExpenseIds.has(s.id)} onChange={() => toggle('expense', s.id)} />
+                  <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {invoices.length === 0 && expenses.length === 0 && (
+            <div className="text-[11px] text-[var(--color-text-sub)]">承認済み申請がありません</div>
+          )}
         </div>
 
         <label className="block mb-2">
@@ -134,11 +175,14 @@ export default function LabopMailModal({ invoice, expense, onClose }: Props) {
         </label>
 
         <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)]">
-          標準添付:
+          自動添付:
           <ul className="ml-4 list-disc">
-            <li>ラボップ宛 請求書 PDF</li>
-            {expense && <li>立替金 PDF</li>}
-            {expense && <li>立替金 Excel</li>}
+            {selectedInvoices.map((s) => (
+              <li key={`i${s.id}`}>請求書 PDF（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
+            ))}
+            {selectedExpenses.map((s) => (
+              <li key={`e${s.id}`}>立替金 PDF + Excel（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
+            ))}
           </ul>
         </div>
 
@@ -169,7 +213,7 @@ export default function LabopMailModal({ invoice, expense, onClose }: Props) {
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">閉じる</button>
             <button onClick={send} disabled={sending || drafting || !draftLoaded} className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
-              {sending ? '送信中…' : '📧 送信'}
+              {sending ? '送信中…' : `📧 一括送信 (${selectedInvoiceIds.size + selectedExpenseIds.size} 件)`}
             </button>
           </div>
         </div>

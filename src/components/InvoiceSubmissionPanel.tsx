@@ -98,11 +98,22 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
-  // ラボップ宛 メール送付モーダル (invoice + 同月 expense をセットで送付)
-  const [mailModalFor, setMailModalFor] = useState<Submission | null>(null)
-  const matchingExpense = (s: Submission): Submission | null => {
-    if (s.kind !== 'invoice') return null
-    return approved.find((x) => x.kind === 'expense' && x.year === s.year && x.month === s.month && x.category === s.category) ?? null
+  // ラボップ宛 一括メール送付モーダル (admin が全承認済みを一挙に送付)
+  const [mailModalOpen, setMailModalOpen] = useState(false)
+  const [allApprovedAcrossKinds, setAllApprovedAcrossKinds] = useState<Submission[]>([])
+
+  // 一括送付を開く時に invoice + expense 両方の承認済みを取得
+  const openBulkMail = async () => {
+    try {
+      const [inv, exp] = await Promise.all([
+        api.get<Submission[]>('/invoice_submissions', { params: { status: 'approved', kind: 'invoice' } }),
+        api.get<Submission[]>('/invoice_submissions', { params: { status: 'approved', kind: 'expense' } }),
+      ])
+      setAllApprovedAcrossKinds([...inv.data, ...exp.data])
+      setMailModalOpen(true)
+    } catch (e: any) {
+      setMsg(`一覧取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
   }
 
   // ラボップ宛モーダル (invoice 限定)
@@ -420,7 +431,19 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       )}
       {approved.length > 0 && (
         <div className="glass rounded-xl px-3 py-2 shadow-md">
-          <div className="text-xs font-semibold text-[var(--color-text)] mb-1">承認済み（{kindLabel}）</div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-xs font-semibold text-[var(--color-text)]">承認済み（{kindLabel}）</div>
+            {kind === 'invoice' && (
+              <button
+                onClick={openBulkMail}
+                disabled={busy}
+                className="rounded-md whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                title="承認済み (請求書 + 立替金) をまとめてラボップへメール送付"
+              >
+                📧 ラボップへ一括送付
+              </button>
+            )}
+          </div>
           <ul className="divide-y divide-[var(--color-border)]">
             {approved.map((s) => {
               const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
@@ -451,23 +474,13 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                       📥 {surname}さんの{kindLabel}
                     </button>
                     {s.kind === 'invoice' && (
-                      <>
-                        <button
-                          onClick={() => openLabopModal(s)}
-                          disabled={busy}
-                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                        >
-                          📥 ラボップ宛
-                        </button>
-                        <button
-                          onClick={() => setMailModalFor(s)}
-                          disabled={busy}
-                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                          title="ラボップへメール送付（請求書+立替金 を添付）"
-                        >
-                          📧 ラボップへ送付
-                        </button>
-                      </>
+                      <button
+                        onClick={() => openLabopModal(s)}
+                        disabled={busy}
+                        className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                      >
+                        📥 ラボップ宛
+                      </button>
                     )}
                     {s.kind === 'expense' && (
                       <>
@@ -536,11 +549,11 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       )}
 
       {/* === ラボップ宛モーダル (請求書のみ): 明細・金額・件名・申請日 編集 === */}
-      {mailModalFor && (
+      {mailModalOpen && (
         <LabopMailModal
-          invoice={mailModalFor}
-          expense={matchingExpense(mailModalFor)}
-          onClose={() => setMailModalFor(null)}
+          invoices={allApprovedAcrossKinds.filter((s) => s.kind === 'invoice')}
+          expenses={allApprovedAcrossKinds.filter((s) => s.kind === 'expense')}
+          onClose={() => setMailModalOpen(false)}
         />
       )}
 
