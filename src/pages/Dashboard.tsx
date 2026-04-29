@@ -10,6 +10,7 @@ import SettingsModal from '../components/SettingsModal'
 import PurchaseOrderList from '../components/PurchaseOrderList'
 import FolderSaveButtons, { fetchExportBlob } from '../components/FolderSaveButtons'
 import InvoiceSubmissionPanel from '../components/InvoiceSubmissionPanel'
+import SelfInvoiceMailModal from '../components/SelfInvoiceMailModal'
 import { billingMonthForToday } from '../lib/billingMonth'
 // CalendarView moved to /calendar page
 
@@ -121,6 +122,7 @@ export default function Dashboard() {
     localStorage.setItem(expenseDlKey, '1')
     setExpensePdfDownloaded(true)
   }
+  const [selfMailOpen, setSelfMailOpen] = useState(false)
 
   const [syncingWR, setSyncingWR] = useState(false)
   const [syncWRMsg, setSyncWRMsg] = useState<string | null>(null)
@@ -236,7 +238,16 @@ export default function Dashboard() {
               発行日 {invoiceQ.data?.issue_date ?? '—'} ／ 支払期限 {invoiceQ.data?.due_date ?? '—'}
             </div>
           </div>
-          <FolderSaveButtons label="請求書" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} onDownloaded={markInvoiceDownloaded} />
+          <div className="flex items-center gap-2">
+            <FolderSaveButtons label="請求書" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} onDownloaded={markInvoiceDownloaded} />
+            <button
+              onClick={() => setSelfMailOpen(true)}
+              className="rounded-lg whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
+              title="自分の請求書をメール送付"
+            >
+              📧 メール送付
+            </button>
+          </div>
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2">
@@ -321,6 +332,10 @@ export default function Dashboard() {
       />
 
       {me?.can_issue_orders && <PurchaseOrderList me={me} category={category} />}
+
+      {selfMailOpen && (
+        <SelfInvoiceMailModal year={year} month={month} category={category} onClose={() => setSelfMailOpen(false)} />
+      )}
 
       <SettingsModal
         open={settingsOpen}
