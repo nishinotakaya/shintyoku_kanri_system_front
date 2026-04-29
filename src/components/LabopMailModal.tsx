@@ -118,7 +118,13 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
         <div className="grid grid-cols-2 gap-2 mb-2">
           <label className="block">
             <div className="text-[11px] font-semibold mb-0.5">宛先</div>
-            <input value={to} onChange={(e) => setTo(e.target.value)} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+            <input value={to} onChange={(e) => setTo(e.target.value)} list="labop-mail-to-list" autoComplete="email" className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+            <datalist id="labop-mail-to-list">
+              <option value="k-osumi@rabop.jp" />
+              <option value="takaya777boxing@gmail.com" />
+              <option value="takaya314boxing@gmail.com" />
+              <option value="calmdownyourlife@gmail.com" />
+            </datalist>
             <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
               テストは <code>takaya777boxing@gmail.com</code> ／ 本番は <code>k-osumi@rabop.jp</code>
             </div>
