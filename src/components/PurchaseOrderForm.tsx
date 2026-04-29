@@ -262,6 +262,34 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
   const [saving, setSaving] = useState(false)
   const [mailModalOpen, setMailModalOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const openPreview = async () => {
+    setPreviewLoading(true); setPreviewUrl(null)
+    try {
+      const spec = await purchaseOrderFetchSpec()
+      setPreviewUrl(URL.createObjectURL(spec.blob))
+    } catch (e: any) {
+      setErr(e?.message ?? 'プレビュー失敗')
+    } finally { setPreviewLoading(false) }
+  }
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null); setPreviewLoading(false)
+  }
+  const downloadDirectly = async () => {
+    try {
+      const spec = await purchaseOrderFetchSpec()
+      const url = URL.createObjectURL(spec.blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = spec.filename
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      setErr(e?.message ?? 'ダウンロード失敗')
+    }
+  }
 
   // 契約期間変更モーダル
   const [contractModalOpen, setContractModalOpen] = useState(false)
@@ -401,52 +429,99 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
   })()
 
   return (
-    <div className="glass rounded-3xl p-6 shadow-md">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="glass rounded-3xl p-5 shadow-md">
+      {/* サマリヘッダ + 4 ボタン (常に表示) */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-widest text-[var(--color-text-sub)]">
-            発注書作成 — {CATEGORY_LABEL[category]}
+            発注書 — {CATEGORY_LABEL[category]}
             {position > 0 && <span className="ml-2 text-fuchsia-500">#{position + 1}枚目</span>}
           </div>
-          <div className="mt-1 text-xs text-[var(--color-text-sub)]">
-            発注者: {me?.company_name} / {me?.display_name} — 注文期間から明細と備考を自動生成 ／ 編集内容は自動で DB 保存されます
+          <div className="mt-1 text-sm font-semibold text-[var(--color-text)] truncate">
+            {cfg.subject || '(件名未設定)'}
+          </div>
+          <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
+            注文番号 {orderNo} ／ 宛先: {cfg.recipientName || '(未設定)'} ／ 期間 {cfg.periodStart} 〜 {cfg.periodEnd}
             {saving ? <span className="ml-2 text-amber-500">保存中…</span> : savedAt && <span className="ml-2 text-emerald-600">保存済 {savedAt}</span>}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-2">
-            {onRemove && (
-              <button
-                onClick={() => { if (confirm('この発注書を削除しますか？')) onRemove() }}
-                className="rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50"
-                title="このシートを削除"
-              >
-                − 削除
-              </button>
-            )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={openPreview}
+            disabled={previewLoading}
+            className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-3 py-1.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+            title="PDF をモーダルで確認"
+          >
+            {previewLoading ? '生成中…' : '🔍 詳細'}
+          </button>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className={`rounded-md whitespace-nowrap px-3 py-1.5 text-[11px] font-semibold shadow ${expanded ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)] bg-white text-[var(--color-text)] hover:bg-gray-50'}`}
+            title="編集パネルを開閉"
+          >
+            ✏️ 編集{expanded ? ' 閉じる' : ''}
+          </button>
+          <button
+            onClick={downloadDirectly}
+            className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
+            title="PDF をダウンロード"
+          >
+            📥 ダウンロード
+          </button>
+          <button
+            onClick={() => setMailModalOpen(true)}
+            className="rounded-md whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
+            title="川村へ発注書をメールで送付"
+          >
+            📧 川村へ送付
+          </button>
+          {onRemove && (
             <button
-              onClick={openContractModal}
-              className="rounded-xl border border-[var(--color-primary)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
+              onClick={() => { if (confirm('この発注書を削除しますか？')) onRemove() }}
+              className="rounded-md whitespace-nowrap border border-red-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-500 hover:bg-red-50"
+              title="このシートを削除"
             >
-              📅 契約期間を変更
+              🗑
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* PDF プレビュー モーダル */}
+      {(previewUrl || previewLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closePreview}>
+          <div className="w-full max-w-4xl h-[88vh] rounded-xl bg-white p-3 shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <div className="text-sm font-semibold">🔍 発注書プレビュー</div>
+                <div className="text-[11px] text-[var(--color-text-sub)]">注文番号 {orderNo} ／ {cfg.subject}</div>
+              </div>
+              <button onClick={closePreview} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] overflow-hidden">
+              {previewLoading && <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-sub)]">PDF を生成中…</div>}
+              {!previewLoading && previewUrl && (
+                <iframe src={previewUrl} className="w-full h-full" title="発注書プレビュー" />
+              )}
+            </div>
+            <div className="mt-2 flex justify-end gap-2">
+              <button onClick={closePreview} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">閉じる</button>
+              <button onClick={downloadDirectly} className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow">📥 ダウンロード</button>
+            </div>
           </div>
-          {items.length > 0 && (
-            <FolderSaveButtons
-              label="発注書"
-              monthFolderName={`${new Date().getMonth() + 1}月`}
-              fetchSpec={purchaseOrderFetchSpec}
-            />
-          )}
-          {items.length > 0 && (
-            <button
-              onClick={() => setMailModalOpen(true)}
-              className="rounded-lg whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
-              title="川村へ発注書をメールで送付"
-            >
-              📧 川村へ送付
-            </button>
-          )}
+        </div>
+      )}
+
+      {/* 編集パネル本体 (アコーディオン) */}
+      {!expanded ? null : <>
+      <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+        <div className="flex items-center justify-end gap-2 mb-3">
+          <button
+            onClick={openContractModal}
+            className="rounded-xl border border-[var(--color-primary)] bg-white px-4 py-2 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
+          >
+            📅 契約期間を変更
+          </button>
           {!cfg.recipientName && <span className="text-[11px] text-amber-500">※「宛先 氏名」が空のまま出力できます</span>}
         </div>
       </div>
@@ -772,6 +847,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }
