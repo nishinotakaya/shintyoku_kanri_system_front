@@ -512,17 +512,21 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
         </div>
       )}
 
-      {/* 編集パネル本体 (アコーディオン) */}
-      {!expanded ? null : <>
-      <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-        <div className="flex items-center justify-end gap-2 mb-3">
+      {/* 編集モーダル (clickで開く) */}
+      {!expanded ? null : (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3" onClick={() => setExpanded(false)}>
+      <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-3">
+        <div className="text-sm font-semibold">✏️ 発注書を編集 — {CATEGORY_LABEL[category]}{position > 0 && <span className="ml-2 text-fuchsia-500">#{position + 1}枚目</span>}</div>
+        <div className="flex items-center gap-2">
           <button
             onClick={openContractModal}
-            className="rounded-xl border border-[var(--color-primary)] bg-white px-4 py-2 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
+            className="rounded-md whitespace-nowrap border border-[var(--color-primary)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
           >
             📅 契約期間を変更
           </button>
-          {!cfg.recipientName && <span className="text-[11px] text-amber-500">※「宛先 氏名」が空のまま出力できます</span>}
+          {!cfg.recipientName && <span className="text-[11px] text-amber-500">※「宛先 氏名」が空でも出力可</span>}
+          <button onClick={() => setExpanded(false)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
         </div>
       </div>
 
@@ -847,7 +851,9 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
           </div>
         </div>
       )}
-      </>}
+      </div>
+      </div>
+      )}
     </div>
   )
 }
