@@ -14,12 +14,14 @@ export default function ExpenseTable({
   expenses,
   reports,
   category = 'wings',
+  onPdfDownloaded,
 }: {
   year: number
   month: number
   expenses: Expense[]
   reports: WorkReport[]
   category?: string
+  onPdfDownloaded?: () => void
 }) {
   const mp = `${year}-${String(month).padStart(2, '0')}`
 
@@ -64,6 +66,7 @@ export default function ExpenseTable({
               const { blob, filename } = await fetchExportBlob('/exports/expense.pdf', { month: mp, category }, fallback)
               return { blob, filename, monthFolderName: `${month}月` }
             }}
+            onDownloaded={onPdfDownloaded}
           />
         </div>
       </div>

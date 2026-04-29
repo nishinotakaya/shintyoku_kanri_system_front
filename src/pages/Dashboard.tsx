@@ -104,15 +104,22 @@ export default function Dashboard() {
     return { blob, filename, monthFolderName }
   }
 
-  // 請求書 PDF を一度でも DL/保存したら、その (年月×カテゴリ) で申請ボタンを解放
+  // 請求書 / 立替金 の PDF を一度でも DL/保存したら、その (年月×カテゴリ) で申請ボタンを解放
   const invoiceDlKey = `invoice_dl_${year}_${month}_${category}`
+  const expenseDlKey = `expense_dl_${year}_${month}_${category}`
   const [invoicePdfDownloaded, setInvoicePdfDownloaded] = useState(false)
+  const [expensePdfDownloaded, setExpensePdfDownloaded] = useState(false)
   useEffect(() => {
     setInvoicePdfDownloaded(localStorage.getItem(invoiceDlKey) === '1')
-  }, [invoiceDlKey])
+    setExpensePdfDownloaded(localStorage.getItem(expenseDlKey) === '1')
+  }, [invoiceDlKey, expenseDlKey])
   const markInvoiceDownloaded = () => {
     localStorage.setItem(invoiceDlKey, '1')
     setInvoicePdfDownloaded(true)
+  }
+  const markExpenseDownloaded = () => {
+    localStorage.setItem(expenseDlKey, '1')
+    setExpensePdfDownloaded(true)
   }
 
   const [syncingWR, setSyncingWR] = useState(false)
@@ -281,7 +288,17 @@ export default function Dashboard() {
         year={year}
         month={month}
         category={category}
+        kind="invoice"
         pdfDownloaded={invoicePdfDownloaded}
+      />
+      <InvoiceSubmissionPanel
+        isAdmin={isAdmin}
+        isOsumi={isOsumi}
+        year={year}
+        month={month}
+        category={category}
+        kind="expense"
+        pdfDownloaded={expensePdfDownloaded}
       />
 
       <div className="glass rounded-xl px-3 py-2 shadow-md flex items-center justify-between">
@@ -301,7 +318,7 @@ export default function Dashboard() {
       <VoiceCommand onApplied={refetchAll} />
 
       <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
-      <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} />
+      <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={markExpenseDownloaded} />
 
       {me?.can_issue_orders && <PurchaseOrderList me={me} category={category} />}
 
