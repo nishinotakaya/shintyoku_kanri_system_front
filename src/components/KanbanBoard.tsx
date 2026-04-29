@@ -14,13 +14,14 @@ type BLTask = {
   completed_on: string | null
   due_date: string | null
   memo: string | null
-  progress: number
   deploy_date: string | null
   deploy_note: string | null
   source: string | null
   assignee_name: string | null
   assignee_id: number | null
   url: string | null
+  did_previous: boolean
+  do_today: boolean
 }
 
 const COLUMNS = [
@@ -43,6 +44,7 @@ export default function KanbanBoard({
   onSummaryChanged,
   onUrlChanged,
   onAssigneeChanged,
+  onFlagChanged,
 }: {
   tasks: BLTask[]
   onTaskMoved: (taskId: number, newStatusId: number) => void
@@ -54,6 +56,7 @@ export default function KanbanBoard({
   onSummaryChanged?: (taskId: number, summary: string) => void
   onUrlChanged?: (taskId: number, url: string) => void
   onAssigneeChanged?: (taskId: number, name: string) => void
+  onFlagChanged?: (taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => void
 }) {
   const [editingMemo, setEditingMemo] = useState<Record<number, string>>({})
   const [editingSummary, setEditingSummary] = useState<Record<number, string>>({})
@@ -116,6 +119,35 @@ export default function KanbanBoard({
   }
 
   const today = new Date().toISOString().slice(0, 10)
+
+  const FlagCheckboxes = ({ t }: { t: BLTask }) => (
+    <div
+      className="mt-1.5 inline-flex items-center gap-3 text-[11px]"
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <label className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={!!t.do_today}
+          onChange={(e) => onFlagChanged?.(t.id, { do_today: e.target.checked })}
+          onClick={(e) => e.stopPropagation()}
+          className="accent-amber-500"
+        />
+        <span className={`font-semibold ${t.do_today ? 'text-amber-600' : 'text-[var(--color-text-sub)]'}`}>本日行う</span>
+      </label>
+      <label className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={!!t.did_previous}
+          onChange={(e) => onFlagChanged?.(t.id, { did_previous: e.target.checked })}
+          onClick={(e) => e.stopPropagation()}
+          className="accent-sky-500"
+        />
+        <span className={`font-semibold ${t.did_previous ? 'text-sky-600' : 'text-[var(--color-text-sub)]'}`}>前回行った</span>
+      </label>
+    </div>
+  )
 
   const renderCard = (t: BLTask, index: number) => {
     const dueDiff = t.due_date ? Math.ceil((new Date(t.due_date).getTime() - Date.now()) / 86400000) : null
@@ -193,6 +225,8 @@ export default function KanbanBoard({
             {t.due_date && !overdue && !urgent && (
               <div className="mt-2 text-xs text-[var(--color-text-sub)]">期限: {t.due_date}</div>
             )}
+
+            <FlagCheckboxes t={t} />
 
             {/* 進捗率 */}
             <div className="mt-3 flex items-center gap-2">
@@ -512,6 +546,7 @@ export default function KanbanBoard({
                                         </span>
                                       )
                                     })()}
+                                    <FlagCheckboxes t={t} />
                                   </div>
                                   {/* 進捗率 */}
                                   <div className="mt-2 flex items-center gap-2">

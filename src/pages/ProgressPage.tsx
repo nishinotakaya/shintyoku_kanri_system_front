@@ -18,6 +18,8 @@ type BLTask = {
   deploy_date: string | null
   deploy_note: string | null
   source: string | null
+  did_previous: boolean
+  do_today: boolean
 }
 
 export default function ProgressPage() {
@@ -110,6 +112,10 @@ export default function ProgressPage() {
   }
   const handleAssigneeChanged = async (taskId: number, name: string) => {
     await api.patch(`/backlog/tasks/${taskId}`, { assignee_name: name })
+    tasksQ.refetch()
+  }
+  const handleFlagChanged = async (taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => {
+    await api.patch(`/backlog/tasks/${taskId}`, patch)
     tasksQ.refetch()
   }
 
@@ -300,6 +306,7 @@ export default function ProgressPage() {
         onSummaryChanged={handleSummaryChanged}
         onUrlChanged={handleUrlChanged}
         onAssigneeChanged={handleAssigneeChanged}
+        onFlagChanged={handleFlagChanged}
       />
     </div>
   )
