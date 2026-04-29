@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { fetchExportBlob } from './FolderSaveButtons'
 import LabopMailModal from './LabopMailModal'
 
-type SubmissionKind = 'invoice' | 'expense'
+type SubmissionKind = 'invoice' | 'expense' | 'work_report'
 
 type ItemRow = {
   label: string
@@ -53,6 +53,7 @@ type Props = {
 const KIND_LABEL: Record<SubmissionKind, string> = {
   invoice: '請求書',
   expense: '立替金',
+  work_report: '業務報告書',
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
