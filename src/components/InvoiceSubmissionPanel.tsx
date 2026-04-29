@@ -212,7 +212,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
     }
   }
 
-  // ラボップ宛 DL (invoice + admin 限定。submission に保存された override が PDF に反映)
+  // ラボップ宛 DL (admin 限定。submission に保存された override が PDF に反映)
   const downloadAsLabop = async (s: Submission) => {
     setLabopSaving(true); setLabopMsg(null)
     try {
@@ -229,6 +229,28 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       setLabopMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
       setLabopSaving(false)
+    }
+  }
+
+  // ラボップ宛 立替金 DL (PDF or Excel)。承認済の expense submission ID を渡す
+  const downloadExpenseAsLabop = async (s: Submission, ext: 'pdf' | 'xlsx') => {
+    setBusy(true); setMsg(null)
+    try {
+      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+      const surname = s.user_display_name.split(/[\s　]/)[0] ?? ''
+      const fallback = `${surname}_立替金_${s.year}年_${s.month}月分_株式会社ラボップ.${ext}`
+      const path = ext === 'xlsx' ? '/exports/expense.xlsx' : '/exports/expense.pdf'
+      const { blob, filename: fn } = await fetchExportBlob(path, {
+        month: monthParam,
+        category: s.category,
+        invoice_submission_id: s.id,
+      }, fallback)
+      downloadBlob(blob, fn)
+      setMsg('ダウンロードしました')
+    } catch (e: any) {
+      setMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -428,6 +450,26 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                       >
                         📥 ラボップ宛
                       </button>
+                    )}
+                    {s.kind === 'expense' && (
+                      <>
+                        <button
+                          onClick={() => downloadExpenseAsLabop(s, 'pdf')}
+                          disabled={busy}
+                          className="rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                          title="立替金 PDF を株式会社ラボップ宛 / 西野発行で出力"
+                        >
+                          📥 ラボップ宛 PDF
+                        </button>
+                        <button
+                          onClick={() => downloadExpenseAsLabop(s, 'xlsx')}
+                          disabled={busy}
+                          className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                          title="立替金 Excel を株式会社ラボップ宛 / 西野発行で出力"
+                        >
+                          📥 ラボップ宛 Excel
+                        </button>
+                      </>
                     )}
                   </div>
                 </li>
