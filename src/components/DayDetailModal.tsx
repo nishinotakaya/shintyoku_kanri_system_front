@@ -270,6 +270,15 @@ export default function DayDetailModal({
   const [saving, setSaving] = useState<number | null>(null)
   const [creatingCategory, setCreatingCategory] = useState<'living' | 'wings' | null>(null)
   const [draftNew, setDraftNew] = useState<{ hours: string; content: string; sapEntries: SapEntry[] }>({ hours: '', content: '', sapEntries: [] })
+  // 当日タスクのステータスフィルタ（既定: 未対応/処理中/処理済 を表示、完了は除外）
+  const [taskStatusFilter, setTaskStatusFilter] = useState<Set<number>>(() => new Set([1, 2, 3]))
+  const toggleTaskStatus = (id: number) => {
+    setTaskStatusFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     setTasksLoading(true)
@@ -747,13 +756,34 @@ export default function DayDetailModal({
 
         {/* 当日のタスク */}
         <section className="mt-4">
-          <div className="text-[11px] uppercase tracking-widest text-[var(--color-text-sub)]">当日のタスク</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] uppercase tracking-widest text-[var(--color-text-sub)]">当日のタスク</div>
+            <div className="flex items-center gap-1">
+              {[
+                { id: 1, label: '未対応', activeCls: 'bg-amber-500 text-white border-amber-500' },
+                { id: 2, label: '処理中', activeCls: 'bg-sky-500 text-white border-sky-500' },
+                { id: 3, label: '処理済', activeCls: 'bg-emerald-500 text-white border-emerald-500' },
+              ].map(({ id, label, activeCls }) => {
+                const on = taskStatusFilter.has(id)
+                return (
+                  <button
+                    key={id}
+                    onClick={() => toggleTaskStatus(id)}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${on ? activeCls : 'bg-white border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
+                    title={`${label}を${on ? '非表示' : '表示'}`}
+                  >
+                    {on ? '✓' : ''} {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           {tasksLoading ? (
             <div className="mt-1 text-xs text-[var(--color-text-sub)]">読み込み中…</div>
           ) : (
             <div className="mt-1 grid gap-2 md:grid-cols-2">
               {(['西野', '川村'] as const).map((person) => {
-                const tasks = tasksByAssignee[person] ?? []
+                const tasks = (tasksByAssignee[person] ?? []).filter((task) => taskStatusFilter.has(task.status_id))
                 // 西野 (admin) は全タスクを自分の勤怠に追加可、それ以外は自分のタスクのみ
                 const editable = isAdmin || allowEdit(person)
                 // 西野が他人のタスクをいじる場合は自分の勤怠に追加（target_assignee=undefined）
