@@ -17,7 +17,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function SelfInvoiceMailModal({ year, month, category, onClose }: Props) {
   const [to, setTo] = useState('')
-  const [recipientName, setRecipientName] = useState('ご担当者')
+  const [recipientName, setRecipientName] = useState('株式会社ラボップ ご担当者')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
