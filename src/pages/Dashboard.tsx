@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
@@ -30,6 +31,16 @@ export default function Dashboard() {
 
   // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
   const [asUserId, setAsUserId] = useState<number | null>(null)
+  const [searchParams] = useSearchParams()
+  // URL query ?as_user_id=N で UsersPage からのなりすまし起動を受ける
+  useEffect(() => {
+    const q = searchParams.get('as_user_id')
+    if (q) {
+      const id = Number(q)
+      if (id && id !== asUserId) setAsUserId(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [pickableUsers, setPickableUsers] = useState<{ id: number; display_name: string; email: string; admin: boolean }[]>([])
   useEffect(() => {
     if (!me?.admin) return

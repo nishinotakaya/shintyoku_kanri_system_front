@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 
 type PickableUser = { id: number; display_name: string; email: string; admin: boolean }
@@ -7,6 +8,12 @@ export default function UsersPage() {
   const [users, setUsers] = useState<PickableUser[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const [me, setMe] = useState<PickableUser | null>(null)
+  useEffect(() => {
+    api.get('/me').then((r) => setMe({ id: r.data.id, display_name: r.data.display_name, email: r.data.email, admin: r.data.admin }))
+  }, [])
+  const impersonate = (u: PickableUser) => navigate(`/attendance?as_user_id=${u.id}`)
 
   useEffect(() => {
     api.get<PickableUser[]>('/users/pickable')
@@ -35,13 +42,14 @@ export default function UsersPage() {
               <th className="px-4 py-2">表示名</th>
               <th className="px-4 py-2">メール</th>
               <th className="px-4 py-2 w-24 text-center">権限</th>
+              <th className="px-4 py-2 w-44 text-center">操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg)]">
                 <td className="px-4 py-2 text-[var(--color-text-sub)] font-mono">{u.id}</td>
@@ -52,6 +60,20 @@ export default function UsersPage() {
                     <span className="rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700">admin</span>
                   ) : (
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">user</span>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-center">
+                  {me?.admin && me?.id !== u.id && (
+                    <button
+                      onClick={() => impersonate(u)}
+                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow"
+                      title={`${u.display_name} として勤怠ダッシュボードを閲覧`}
+                    >
+                      👤 として閲覧
+                    </button>
+                  )}
+                  {me?.id === u.id && (
+                    <span className="text-[10px] text-[var(--color-text-sub)]">自分</span>
                   )}
                 </td>
               </tr>
