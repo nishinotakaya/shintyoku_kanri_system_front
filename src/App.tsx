@@ -6,6 +6,7 @@ import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import ProgressPage from './pages/ProgressPage'
 import CalendarPage from './pages/CalendarPage'
+import UsersPage from './pages/UsersPage'
 import { fetchMe, isAuthed, signOut } from './lib/auth'
 import type { Me } from './lib/api'
 
@@ -14,10 +15,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-const NAV = [
+type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean }
+const NAV: NavItem[] = [
   { to: '/', label: 'カレンダー', icon: '📅' },
   { to: '/attendance', label: '勤怠', icon: '🕒' },
   { to: '/progress', label: '進捗管理', icon: '📊' },
+  { to: '/users', label: 'ユーザー一覧', icon: '👥', adminOnly: true },
 ]
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -38,7 +41,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">進捗管理システム</div>
         </Link>
         <nav className="flex-1 px-3 py-3 space-y-0.5">
-          {NAV.map((n) => {
+          {NAV.filter((n) => !n.adminOnly || !!me?.admin).map((n) => {
             const active = loc.pathname === n.to
             return (
               <Link
@@ -121,6 +124,16 @@ export default function App() {
       <Route
         path="/calendar"
         element={<Navigate to="/" replace />}
+      />
+      <Route
+        path="/users"
+        element={
+          <RequireAuth>
+            <Layout>
+              <UsersPage />
+            </Layout>
+          </RequireAuth>
+        }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
