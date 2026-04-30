@@ -92,7 +92,6 @@ const emptyItem = (): ItemRow => ({ label: '', qty: 1, unit: '式', unit_price: 
 export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, category, kind, pdfDownloaded = false, invoicePdfDownloaded, expensePdfDownloaded }: Props) {
   const invoiceDl = invoicePdfDownloaded ?? (kind === 'invoice' ? pdfDownloaded : false)
   const expenseDl = expensePdfDownloaded ?? (kind === 'expense' ? pdfDownloaded : false)
-  const kindLabel = KIND_LABEL[kind]
   const [mine, setMine] = useState<Submission[]>([])
   const [pending, setPending] = useState<Submission[]>([])
   const [approved, setApproved] = useState<Submission[]>([])
@@ -429,22 +428,16 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   }
 
   // === admin (西野): 申請一覧 ===
-  if (pending.length === 0 && approved.length === 0) return null
+  // 現在のダッシュボード年月（+ category）に該当する申請のみ表示する
+  const matchesCurrentMonth = (s: Submission) => s.year === year && s.month === month && s.category === category
+  const pendingThisMonth = pending.filter(matchesCurrentMonth)
+  const approvedThisMonth = approved.filter(matchesCurrentMonth)
+  if (pendingThisMonth.length === 0 && approvedThisMonth.length === 0) return null
 
-  // 月毎にグルーピング（key: "YYYY-MM"）
-  const groupByYearMonth = (subs: Submission[]) => {
-    const m: Record<string, Submission[]> = {}
-    for (const s of subs) {
-      const key = `${s.year}-${String(s.month).padStart(2, '0')}`
-      m[key] = m[key] ?? []
-      m[key].push(s)
-    }
-    return m
-  }
-  const pendingByMonth = groupByYearMonth(pending)
-  const approvedByMonth = groupByYearMonth(approved)
-  const allMonthKeys = Array.from(new Set([...Object.keys(pendingByMonth), ...Object.keys(approvedByMonth)]))
-    .sort((a, b) => b.localeCompare(a)) // 新しい月から
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
+  const allMonthKeys = [monthKey]
+  const pendingByMonth: Record<string, Submission[]> = { [monthKey]: pendingThisMonth }
+  const approvedByMonth: Record<string, Submission[]> = { [monthKey]: approvedThisMonth }
   return (
     <div className="glass rounded-xl px-3 py-2 shadow-md space-y-2">
       <div className="flex items-center justify-between">
@@ -658,8 +651,8 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       {/* === ラボップ宛モーダル (請求書のみ): 明細・金額・件名・申請日 編集 === */}
       {mailModalOpen && (
         <LabopMailModal
-          invoices={allApprovedAcrossKinds.filter((s) => s.kind === 'invoice')}
-          expenses={allApprovedAcrossKinds.filter((s) => s.kind === 'expense')}
+          invoices={allApprovedAcrossKinds.filter((s) => s.kind === 'invoice') as any}
+          expenses={allApprovedAcrossKinds.filter((s) => s.kind === 'expense') as any}
           onClose={() => setMailModalOpen(false)}
         />
       )}

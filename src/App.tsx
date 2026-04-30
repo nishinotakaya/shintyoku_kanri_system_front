@@ -8,7 +8,10 @@ import ProgressPage from './pages/ProgressPage'
 import CalendarPage from './pages/CalendarPage'
 import UsersPage from './pages/UsersPage'
 import { fetchMe, isAuthed, signOut } from './lib/auth'
+import { api } from './lib/api'
 import type { Me } from './lib/api'
+
+type SubmissionLite = { id: number; year: number; month: number; category: string; kind: 'invoice' | 'expense'; user_display_name: string }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthed()) return <Navigate to="/sign_in" replace />
@@ -29,6 +32,8 @@ function Layout({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem('sidebarOpen')
     return stored === null ? true : stored === 'true'
   })
+  const [pendingApplications, setPendingApplications] = useState<SubmissionLite[]>([])
+  const [bellOpen, setBellOpen] = useState(false)
   const nav = useNavigate()
   const loc = useLocation()
 
@@ -39,6 +44,24 @@ function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     localStorage.setItem('sidebarOpen', String(sidebarOpen))
   }, [sidebarOpen])
+
+  // admin: 申請中件数を 60 秒毎にポーリング
+  useEffect(() => {
+    if (!me?.admin) { setPendingApplications([]); return }
+    let cancelled = false
+    const fetchPending = async () => {
+      try {
+        const [inv, exp] = await Promise.all([
+          api.get<SubmissionLite[]>('/invoice_submissions', { params: { status: 'pending', kind: 'invoice' } }),
+          api.get<SubmissionLite[]>('/invoice_submissions', { params: { status: 'pending', kind: 'expense' } }),
+        ])
+        if (!cancelled) setPendingApplications([...inv.data, ...exp.data])
+      } catch { /* noop */ }
+    }
+    fetchPending()
+    const t = setInterval(fetchPending, 60_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [me?.admin, loc.pathname])
 
   return (
     <div className="flex min-h-screen">
@@ -102,6 +125,57 @@ function Layout({ children }: { children: React.ReactNode }) {
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
+            {me?.admin && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBellOpen((v) => !v)}
+                  aria-label={`未対応申請 ${pendingApplications.length} 件`}
+                  title={pendingApplications.length > 0 ? `${pendingApplications.length} 件の申請が届いています` : '新しい申請はありません'}
+                  className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)] active:scale-95 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
+                    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                  </svg>
+                  {pendingApplications.length > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[11px] font-bold leading-none flex items-center justify-center shadow ring-2 ring-white">
+                      {pendingApplications.length > 99 ? '99+' : pendingApplications.length}
+                    </span>
+                  )}
+                </button>
+                {bellOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-72 rounded-lg border border-[var(--color-border)] bg-white shadow-lg z-30 p-2">
+                    <div className="text-[11px] font-semibold text-[var(--color-text)] mb-1 flex items-center justify-between">
+                      <span>未対応の申請（{pendingApplications.length}）</span>
+                      <button onClick={() => setBellOpen(false)} className="text-[var(--color-text-sub)] hover:text-[var(--color-text)]">✕</button>
+                    </div>
+                    {pendingApplications.length === 0 ? (
+                      <div className="text-[11px] text-[var(--color-text-sub)] py-2">新しい申請はありません</div>
+                    ) : (
+                      <ul className="divide-y divide-[var(--color-border)] max-h-72 overflow-auto">
+                        {pendingApplications.map((s) => {
+                          const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
+                          const kindLabel = s.kind === 'invoice' ? '請求書' : '立替金'
+                          return (
+                            <li key={`${s.kind}-${s.id}`} className="py-1.5 text-[11px]">
+                              <div>
+                                <span className={`mr-1 inline-block rounded px-1 py-0.5 text-[9px] ${s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{kindLabel}</span>
+                                <span className="font-semibold text-fuchsia-600">{surname}さん</span>
+                              </div>
+                              <div className="text-[10px] text-[var(--color-text-sub)]">{s.year}年{s.month}月分（{s.category}）</div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                    <div className="mt-1 pt-1 border-t border-[var(--color-border)]">
+                      <Link to="/attendance" onClick={() => setBellOpen(false)} className="text-[11px] text-fuchsia-500 hover:text-fuchsia-400 font-semibold">申請ダッシュボードへ →</Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="ml-auto flex items-center gap-4">
               <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
               <button

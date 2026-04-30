@@ -196,6 +196,18 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* 川村からの申請: 現在の年月でフィルタして期間ヘッダ直下に表示 */}
+      <InvoiceSubmissionPanel
+        isAdmin={isAdmin}
+        isOsumi={isOsumi}
+        year={year}
+        month={month}
+        category={category}
+        kind="invoice"
+        invoicePdfDownloaded={invoicePdfDownloaded}
+        expensePdfDownloaded={expensePdfDownloaded}
+      />
+
       <div className="grid gap-3 md:grid-cols-2">
         <ClockCard today={today} enabled={clockEnabled} onChanged={refetchAll} />
         <div className="glass rounded-2xl p-4 shadow-md">
@@ -289,17 +301,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      <InvoiceSubmissionPanel
-        isAdmin={isAdmin}
-        isOsumi={isOsumi}
-        year={year}
-        month={month}
-        category={category}
-        kind="invoice"
-        invoicePdfDownloaded={invoicePdfDownloaded}
-        expensePdfDownloaded={expensePdfDownloaded}
-      />
 
       <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
       <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={markExpenseDownloaded} />
