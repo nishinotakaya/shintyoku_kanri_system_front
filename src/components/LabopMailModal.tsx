@@ -31,7 +31,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [to, setTo] = useState('takaya777boxing@gmail.com') // テスト送信先を初期値に
-  const [recipientName, setRecipientName] = useState('大隅')
+  const [recipientName, setRecipientName] = useState('株式会社ラボップ 御中')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
