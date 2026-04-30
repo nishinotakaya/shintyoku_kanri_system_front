@@ -112,7 +112,10 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
     }, 400)
   }
 
-  // 最新1件は自動で取得（メモ代わりに常時表示）
+  const [unreadCount, setUnreadCount] = useState(0)
+  const seenKey = `commentsSeen:${task.issue_key}`
+
+  // 最新1件は自動で取得（メモ代わりに常時表示） + 未読件数を計算
   useEffect(() => {
     let cancelled = false
     api.get<TaskComment[]>(`/backlog/tasks/${encodeURIComponent(task.issue_key)}/comments`)
@@ -120,10 +123,26 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
         if (cancelled) return
         const filtered = r.data.filter((c) => (c.content ?? '').trim().length > 0)
         setLatestComment(filtered.length > 0 ? filtered[filtered.length - 1] : null)
+        const seen = localStorage.getItem(seenKey)
+        const seenAt = seen ? new Date(seen).getTime() : 0
+        const unread = filtered.filter((c) => c.created && new Date(c.created).getTime() > seenAt).length
+        setUnreadCount(unread)
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [task.issue_key])
+  }, [task.issue_key, seenKey])
+
+  const markCommentsSeen = () => {
+    localStorage.setItem(seenKey, new Date().toISOString())
+    setUnreadCount(0)
+  }
+
+  const formatUnreadBadge = (n: number): string => {
+    if (n <= 0) return ''
+    const circles = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨']
+    if (n <= 9) return circles[n - 1]
+    return '⑩+'
+  }
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
     setAdding(true)
@@ -139,6 +158,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
     e.preventDefault(); e.stopPropagation()
     if (commentsOpen) { setCommentsOpen(false); return }
     setCommentsOpen(true)
+    markCommentsSeen()
     if (comments != null) return
     setCommentsLoading(true); setCommentsError(null)
     try {
@@ -166,10 +186,18 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
           <button
             type="button"
             onClick={toggleComments}
-            className="rounded bg-white border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-sub)] hover:bg-gray-50"
-            title="コメントを見る"
+            className="relative rounded bg-white border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-sub)] hover:bg-gray-50"
+            title={unreadCount > 0 ? `未読 ${unreadCount} 件` : 'コメントを見る'}
           >
             💬
+            {unreadCount > 0 && (
+              <span
+                aria-label={`未読${unreadCount}件`}
+                className="absolute -top-1.5 -right-1.5 leading-none text-red-500 text-[11px] font-bold drop-shadow"
+              >
+                {formatUnreadBadge(unreadCount)}
+              </span>
+            )}
           </button>
           {editable && !alreadyInWings && (
             <select
