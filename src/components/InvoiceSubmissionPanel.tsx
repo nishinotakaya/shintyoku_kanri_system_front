@@ -163,10 +163,10 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const myInvoiceCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === 'invoice')
   const myExpenseCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === 'expense')
 
-  const submitKind = async (k: SubmissionKind) => {
+  const submitKind = async (k: SubmissionKind, note?: string) => {
     setBusy(true); setMsg(null)
     try {
-      await api.post('/invoice_submissions', { year, month, category, kind: k })
+      await api.post('/invoice_submissions', { year, month, category, kind: k, note })
       setMsg('申請しました')
       await loadAll()
     } catch (e: any) {
@@ -426,14 +426,26 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                       {busy ? '送信中…' : '🔁 再申請'}
                     </button>
                   ) : (
-                    <button
-                      onClick={() => submitKind(k)}
-                      disabled={busy || blockedByPdf}
-                      title={blockedByPdf ? `先に${label} PDF をダウンロードしてください` : undefined}
-                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {busy ? '送信中…' : '📤 申請する'}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => submitKind(k)}
+                        disabled={busy || blockedByPdf}
+                        title={blockedByPdf ? `先に${label} PDF をダウンロードしてください` : undefined}
+                        className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {busy ? '送信中…' : '📤 申請する'}
+                      </button>
+                      {k === 'expense' && (
+                        <button
+                          onClick={() => submitKind('expense', '立替金なし')}
+                          disabled={busy}
+                          title="今月は立替金なしとして申請（admin に通知）"
+                          className="rounded-md whitespace-nowrap bg-gradient-to-r from-gray-400 to-gray-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                        >
+                          立替金なし
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </li>
