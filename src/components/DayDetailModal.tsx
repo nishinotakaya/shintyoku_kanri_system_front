@@ -235,15 +235,26 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
             {editable ? (
               <textarea
                 value={memoDraft}
-                onChange={(e) => { setMemoDraft(e.target.value); saveMemo(e.target.value) }}
+                onChange={(e) => {
+                  setMemoDraft(e.target.value)
+                  saveMemo(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = e.target.scrollHeight + 'px'
+                }}
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto'
+                    el.style.height = el.scrollHeight + 'px'
+                  }
+                }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 placeholder="メモを入力…"
-                rows={2}
+                rows={1}
                 draggable={false}
                 onDragStart={(e) => e.preventDefault()}
-                className="w-full resize-y min-h-[36px] rounded border border-amber-200 bg-white px-2 py-1 text-[11px] text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-amber-400"
+                className="w-full resize-none overflow-hidden min-h-[24px] rounded border border-amber-200 bg-white px-2 py-1 text-[11px] text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-amber-400"
               />
             ) : (
               <div className="whitespace-pre-wrap break-words">{memoDraft || '（未入力）'}</div>
