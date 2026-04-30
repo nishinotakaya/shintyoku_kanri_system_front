@@ -86,9 +86,21 @@ function Layout({ children }: { children: React.ReactNode }) {
               aria-label={sidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
               aria-expanded={sidebarOpen}
               title={sidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)] active:scale-95 transition"
             >
-              <span aria-hidden className="text-lg leading-none">{sidebarOpen ? '✕' : '☰'}</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`h-5 w-5 transition-transform duration-200 ${sidebarOpen ? '' : 'rotate-180'}`}
+                aria-hidden
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
             </button>
             <div className="ml-auto flex items-center gap-4">
               <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
