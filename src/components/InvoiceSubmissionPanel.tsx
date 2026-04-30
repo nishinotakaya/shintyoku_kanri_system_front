@@ -381,11 +381,15 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       { k: 'invoice', label: '請求書', sub: myInvoiceCurrent, dlOk: invoiceDl },
       { k: 'expense', label: '立替金', sub: myExpenseCurrent, dlOk: expenseDl },
     ]
+    const anySubmitted = rows.some(({ sub }) => sub?.status === 'pending' || sub?.status === 'approved')
     return (
       <div className="glass rounded-xl px-3 py-2 shadow-md">
         <div className="flex items-center justify-between mb-1">
-          <div className="text-xs font-semibold text-[var(--color-text)]">
+          <div className="text-xs font-semibold text-[var(--color-text)] flex items-center gap-2">
             {year}年{month}月分（{CATEGORY_LABELS[category] ?? category}）申請
+            {anySubmitted && (
+              <span className="rounded bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold">申請済</span>
+            )}
           </div>
           {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
         </div>
@@ -411,14 +415,27 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     <span className="text-amber-600">先に{label} PDF をダウンロードしてください</span>
                   )}
                 </div>
-                <button
-                  onClick={() => submitKind(k)}
-                  disabled={busy || alreadySubmitted || blockedByPdf}
-                  title={blockedByPdf ? `先に${label} PDF をダウンロードしてください` : undefined}
-                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {busy ? '送信中…' : sub?.status === 'pending' ? '申請中' : sub?.status === 'approved' ? '承認済' : '📤 申請する'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {alreadySubmitted ? (
+                    <button
+                      onClick={() => submitKind(k)}
+                      disabled={busy}
+                      title="同月分を上書きして再申請します"
+                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                    >
+                      {busy ? '送信中…' : '🔁 再申請'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => submitKind(k)}
+                      disabled={busy || blockedByPdf}
+                      title={blockedByPdf ? `先に${label} PDF をダウンロードしてください` : undefined}
+                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {busy ? '送信中…' : '📤 申請する'}
+                    </button>
+                  )}
+                </div>
               </li>
             )
           })}
