@@ -1,7 +1,51 @@
 import { useEffect, useMemo, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { api } from '../lib/api'
 import type { WorkReport, Expense } from '../lib/api'
 import SapLink from './SapLink'
+
+function CommentMarkdown({ children }: { children: string }) {
+  return (
+    <div className="markdown-comment break-words">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks]}
+        components={{
+          a: ({ node: _node, ...props }) => (
+            <a {...props} target="_blank" rel="noopener noreferrer" className="text-fuchsia-600 hover:underline" />
+          ),
+          code: ({ node: _node, className, children, ...props }) => {
+            const isInline = !/\blanguage-/.test(className ?? '')
+            return isInline ? (
+              <code {...props} className="rounded bg-gray-200 px-1 py-[1px] text-[10px] font-mono">{children}</code>
+            ) : (
+              <code {...props} className={`block rounded bg-gray-100 p-1.5 text-[10px] font-mono whitespace-pre-wrap ${className ?? ''}`}>{children}</code>
+            )
+          },
+          pre: ({ node: _node, children, ...props }) => (
+            <pre {...props} className="my-1 overflow-x-auto rounded bg-gray-100 p-1.5">{children}</pre>
+          ),
+          ul: ({ node: _node, ...props }) => <ul {...props} className="list-disc pl-4 my-0.5 space-y-0.5" />,
+          ol: ({ node: _node, ...props }) => <ol {...props} className="list-decimal pl-4 my-0.5 space-y-0.5" />,
+          h1: ({ node: _node, ...props }) => <h1 {...props} className="text-[12px] font-bold mt-1 mb-0.5" />,
+          h2: ({ node: _node, ...props }) => <h2 {...props} className="text-[11px] font-bold mt-1 mb-0.5" />,
+          h3: ({ node: _node, ...props }) => <h3 {...props} className="text-[11px] font-semibold mt-1 mb-0.5" />,
+          p: ({ node: _node, ...props }) => <p {...props} className="my-0.5" />,
+          blockquote: ({ node: _node, ...props }) => (
+            <blockquote {...props} className="border-l-2 border-gray-300 pl-2 my-0.5 text-[var(--color-text-sub)]" />
+          ),
+          table: ({ node: _node, ...props }) => <table {...props} className="my-1 border-collapse text-[10px]" />,
+          th: ({ node: _node, ...props }) => <th {...props} className="border border-gray-300 px-1 py-0.5 bg-gray-50 font-semibold" />,
+          td: ({ node: _node, ...props }) => <td {...props} className="border border-gray-300 px-1 py-0.5" />,
+          img: ({ node: _node, ...props }) => <img {...props} className="max-w-full rounded" />,
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  )
+}
 
 type TeamScheduleEntry = { date: string; person: string; status: string }
 type BacklogTask = {
@@ -181,7 +225,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
               <div className="text-[var(--color-text-sub)] text-[9px] mb-0.5">
                 {latestComment.created_user_name ?? '?'} {latestComment.created && new Date(latestComment.created).toLocaleString('ja-JP')}
               </div>
-              <div className="whitespace-pre-wrap break-words">{latestComment.content}</div>
+              <CommentMarkdown>{latestComment.content}</CommentMarkdown>
             </div>
           )}
         </div>
@@ -199,7 +243,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
                 <span className="font-semibold">{c.created_user_name ?? '?'}</span>
                 {c.created && <span className="text-[9px]">{new Date(c.created).toLocaleString('ja-JP')}</span>}
               </div>
-              <div className="whitespace-pre-wrap break-words">{c.content}</div>
+              <CommentMarkdown>{c.content}</CommentMarkdown>
             </div>
           ))}
         </div>
