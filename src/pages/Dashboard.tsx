@@ -297,20 +297,12 @@ export default function Dashboard() {
         month={month}
         category={category}
         kind="invoice"
-        pdfDownloaded={invoicePdfDownloaded}
+        invoicePdfDownloaded={invoicePdfDownloaded}
+        expensePdfDownloaded={expensePdfDownloaded}
       />
 
       <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
       <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={markExpenseDownloaded} />
-      <InvoiceSubmissionPanel
-        isAdmin={isAdmin}
-        isOsumi={isOsumi}
-        year={year}
-        month={month}
-        category={category}
-        kind="expense"
-        pdfDownloaded={expensePdfDownloaded}
-      />
 
       {me?.can_issue_orders && <PurchaseOrderList me={me} category={category} />}
 

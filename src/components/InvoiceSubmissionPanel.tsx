@@ -48,6 +48,9 @@ type Props = {
   category: string
   kind: SubmissionKind
   pdfDownloaded?: boolean
+  // applicant 統合用: kind="invoice" インスタンスに両方の PDF DL 状態を渡す
+  invoicePdfDownloaded?: boolean
+  expensePdfDownloaded?: boolean
 }
 
 const KIND_LABEL: Record<SubmissionKind, string> = {
@@ -86,7 +89,9 @@ type LabopForm = {
 
 const emptyItem = (): ItemRow => ({ label: '', qty: 1, unit: '式', unit_price: 0, amount: 0 })
 
-export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, category, kind, pdfDownloaded = false }: Props) {
+export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, category, kind, pdfDownloaded = false, invoicePdfDownloaded, expensePdfDownloaded }: Props) {
+  const invoiceDl = invoicePdfDownloaded ?? (kind === 'invoice' ? pdfDownloaded : false)
+  const expenseDl = expensePdfDownloaded ?? (kind === 'expense' ? pdfDownloaded : false)
   const kindLabel = KIND_LABEL[kind]
   const [mine, setMine] = useState<Submission[]>([])
   const [pending, setPending] = useState<Submission[]>([])
@@ -128,19 +133,21 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
 
   const loadAll = async () => {
     if (isAdmin) {
-      // admin の最上位インスタンス（kind="invoice"）は請求書 + 立替金 をまとめて表示
       const [pInv, aInv, pExp, aExp] = await Promise.all([
         api.get<Submission[]>('/invoice_submissions', { params: { status: 'pending', kind: 'invoice' } }),
         api.get<Submission[]>('/invoice_submissions', { params: { status: 'approved', kind: 'invoice' } }),
         api.get<Submission[]>('/invoice_submissions', { params: { status: 'pending', kind: 'expense' } }),
         api.get<Submission[]>('/invoice_submissions', { params: { status: 'approved', kind: 'expense' } }),
       ])
-      // 表示順: 請求書 → 立替金（kind が同じならサーバー順そのまま）
       setPending([...pInv.data, ...pExp.data])
       setApproved([...aInv.data, ...aExp.data])
     } else {
-      const r = await api.get<Submission[]>('/invoice_submissions', { params: { status: 'all', kind } })
-      setMine(r.data)
+      // 川村等: 自分の申請を 請求書/立替金 両方取得して同じ枠で扱う
+      const [inv, exp] = await Promise.all([
+        api.get<Submission[]>('/invoice_submissions', { params: { status: 'all', kind: 'invoice' } }),
+        api.get<Submission[]>('/invoice_submissions', { params: { status: 'all', kind: 'expense' } }),
+      ])
+      setMine([...inv.data, ...exp.data])
     }
   }
 
@@ -151,12 +158,16 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   // 大隅は申請対象外
   if (isOsumi) return null
 
-  const myCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === kind)
+  // 非 admin / admin いずれも、最上位 (kind=invoice) の単一インスタンスでまとめて表示
+  if (kind !== 'invoice') return null
 
-  const submit = async () => {
+  const myInvoiceCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === 'invoice')
+  const myExpenseCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === 'expense')
+
+  const submitKind = async (k: SubmissionKind) => {
     setBusy(true); setMsg(null)
     try {
-      await api.post('/invoice_submissions', { year, month, category, kind })
+      await api.post('/invoice_submissions', { year, month, category, kind: k })
       setMsg('申請しました')
       await loadAll()
     } catch (e: any) {
@@ -364,54 +375,76 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const removeItemRow = (i: number) => setLabopForm((prev) => ({ ...prev, items: prev.items.filter((_, idx) => idx !== i) }))
   const itemsTotalAmount = labopForm.items.reduce((s, it) => s + (Number(it.amount) || 0), 0)
 
-  // === 非 admin (川村など): 申請ボタン + 自分の申請ステータス ===
+  // === 非 admin (川村など): 請求書 + 立替金 を一枠で申請 ===
   if (!isAdmin) {
-    const alreadySubmitted = myCurrent?.status === 'pending' || myCurrent?.status === 'approved'
-    const blockedByPdf = !pdfDownloaded && !alreadySubmitted
+    type Row = { k: SubmissionKind; label: string; sub?: Submission; dlOk: boolean }
+    const rows: Row[] = [
+      { k: 'invoice', label: '請求書', sub: myInvoiceCurrent, dlOk: invoiceDl },
+      { k: 'expense', label: '立替金', sub: myExpenseCurrent, dlOk: expenseDl },
+    ]
     return (
-      <div className="glass rounded-xl px-3 py-2 shadow-md flex items-center justify-between">
-        <div>
-          <div className="text-xs font-semibold text-[var(--color-text)]">{kindLabel} 申請</div>
-          <div className="text-[11px] text-[var(--color-text-sub)]">
-            {year}年{month}月分（{CATEGORY_LABELS[category] ?? category}）の{kindLabel}を西野さんに申請します
+      <div className="glass rounded-xl px-3 py-2 shadow-md">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-xs font-semibold text-[var(--color-text)]">
+            {year}年{month}月分（{CATEGORY_LABELS[category] ?? category}）申請
           </div>
-          {blockedByPdf && (
-            <div className="mt-0.5 text-[11px] text-amber-600">
-              先に{kindLabel} PDF をダウンロード（または保存）してください
-            </div>
-          )}
-          {myCurrent && (
-            <div className="mt-0.5 text-[11px]">
-              ステータス: {myCurrent.status === 'pending' && <span className="text-amber-600 font-semibold">申請中</span>}
-              {myCurrent.status === 'approved' && <span className="text-emerald-600 font-semibold">✅ 承認済</span>}
-              {myCurrent.status === 'rejected' && <span className="text-red-500 font-semibold">却下</span>}
-              {myCurrent.reviewed_at && <span className="ml-2 text-[var(--color-text-sub)]">（{new Date(myCurrent.reviewed_at).toLocaleString('ja-JP')}）</span>}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
           {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
-          <button
-            onClick={submit}
-            disabled={busy || alreadySubmitted || blockedByPdf}
-            title={blockedByPdf ? `先に${kindLabel} PDF をダウンロードしてください` : undefined}
-            className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {busy ? '送信中…' : myCurrent?.status === 'pending' ? '申請中' : myCurrent?.status === 'approved' ? '承認済' : '📤 申請する'}
-          </button>
         </div>
+        <ul className="divide-y divide-[var(--color-border)]">
+          {rows.map(({ k, label, sub, dlOk }) => {
+            const alreadySubmitted = sub?.status === 'pending' || sub?.status === 'approved'
+            const blockedByPdf = !dlOk && !alreadySubmitted
+            return (
+              <li key={k} className="py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div className="flex items-baseline gap-2">
+                  <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${k === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{label}</span>
+                  {sub ? (
+                    <span>
+                      {sub.status === 'pending' && <span className="text-amber-600 font-semibold">申請中</span>}
+                      {sub.status === 'approved' && <span className="text-emerald-600 font-semibold">✅ 承認済</span>}
+                      {sub.status === 'rejected' && <span className="text-red-500 font-semibold">却下</span>}
+                      {sub.reviewed_at && <span className="ml-1 text-[10px] text-[var(--color-text-sub)]">（{new Date(sub.reviewed_at).toLocaleString('ja-JP')}）</span>}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--color-text-sub)]">未申請</span>
+                  )}
+                  {blockedByPdf && (
+                    <span className="text-amber-600">先に{label} PDF をダウンロードしてください</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => submitKind(k)}
+                  disabled={busy || alreadySubmitted || blockedByPdf}
+                  title={blockedByPdf ? `先に${label} PDF をダウンロードしてください` : undefined}
+                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {busy ? '送信中…' : sub?.status === 'pending' ? '申請中' : sub?.status === 'approved' ? '承認済' : '📤 申請する'}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
       </div>
     )
   }
 
   // === admin (西野): 申請一覧 ===
-  // admin 表示は kind=invoice の単一インスタンスにまとめる（expense 側は null を返す）
-  if (kind !== 'invoice') return null
   if (pending.length === 0 && approved.length === 0) return null
-  const pendingInvoice = pending.filter((s) => s.kind === 'invoice')
-  const pendingExpense = pending.filter((s) => s.kind === 'expense')
-  const approvedInvoice = approved.filter((s) => s.kind === 'invoice')
-  const approvedExpense = approved.filter((s) => s.kind === 'expense')
+
+  // 月毎にグルーピング（key: "YYYY-MM"）
+  const groupByYearMonth = (subs: Submission[]) => {
+    const m: Record<string, Submission[]> = {}
+    for (const s of subs) {
+      const key = `${s.year}-${String(s.month).padStart(2, '0')}`
+      m[key] = m[key] ?? []
+      m[key].push(s)
+    }
+    return m
+  }
+  const pendingByMonth = groupByYearMonth(pending)
+  const approvedByMonth = groupByYearMonth(approved)
+  const allMonthKeys = Array.from(new Set([...Object.keys(pendingByMonth), ...Object.keys(approvedByMonth)]))
+    .sort((a, b) => b.localeCompare(a)) // 新しい月から
   return (
     <div className="glass rounded-xl px-3 py-2 shadow-md space-y-2">
       <div className="flex items-center justify-between">
@@ -433,86 +466,42 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
         </div>
       </div>
 
-      {pending.length > 0 && (
-        <div className="rounded-lg border border-amber-300/60 bg-amber-50/40 px-2 py-1.5">
-          <div className="text-[11px] font-semibold text-amber-700 mb-1">
-            📨 申請中（請求書 {pendingInvoice.length} / 立替金 {pendingExpense.length}）
-            <span className="ml-2 font-normal text-[var(--color-text-sub)]">承認すると「株式会社ラボップ」宛でダウンロード可能</span>
-          </div>
-          <ul className="divide-y divide-amber-200">
-            {pending.map((s) => {
-              const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
-              const kindLbl = KIND_LABEL[s.kind]
-              return (
-                <li key={s.id} className="py-1.5 flex items-center justify-between gap-2 text-xs">
-                  <div>
-                    <div className="font-semibold text-[var(--color-text)]">
-                      <span className={`mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] ${s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{kindLbl}</span>
-                      <span className="text-fuchsia-600">{surname}さん</span>より申請
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
-                      {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）
-                      {s.submitted_at && <span className="ml-2 text-[10px]">{new Date(s.submitted_at).toLocaleString('ja-JP')}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => openPreview(s)}
-                      disabled={busy}
-                      className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-3 py-1 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
-                    >
-                      🔍 確認
-                    </button>
-                    <button
-                      onClick={() => approve(s.id)}
-                      disabled={busy}
-                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                    >
-                      ✅ 承認
-                    </button>
-                    <button
-                      onClick={() => reject(s.id)}
-                      disabled={busy}
-                      className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      却下
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-      {approved.length > 0 && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 px-2 py-1.5">
-          <div className="text-[11px] font-semibold text-emerald-700 mb-1">
-            ✅ 承認済み（請求書 {approvedInvoice.length} / 立替金 {approvedExpense.length}）
-          </div>
-          <div className="space-y-1">
-            {approvedInvoice.length > 0 && (
-              <div>
-                <div className="text-[11px] font-semibold text-sky-700 mb-0.5">請求書 {approvedInvoice.length}件</div>
-                <ul className="divide-y divide-emerald-100">
-                  {approvedInvoice.map((s) => {
+      {allMonthKeys.map((mk) => {
+        const [yStr, mStr] = mk.split('-')
+        const y = Number(yStr); const m = Number(mStr)
+        const monthPending = pendingByMonth[mk] ?? []
+        const monthApproved = approvedByMonth[mk] ?? []
+        const mInvP = monthPending.filter((s) => s.kind === 'invoice')
+        const mExpP = monthPending.filter((s) => s.kind === 'expense')
+        const mInvA = monthApproved.filter((s) => s.kind === 'invoice')
+        const mExpA = monthApproved.filter((s) => s.kind === 'expense')
+        return (
+          <div key={mk} className="space-y-1.5">
+            <div className="text-[12px] font-bold text-[var(--color-text)] mt-1">{y}年{m}月分</div>
+            {monthPending.length > 0 && (
+              <div className="rounded-lg border border-amber-300/60 bg-amber-50/40 px-2 py-1.5">
+                <div className="text-[11px] font-semibold text-amber-700 mb-1">
+                  📨 申請中（請求書 {mInvP.length} / 立替金 {mExpP.length}）
+                </div>
+                <ul className="divide-y divide-amber-200">
+                  {monthPending.map((s) => {
                     const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
+                    const kindLbl = KIND_LABEL[s.kind]
                     return (
-                      <li key={s.id} className="py-1 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <div className="flex items-baseline gap-2 min-w-0">
-                          <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
-                          <span className="text-[var(--color-text-sub)]">{s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
-                          {s.total_override != null && (
-                            <span className="text-[10px] text-sky-600">¥{s.total_override.toLocaleString()} 設定済</span>
-                          )}
+                      <li key={s.id} className="py-1.5 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-baseline gap-2">
+                          <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{kindLbl}</span>
+                          <span className="text-fuchsia-600 font-semibold">{surname}さん</span>
+                          <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                          {s.submitted_at && <span className="text-[10px] text-[var(--color-text-sub)]">{new Date(s.submitted_at).toLocaleString('ja-JP')}</span>}
                         </div>
                         <div className="flex items-center gap-1.5">
                           <button onClick={() => openPreview(s)} disabled={busy}
-                            className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50">🔍</button>
-                          <button onClick={() => downloadAsApplicant(s)} disabled={busy}
-                            className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
-                            title={`${surname}さん本人の請求書（オリジナル）`}>📥 PDF</button>
-                          <button onClick={() => openLabopModal(s)} disabled={busy}
-                            className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 ラボップ宛</button>
+                            className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50">🔍 確認</button>
+                          <button onClick={() => approve(s.id)} disabled={busy}
+                            className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
+                          <button onClick={() => reject(s.id)} disabled={busy}
+                            className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">却下</button>
                         </div>
                       </li>
                     )
@@ -520,40 +509,73 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                 </ul>
               </div>
             )}
-            {approvedExpense.length > 0 && (
-              <div>
-                <div className="text-[11px] font-semibold text-emerald-700 mb-0.5">立替金 {approvedExpense.length}件</div>
-                <ul className="divide-y divide-emerald-100">
-                  {approvedExpense.map((s) => {
-                    const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
-                    return (
-                      <li key={s.id} className="py-1 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <div className="flex items-baseline gap-2 min-w-0">
-                          <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
-                          <span className="text-[var(--color-text-sub)]">{s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => openPreview(s)} disabled={busy}
-                            className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50">🔍</button>
-                          <button onClick={() => downloadAsApplicant(s)} disabled={busy}
-                            className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
-                            title={`${surname}さん本人の立替金（オリジナル）`}>📥 PDF</button>
-                          <button onClick={() => downloadExpenseAsLabop(s, 'xlsx')} disabled={busy}
-                            className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                            title="立替金 Excel を株式会社ラボップ宛 / 西野発行で出力">📥 Excel</button>
-                          <button onClick={() => downloadExpenseAsLabop(s, 'pdf')} disabled={busy}
-                            className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50"
-                            title="立替金 PDF を株式会社ラボップ宛 / 西野発行で出力">📥 ラボップ宛 PDF</button>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
+            {monthApproved.length > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 px-2 py-1.5">
+                <div className="text-[11px] font-semibold text-emerald-700 mb-1">
+                  ✅ 承認済み（請求書 {mInvA.length} / 立替金 {mExpA.length}）
+                </div>
+                <div className="space-y-1">
+                  {mInvA.length > 0 && (
+                    <ul className="divide-y divide-emerald-100">
+                      {mInvA.map((s) => {
+                        const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
+                        return (
+                          <li key={s.id} className="py-1 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            <div className="flex items-baseline gap-2 min-w-0">
+                              <span className="inline-block rounded px-1.5 py-0.5 text-[10px] bg-sky-100 text-sky-700">請求書</span>
+                              <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
+                              <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                              {s.total_override != null && <span className="text-[10px] text-sky-600">¥{s.total_override.toLocaleString()} 設定済</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => openPreview(s)} disabled={busy}
+                                className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50">🔍</button>
+                              <button onClick={() => downloadAsApplicant(s)} disabled={busy}
+                                className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                                title={`${surname}さん本人の請求書（オリジナル）`}>📥 PDF</button>
+                              <button onClick={() => openLabopModal(s)} disabled={busy}
+                                className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 ラボップ宛</button>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                  {mExpA.length > 0 && (
+                    <ul className="divide-y divide-emerald-100">
+                      {mExpA.map((s) => {
+                        const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? s.user_display_name
+                        return (
+                          <li key={s.id} className="py-1 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            <div className="flex items-baseline gap-2 min-w-0">
+                              <span className="inline-block rounded px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700">立替金</span>
+                              <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
+                              <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => openPreview(s)} disabled={busy}
+                                className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50">🔍</button>
+                              <button onClick={() => downloadAsApplicant(s)} disabled={busy}
+                                className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                                title={`${surname}さん本人の立替金（オリジナル）`}>📥 PDF</button>
+                              <button onClick={() => downloadExpenseAsLabop(s, 'xlsx')} disabled={busy}
+                                className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                                title="立替金 Excel を株式会社ラボップ宛 / 西野発行で出力">📥 Excel</button>
+                              <button onClick={() => downloadExpenseAsLabop(s, 'pdf')} disabled={busy}
+                                className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                                title="立替金 PDF を株式会社ラボップ宛 / 西野発行で出力">📥 ラボップ宛 PDF</button>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )
+      })}
 
       {/* === 確認モーダル (PDF / Excel プレビュー + 承認/却下) === */}
       {previewFor && (
