@@ -21,13 +21,17 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
-  const [includeExpense, setIncludeExpense] = useState(true)
+  // 添付タイプ別にチェックボックス（デフォルト全選択）
+  const [includeInvoicePdf, setIncludeInvoicePdf] = useState(true)
+  const [includeExpensePdf, setIncludeExpensePdf] = useState(true)
+  const [includeExpenseXlsx, setIncludeExpenseXlsx] = useState(true)
   const [availableExpenseTotal, setAvailableExpenseTotal] = useState<number | null>(null)
   const [drafting, setDrafting] = useState(false)
   const [sending, setSending] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [draftLoaded, setDraftLoaded] = useState(false)
   const expenseDisabled = availableExpenseTotal !== null && availableExpenseTotal <= 0
+  const includeExpense = !expenseDisabled && (includeExpensePdf || includeExpenseXlsx)
 
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
 
@@ -46,7 +50,10 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
       setDraftLoaded(true)
       if (typeof r.data.available_expense_total === 'number') {
         setAvailableExpenseTotal(r.data.available_expense_total)
-        if (r.data.available_expense_total <= 0) setIncludeExpense(false)
+        if (r.data.available_expense_total <= 0) {
+          setIncludeExpensePdf(false)
+          setIncludeExpenseXlsx(false)
+        }
       }
     } catch (e: any) {
       setMsg(`AI下書き失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
@@ -71,6 +78,10 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
       fd.append('to', to)
       fd.append('subject', subject)
       fd.append('body', body)
+      fd.append('include_invoice_pdf', includeInvoicePdf ? '1' : '0')
+      fd.append('include_expense_pdf', includeExpensePdf && !expenseDisabled ? '1' : '0')
+      fd.append('include_expense_xlsx', includeExpenseXlsx && !expenseDisabled ? '1' : '0')
+      // 後方互換用
       fd.append('include_expense', includeExpense ? '1' : '0')
       extraFiles.forEach((f) => fd.append('extra_files[]', f))
       const r = await api.post<{ ok: boolean; sent_to: string; attachments: string[] }>('/emails/self_invoice_send', fd, {
@@ -127,28 +138,41 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
           </div>
         </label>
 
-        <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)]">
-          <label className={`flex items-center gap-2 mb-1 ${expenseDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+        <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)] space-y-1">
+          <div className="font-semibold text-[var(--color-text)]">同梱する添付（デフォルト全選択）</div>
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={includeExpense && !expenseDisabled}
+              checked={includeInvoicePdf}
+              onChange={(e) => setIncludeInvoicePdf(e.target.checked)}
+              className="accent-sky-500"
+            />
+            <span>請求書 PDF</span>
+          </label>
+          <label className={`flex items-center gap-2 ${expenseDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input
+              type="checkbox"
+              checked={includeExpensePdf && !expenseDisabled}
               disabled={expenseDisabled}
-              onChange={(e) => setIncludeExpense(e.target.checked)}
+              onChange={(e) => setIncludeExpensePdf(e.target.checked)}
               className="accent-emerald-500"
             />
-            <span className="font-semibold">
-              立替金 (PDF + Excel) も同梱する
-              {availableExpenseTotal !== null && (
-                <span className="ml-1 font-normal">
-                  （対象月の立替金合計: ¥{availableExpenseTotal.toLocaleString()}）
-                </span>
-              )}
-            </span>
+            <span>立替金 PDF</span>
           </label>
-          {expenseDisabled
-            ? <span className="text-amber-600">立替金が 0 円のため、立替金 PDF / Excel は同梱しません。</span>
-            : <>自動添付: 請求書 PDF{includeExpense ? ' + 立替金 PDF + 立替金 Excel' : ''}（オリジナル宛先・発行者で生成）</>
-          }
+          <label className={`flex items-center gap-2 ${expenseDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input
+              type="checkbox"
+              checked={includeExpenseXlsx && !expenseDisabled}
+              disabled={expenseDisabled}
+              onChange={(e) => setIncludeExpenseXlsx(e.target.checked)}
+              className="accent-emerald-500"
+            />
+            <span>立替金 Excel</span>
+          </label>
+          {availableExpenseTotal !== null && (
+            <div className="text-[10px]">対象月の立替金合計: ¥{availableExpenseTotal.toLocaleString()}</div>
+          )}
+          {expenseDisabled && <div className="text-amber-600">立替金が 0 円のため、立替金 PDF / Excel は同梱しません。</div>}
         </div>
 
         <div className="mt-2">

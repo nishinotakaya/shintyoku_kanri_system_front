@@ -27,9 +27,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
-  // 既定で全選択
-  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
-  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
+  // 既定で全添付タイプ全選択（請求書PDF / 立替金PDF / 立替金Excel）
+  const [selectedInvoicePdfIds, setSelectedInvoicePdfIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
+  const [selectedExpensePdfIds, setSelectedExpensePdfIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
+  const [selectedExpenseXlsxIds, setSelectedExpenseXlsxIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [to, setTo] = useState('takaya777boxing@gmail.com') // テスト送信先を初期値に
   const [recipientName, setRecipientName] = useState('株式会社ラボップ 御中')
   const [subject, setSubject] = useState('')
@@ -40,25 +41,24 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
   const [draftLoaded, setDraftLoaded] = useState(false)
 
-  const selectedInvoices = useMemo(() => invoices.filter((s) => selectedInvoiceIds.has(s.id)), [invoices, selectedInvoiceIds])
-  const selectedExpenses = useMemo(() => expenses.filter((s) => selectedExpenseIds.has(s.id)), [expenses, selectedExpenseIds])
+  // 立替金は PDF または Excel のどちらかが選ばれていれば「対象」扱い（金額計算用）
+  const expenseInvolvedIds = useMemo(() => {
+    const s = new Set<number>(); selectedExpensePdfIds.forEach((id) => s.add(id)); selectedExpenseXlsxIds.forEach((id) => s.add(id)); return s
+  }, [selectedExpensePdfIds, selectedExpenseXlsxIds])
+  const totalSelected = selectedInvoicePdfIds.size + selectedExpensePdfIds.size + selectedExpenseXlsxIds.size
 
   useEffect(() => { void requestDraft() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [])
 
-  const toggle = (kind: 'invoice' | 'expense', id: number) => {
-    if (kind === 'invoice') {
-      setSelectedInvoiceIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
-    } else {
-      setSelectedExpenseIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
-    }
+  const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<number>>>, id: number) => {
+    setter((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   }
 
   const requestDraft = async () => {
     setDrafting(true); setMsg(null)
     try {
       const r = await api.post<{ subject: string; body: string }>('/emails/labop_draft', {
-        invoice_submission_ids: Array.from(selectedInvoiceIds),
-        expense_submission_ids: Array.from(selectedExpenseIds),
+        invoice_submission_ids: Array.from(selectedInvoicePdfIds),
+        expense_submission_ids: Array.from(expenseInvolvedIds),
         recipient_name: recipientName,
         extra_count: extraFiles.length,
       })
@@ -81,12 +81,13 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
 
   const send = async () => {
     if (!subject.trim() || !body.trim()) { setMsg('件名・本文を入力してください'); return }
-    if (selectedInvoiceIds.size === 0 && selectedExpenseIds.size === 0) { setMsg('送付対象を1件以上選択してください'); return }
+    if (totalSelected === 0) { setMsg('送付対象を1件以上選択してください'); return }
     setSending(true); setMsg(null)
     try {
       const fd = new FormData()
-      Array.from(selectedInvoiceIds).forEach((id) => fd.append('invoice_submission_ids[]', String(id)))
-      Array.from(selectedExpenseIds).forEach((id) => fd.append('expense_submission_ids[]', String(id)))
+      Array.from(selectedInvoicePdfIds).forEach((id) => fd.append('invoice_pdf_submission_ids[]', String(id)))
+      Array.from(selectedExpensePdfIds).forEach((id) => fd.append('expense_pdf_submission_ids[]', String(id)))
+      Array.from(selectedExpenseXlsxIds).forEach((id) => fd.append('expense_xlsx_submission_ids[]', String(id)))
       fd.append('to', to)
       fd.append('subject', subject)
       fd.append('body', body)
@@ -109,7 +110,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
           <div>
             <div className="text-sm font-semibold text-[var(--color-text)]">📧 ラボップへ一括送付</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
-              請求書 {selectedInvoiceIds.size}/{invoices.length} 件 ／ 立替金 {selectedExpenseIds.size}/{expenses.length} 件
+              請求書PDF {selectedInvoicePdfIds.size}/{invoices.length} ／ 立替金PDF {selectedExpensePdfIds.size}/{expenses.length} ／ 立替金Excel {selectedExpenseXlsxIds.size}/{expenses.length}
             </div>
           </div>
           <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
@@ -136,13 +137,13 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
         </div>
 
         <div className="rounded-md border border-[var(--color-border)] px-2 py-1.5 mb-2">
-          <div className="text-[11px] font-semibold mb-1">送付対象を選択</div>
+          <div className="text-[11px] font-semibold mb-1">送付対象を選択（添付タイプ別。デフォルト全選択）</div>
           {invoices.length > 0 && (
-            <div className="mb-1">
-              <div className="text-[10px] text-sky-600 font-semibold">請求書（ラボップ宛 PDF）</div>
+            <div className="mb-2">
+              <div className="text-[10px] text-sky-600 font-semibold mb-0.5">請求書 PDF</div>
               {invoices.map((s) => (
                 <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
-                  <input type="checkbox" checked={selectedInvoiceIds.has(s.id)} onChange={() => toggle('invoice', s.id)} />
+                  <input type="checkbox" checked={selectedInvoicePdfIds.has(s.id)} onChange={() => toggleSet(setSelectedInvoicePdfIds, s.id)} />
                   <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
                   {s.total_override != null && <span className="text-sky-600">¥{s.total_override.toLocaleString()}</span>}
                 </label>
@@ -150,15 +151,26 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
             </div>
           )}
           {expenses.length > 0 && (
-            <div>
-              <div className="text-[10px] text-emerald-600 font-semibold">立替金（PDF + Excel）</div>
-              {expenses.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
-                  <input type="checkbox" checked={selectedExpenseIds.has(s.id)} onChange={() => toggle('expense', s.id)} />
-                  <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
-                </label>
-              ))}
-            </div>
+            <>
+              <div className="mb-2">
+                <div className="text-[10px] text-emerald-600 font-semibold mb-0.5">立替金 PDF</div>
+                {expenses.map((s) => (
+                  <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                    <input type="checkbox" checked={selectedExpensePdfIds.has(s.id)} onChange={() => toggleSet(setSelectedExpensePdfIds, s.id)} />
+                    <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
+                  </label>
+                ))}
+              </div>
+              <div>
+                <div className="text-[10px] text-emerald-600 font-semibold mb-0.5">立替金 Excel</div>
+                {expenses.map((s) => (
+                  <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                    <input type="checkbox" checked={selectedExpenseXlsxIds.has(s.id)} onChange={() => toggleSet(setSelectedExpenseXlsxIds, s.id)} />
+                    <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
+                  </label>
+                ))}
+              </div>
+            </>
           )}
           {invoices.length === 0 && expenses.length === 0 && (
             <div className="text-[11px] text-[var(--color-text-sub)]">承認済み申請がありません</div>
@@ -183,11 +195,14 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
         <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)]">
           自動添付:
           <ul className="ml-4 list-disc">
-            {selectedInvoices.map((s) => (
+            {invoices.filter((s) => selectedInvoicePdfIds.has(s.id)).map((s) => (
               <li key={`i${s.id}`}>請求書 PDF（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
             ))}
-            {selectedExpenses.map((s) => (
-              <li key={`e${s.id}`}>立替金 PDF + Excel（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
+            {expenses.filter((s) => selectedExpensePdfIds.has(s.id)).map((s) => (
+              <li key={`ep${s.id}`}>立替金 PDF（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
+            ))}
+            {expenses.filter((s) => selectedExpenseXlsxIds.has(s.id)).map((s) => (
+              <li key={`ex${s.id}`}>立替金 Excel（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
             ))}
           </ul>
         </div>
@@ -219,7 +234,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">閉じる</button>
             <button onClick={send} disabled={sending || drafting || !draftLoaded} className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
-              {sending ? '送信中…' : `📧 一括送信 (${selectedInvoiceIds.size + selectedExpenseIds.size} 件)`}
+              {sending ? '送信中…' : `📧 一括送信 (${totalSelected} 件)`}
             </button>
           </div>
         </div>
