@@ -25,6 +25,10 @@ const NAV: NavItem[] = [
 
 function Layout({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    const stored = localStorage.getItem('sidebarOpen')
+    return stored === null ? true : stored === 'true'
+  })
   const nav = useNavigate()
   const loc = useLocation()
 
@@ -32,15 +36,24 @@ function Layout({ children }: { children: React.ReactNode }) {
     fetchMe().then(setMe)
   }, [])
 
+  useEffect(() => {
+    localStorage.setItem('sidebarOpen', String(sidebarOpen))
+  }, [sidebarOpen])
+
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r border-[var(--color-border)] bg-white flex flex-col sticky top-0 h-screen">
-        <Link to="/" className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--color-border)]">
-          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md" />
+      <aside
+        className={`shrink-0 bg-white flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-out overflow-hidden ${
+          sidebarOpen ? 'w-56 border-r border-[var(--color-border)]' : 'w-0 border-r-0'
+        }`}
+        aria-hidden={!sidebarOpen}
+      >
+        <Link to="/" className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--color-border)] min-w-[14rem]">
+          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md shrink-0" />
           <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">進捗管理システム</div>
         </Link>
-        <nav className="flex-1 px-3 py-3 space-y-0.5">
+        <nav className="flex-1 px-3 py-3 space-y-0.5 min-w-[14rem]">
           {NAV.filter((n) => !n.adminOnly || !!me?.admin).map((n) => {
             const active = loc.pathname === n.to
             return (
@@ -66,17 +79,29 @@ function Layout({ children }: { children: React.ReactNode }) {
       {/* Main area */}
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="sticky top-0 z-20 bg-white border-b border-[var(--color-border)] shadow-sm">
-          <div className="flex items-center justify-end gap-4 px-6 py-3">
-            <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
+          <div className="flex items-center gap-4 px-6 py-3">
             <button
-              onClick={async () => {
-                await signOut()
-                nav('/sign_in')
-              }}
-              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+              type="button"
+              onClick={() => setSidebarOpen((o) => !o)}
+              aria-label={sidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+              aria-expanded={sidebarOpen}
+              title={sidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]"
             >
-              ログアウト
+              <span aria-hidden className="text-lg leading-none">{sidebarOpen ? '✕' : '☰'}</span>
             </button>
+            <div className="ml-auto flex items-center gap-4">
+              <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
+              <button
+                onClick={async () => {
+                  await signOut()
+                  nav('/sign_in')
+                }}
+                className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
         </header>
         <main className="flex-1 px-6 py-6">{children}</main>
