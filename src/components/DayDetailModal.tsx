@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -74,7 +74,7 @@ const STATUS_BADGE: Record<number, { label: string; class: string }> = {
 
 type TaskComment = { id: number; content: string; created_user_name?: string | null; created?: string | null }
 
-function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings, editable = true, assignee }: {
+function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings, editable = true, assignee, onMemoChanged }: {
   task: BacklogTask
   badge?: { label: string; class: string }
   assignee?: string
@@ -82,6 +82,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
   onAddToWorkReport: (issueKey: string, hours: string) => Promise<void> | void
   onEditWings: () => void
   alreadyInWings: boolean
+  onMemoChanged?: (taskId: number, memo: string) => void
 }) {
   const [hours, setHours] = useState('1')
   const [adding, setAdding] = useState(false)
@@ -92,6 +93,24 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
   const [latestComment, setLatestComment] = useState<TaskComment | null>(null)
   const [memoOpen, setMemoOpen] = useState(false)
   const [latestOpen, setLatestOpen] = useState(false)
+  const [memoDraft, setMemoDraft] = useState<string>(task.memo ?? '')
+  const [memoSaving, setMemoSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const memoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => { setMemoDraft(task.memo ?? '') }, [task.memo])
+  const saveMemo = (value: string) => {
+    if (memoTimer.current) clearTimeout(memoTimer.current)
+    memoTimer.current = setTimeout(async () => {
+      setMemoSaving('saving')
+      try {
+        await api.patch(`/backlog/tasks/${task.id}`, { memo: value })
+        setMemoSaving('saved')
+        onMemoChanged?.(task.id, value)
+        setTimeout(() => setMemoSaving((s) => (s === 'saved' ? 'idle' : s)), 1200)
+      } catch {
+        setMemoSaving('error')
+      }
+    }, 400)
+  }
 
   // 最新1件は自動で取得（メモ代わりに常時表示）
   useEffect(() => {
@@ -187,25 +206,51 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
         </div>
       </div>
       <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" draggable={false} className="block text-[var(--color-text)] truncate">{task.summary}</a>
-      {(task.memo ?? '').trim().length > 0 && (
-        <div className="mt-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-[var(--color-text)]">
-          <button
-            type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMemoOpen((v) => !v) }}
-            className="w-full flex items-center justify-between px-2 py-1 hover:bg-amber-100"
-          >
-            <span className="font-semibold text-amber-700">📝 メモ {memoOpen ? '▲' : '▼'}</span>
-            {!memoOpen && (
-              <span className="ml-2 truncate text-[var(--color-text-sub)] flex-1 text-left">
-                {task.memo!.replace(/\s+/g, ' ').slice(0, 30)}{task.memo!.length > 30 && '…'}
-              </span>
-            )}
-          </button>
-          {memoOpen && (
-            <div className="px-2 pb-1 whitespace-pre-wrap break-words">{task.memo}</div>
+      <div className="mt-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-[var(--color-text)]">
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMemoOpen((v) => !v) }}
+          className="w-full flex items-center justify-between px-2 py-1 hover:bg-amber-100"
+        >
+          <span className="font-semibold text-amber-700">📝 メモ {memoOpen ? '▲' : '▼'}</span>
+          {!memoOpen && (
+            <span className="ml-2 truncate text-[var(--color-text-sub)] flex-1 text-left">
+              {memoDraft.trim().length > 0
+                ? `${memoDraft.replace(/\s+/g, ' ').slice(0, 30)}${memoDraft.length > 30 ? '…' : ''}`
+                : '（未入力）'}
+            </span>
           )}
-        </div>
-      )}
+          {memoSaving !== 'idle' && (
+            <span className={`ml-1 text-[9px] font-semibold ${
+              memoSaving === 'saving' ? 'text-gray-500' :
+              memoSaving === 'saved' ? 'text-emerald-600' :
+              'text-red-500'
+            }`}>
+              {memoSaving === 'saving' ? '保存中…' : memoSaving === 'saved' ? '✓保存' : '失敗'}
+            </span>
+          )}
+        </button>
+        {memoOpen && (
+          <div className="px-2 pb-1.5">
+            {editable ? (
+              <textarea
+                value={memoDraft}
+                onChange={(e) => { setMemoDraft(e.target.value); saveMemo(e.target.value) }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                placeholder="メモを入力…"
+                rows={2}
+                draggable={false}
+                onDragStart={(e) => e.preventDefault()}
+                className="w-full resize-y min-h-[36px] rounded border border-amber-200 bg-white px-2 py-1 text-[11px] text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-amber-400"
+              />
+            ) : (
+              <div className="whitespace-pre-wrap break-words">{memoDraft || '（未入力）'}</div>
+            )}
+          </div>
+        )}
+      </div>
       {latestComment && (
         <div className="mt-1 rounded bg-sky-50 border border-sky-200 text-[10px] text-[var(--color-text)]">
           <button
@@ -886,6 +931,16 @@ export default function DayDetailModal({
                               onAddToWorkReport={(issueKey, hours) => addTaskToWorkReport(issueKey, hours, targetAssignee)}
                               onEditWings={() => wingsReport && startEdit(wingsReport)}
                               alreadyInWings={alreadyInWings}
+                              onMemoChanged={(taskId, memo) => {
+                                setTasksByAssignee((prev) => {
+                                  const next = { ...prev }
+                                  for (const k of Object.keys(next)) {
+                                    next[k] = next[k].map((t) => t.id === taskId ? { ...t, memo } : t)
+                                  }
+                                  return next
+                                })
+                                setAllTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, memo } : t))
+                              }}
                             />
                           )
                         })}
