@@ -139,9 +139,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
 
   const formatUnreadBadge = (n: number): string => {
     if (n <= 0) return ''
-    const circles = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨']
-    if (n <= 9) return circles[n - 1]
-    return '⑩+'
+    return n > 99 ? '99+' : String(n)
   }
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
@@ -193,7 +191,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
             {unreadCount > 0 && (
               <span
                 aria-label={`未読${unreadCount}件`}
-                className="absolute -top-1.5 -right-1.5 leading-none text-red-500 text-[11px] font-bold drop-shadow"
+                className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[12px] font-bold leading-none flex items-center justify-center shadow ring-2 ring-white"
               >
                 {formatUnreadBadge(unreadCount)}
               </span>
