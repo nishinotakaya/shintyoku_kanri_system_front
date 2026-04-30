@@ -17,7 +17,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function SelfInvoiceMailModal({ year, month, category, onClose }: Props) {
   const [to, setTo] = useState('')
-  const [recipientName, setRecipientName] = useState('株式会社ラボップ ご担当者')
+  const [recipientName, setRecipientName] = useState('株式会社ラボップ 御中')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
@@ -107,7 +107,7 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
             </datalist>
           </label>
           <label className="block">
-            <div className="text-[11px] font-semibold mb-0.5">宛名 (xxx様)</div>
+            <div className="text-[11px] font-semibold mb-0.5">宛名（会社=御中 / 個人=様）</div>
             <input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
           </label>
         </div>
