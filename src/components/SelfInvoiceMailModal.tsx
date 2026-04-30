@@ -22,10 +22,12 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
   const [includeExpense, setIncludeExpense] = useState(true)
+  const [availableExpenseTotal, setAvailableExpenseTotal] = useState<number | null>(null)
   const [drafting, setDrafting] = useState(false)
   const [sending, setSending] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [draftLoaded, setDraftLoaded] = useState(false)
+  const expenseDisabled = availableExpenseTotal !== null && availableExpenseTotal <= 0
 
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
 
@@ -34,7 +36,7 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
   const requestDraft = async () => {
     setDrafting(true); setMsg(null)
     try {
-      const r = await api.post<{ subject: string; body: string }>('/emails/self_invoice_draft', {
+      const r = await api.post<{ subject: string; body: string; available_expense_total?: number }>('/emails/self_invoice_draft', {
         month: monthParam, category,
         recipient_name: recipientName,
         include_expense: includeExpense,
@@ -42,6 +44,10 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
       setSubject(r.data.subject)
       setBody(r.data.body)
       setDraftLoaded(true)
+      if (typeof r.data.available_expense_total === 'number') {
+        setAvailableExpenseTotal(r.data.available_expense_total)
+        if (r.data.available_expense_total <= 0) setIncludeExpense(false)
+      }
     } catch (e: any) {
       setMsg(`AI下書き失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setDrafting(false) }
@@ -122,11 +128,27 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
         </label>
 
         <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)]">
-          <label className="flex items-center gap-2 cursor-pointer mb-1">
-            <input type="checkbox" checked={includeExpense} onChange={(e) => setIncludeExpense(e.target.checked)} className="accent-emerald-500" />
-            <span className="font-semibold">立替金 (PDF + Excel) も同梱する</span>
+          <label className={`flex items-center gap-2 mb-1 ${expenseDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input
+              type="checkbox"
+              checked={includeExpense && !expenseDisabled}
+              disabled={expenseDisabled}
+              onChange={(e) => setIncludeExpense(e.target.checked)}
+              className="accent-emerald-500"
+            />
+            <span className="font-semibold">
+              立替金 (PDF + Excel) も同梱する
+              {availableExpenseTotal !== null && (
+                <span className="ml-1 font-normal">
+                  （対象月の立替金合計: ¥{availableExpenseTotal.toLocaleString()}）
+                </span>
+              )}
+            </span>
           </label>
-          自動添付: 請求書 PDF{includeExpense ? ' + 立替金 PDF + 立替金 Excel' : ''}（オリジナル宛先・発行者で生成）
+          {expenseDisabled
+            ? <span className="text-amber-600">立替金が 0 円のため、立替金 PDF / Excel は同梱しません。</span>
+            : <>自動添付: 請求書 PDF{includeExpense ? ' + 立替金 PDF + 立替金 Excel' : ''}（オリジナル宛先・発行者で生成）</>
+          }
         </div>
 
         <div className="mt-2">
