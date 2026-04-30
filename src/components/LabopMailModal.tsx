@@ -27,8 +27,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
-  // 既定で全添付タイプ全選択（請求書PDF / 立替金PDF / 立替金Excel）
+  // 既定で全添付タイプ全選択（請求書PDF / 業務報告書Excel / 立替金PDF / 立替金Excel）
   const [selectedInvoicePdfIds, setSelectedInvoicePdfIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
+  const [selectedWorkReportXlsxIds, setSelectedWorkReportXlsxIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
   const [selectedExpensePdfIds, setSelectedExpensePdfIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [selectedExpenseXlsxIds, setSelectedExpenseXlsxIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [to, setTo] = useState('takaya777boxing@gmail.com') // テスト送信先を初期値に
@@ -45,7 +46,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
   const expenseInvolvedIds = useMemo(() => {
     const s = new Set<number>(); selectedExpensePdfIds.forEach((id) => s.add(id)); selectedExpenseXlsxIds.forEach((id) => s.add(id)); return s
   }, [selectedExpensePdfIds, selectedExpenseXlsxIds])
-  const totalSelected = selectedInvoicePdfIds.size + selectedExpensePdfIds.size + selectedExpenseXlsxIds.size
+  const totalSelected = selectedInvoicePdfIds.size + selectedWorkReportXlsxIds.size + selectedExpensePdfIds.size + selectedExpenseXlsxIds.size
 
   useEffect(() => { void requestDraft() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [])
 
@@ -86,6 +87,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
     try {
       const fd = new FormData()
       Array.from(selectedInvoicePdfIds).forEach((id) => fd.append('invoice_pdf_submission_ids[]', String(id)))
+      Array.from(selectedWorkReportXlsxIds).forEach((id) => fd.append('work_report_xlsx_submission_ids[]', String(id)))
       Array.from(selectedExpensePdfIds).forEach((id) => fd.append('expense_pdf_submission_ids[]', String(id)))
       Array.from(selectedExpenseXlsxIds).forEach((id) => fd.append('expense_xlsx_submission_ids[]', String(id)))
       fd.append('to', to)
@@ -110,7 +112,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
           <div>
             <div className="text-sm font-semibold text-[var(--color-text)]">📧 ラボップへ一括送付</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
-              請求書PDF {selectedInvoicePdfIds.size}/{invoices.length} ／ 立替金PDF {selectedExpensePdfIds.size}/{expenses.length} ／ 立替金Excel {selectedExpenseXlsxIds.size}/{expenses.length}
+              請求書PDF {selectedInvoicePdfIds.size}/{invoices.length} ／ 業務報告書Excel {selectedWorkReportXlsxIds.size}/{invoices.length} ／ 立替金PDF {selectedExpensePdfIds.size}/{expenses.length} ／ 立替金Excel {selectedExpenseXlsxIds.size}/{expenses.length}
             </div>
           </div>
           <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
@@ -146,6 +148,17 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
                   <input type="checkbox" checked={selectedInvoicePdfIds.has(s.id)} onChange={() => toggleSet(setSelectedInvoicePdfIds, s.id)} />
                   <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
                   {s.total_override != null && <span className="text-sky-600">¥{s.total_override.toLocaleString()}</span>}
+                </label>
+              ))}
+            </div>
+          )}
+          {invoices.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[10px] text-fuchsia-600 font-semibold mb-0.5">業務報告書 Excel</div>
+              {invoices.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                  <input type="checkbox" checked={selectedWorkReportXlsxIds.has(s.id)} onChange={() => toggleSet(setSelectedWorkReportXlsxIds, s.id)} />
+                  <span>{s.user_display_name} {s.year}年{s.month}月（{CATEGORY_LABELS[s.category] ?? s.category}）</span>
                 </label>
               ))}
             </div>
