@@ -98,6 +98,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [previewFor, setPreviewFor] = useState<Submission | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewMode, setPreviewMode] = useState<'pdf' | 'xlsx'>('pdf')
+  const [xlsxHtml, setXlsxHtml] = useState<string | null>(null)
+  const [xlsxLoading, setXlsxLoading] = useState(false)
 
   // ラボップ宛 一括メール送付モーダル (admin が全承認済みを一挙に送付)
   const [mailModalOpen, setMailModalOpen] = useState(false)
@@ -195,6 +198,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   // 確認モーダル: 申請者の PDF をそのまま blob 取得して iframe 表示
   const openPreview = async (s: Submission) => {
     setPreviewFor(s); setPreviewUrl(null); setPreviewLoading(true)
+    setPreviewMode('pdf'); setXlsxHtml(null)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
       const { blob } = await fetchExportBlob(pdfPathFor(s.kind), {
@@ -209,9 +213,32 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       setPreviewLoading(false)
     }
   }
+  const loadXlsxPreview = async (s: Submission) => {
+    if (xlsxHtml || xlsxLoading) return
+    setXlsxLoading(true)
+    try {
+      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+      const { blob } = await fetchExportBlob('/exports/expense.xlsx', {
+        month: monthParam,
+        category: s.category,
+        as_user_id: s.user_id,
+      }, 'preview.xlsx')
+      const ab = await blob.arrayBuffer()
+      const XLSX = await import('xlsx')
+      const wb = XLSX.read(ab, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const html = XLSX.utils.sheet_to_html(ws, { editable: false })
+      setXlsxHtml(html)
+    } catch (e: any) {
+      setMsg(`Excel プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setXlsxLoading(false)
+    }
+  }
   const closePreview = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null); setPreviewFor(null); setPreviewLoading(false)
+    setPreviewMode('pdf'); setXlsxHtml(null); setXlsxLoading(false)
   }
 
   // 申請者本人の PDF DL (admin 視点で as_user_id 使う)
@@ -528,7 +555,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
         </div>
       )}
 
-      {/* === 確認モーダル (PDF プレビュー + 承認/却下) === */}
+      {/* === 確認モーダル (PDF / Excel プレビュー + 承認/却下) === */}
       {previewFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closePreview}>
           <div className="w-full max-w-4xl h-[85vh] rounded-xl bg-white p-3 shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -541,13 +568,53 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
               </div>
               <button onClick={closePreview} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
             </div>
+            {previewFor.kind === 'expense' && (
+              <div className="flex items-center gap-1 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('pdf')}
+                  className={`rounded-t-md px-3 py-1 text-[11px] font-semibold border-b-2 transition ${
+                    previewMode === 'pdf'
+                      ? 'border-sky-500 text-sky-700 bg-sky-50'
+                      : 'border-transparent text-[var(--color-text-sub)] hover:text-[var(--color-text)]'
+                  }`}
+                >📄 PDF</button>
+                <button
+                  type="button"
+                  onClick={() => { setPreviewMode('xlsx'); if (previewFor) void loadXlsxPreview(previewFor) }}
+                  className={`rounded-t-md px-3 py-1 text-[11px] font-semibold border-b-2 transition ${
+                    previewMode === 'xlsx'
+                      ? 'border-emerald-500 text-emerald-700 bg-emerald-50'
+                      : 'border-transparent text-[var(--color-text-sub)] hover:text-[var(--color-text)]'
+                  }`}
+                >📊 Excel</button>
+              </div>
+            )}
             <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] overflow-hidden">
-              {previewLoading && <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-sub)]">PDF を読み込み中…</div>}
-              {!previewLoading && previewUrl && (
-                <iframe src={previewUrl} className="w-full h-full" title="PDF preview" />
+              {previewMode === 'pdf' && (
+                <>
+                  {previewLoading && <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-sub)]">PDF を読み込み中…</div>}
+                  {!previewLoading && previewUrl && (
+                    <iframe src={previewUrl} className="w-full h-full" title="PDF preview" />
+                  )}
+                  {!previewLoading && !previewUrl && (
+                    <div className="h-full flex items-center justify-center text-sm text-red-500">PDF を取得できませんでした</div>
+                  )}
+                </>
               )}
-              {!previewLoading && !previewUrl && (
-                <div className="h-full flex items-center justify-center text-sm text-red-500">PDF を取得できませんでした</div>
+              {previewMode === 'xlsx' && (
+                <div className="h-full overflow-auto bg-white p-3">
+                  {xlsxLoading && <div className="text-sm text-[var(--color-text-sub)]">Excel を読み込み中…</div>}
+                  {!xlsxLoading && xlsxHtml && (
+                    <div
+                      className="xlsx-preview text-[12px] [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-gray-300 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-gray-100"
+                      dangerouslySetInnerHTML={{ __html: xlsxHtml }}
+                    />
+                  )}
+                  {!xlsxLoading && !xlsxHtml && (
+                    <div className="text-sm text-red-500">Excel を取得できませんでした</div>
+                  )}
+                </div>
               )}
             </div>
             <div className="mt-2 flex items-center justify-between gap-2">
