@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
+import { fetchExportBlob } from '../components/FolderSaveButtons'
 
 type Submission = {
   id: number
@@ -62,6 +63,54 @@ export default function InvoicesPage() {
     api.get<Me>('/me').then((r) => setMe(r.data)).catch(() => {})
     load().catch(() => {})
   }, [])
+
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const downloadInvoice = async (s: Submission, target: 'self' | 'labop') => {
+    setBusyId(`${s.kind}-${s.id}`)
+    try {
+      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+      const path = s.kind === 'expense' ? '/exports/expense.pdf' : '/exports/invoice.pdf'
+      const params: Record<string, unknown> = { month: monthParam, category: s.category }
+      if (target === 'labop') params.invoice_submission_id = s.id
+      else params.as_user_id = s.user_id
+      const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? ''
+      const kindLabel = s.kind === 'expense' ? '立替金' : '請求書'
+      const targetSuffix = target === 'labop' ? '_株式会社ラボップ' : ''
+      const filename = `${surname}_${kindLabel}_${s.year}年_${s.month}月分${targetSuffix}.pdf`
+      const { blob, filename: fn } = await fetchExportBlob(path, params, filename)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const downloadExpenseXlsx = async (s: Submission, target: 'self' | 'labop') => {
+    setBusyId(`${s.kind}-${s.id}-xlsx`)
+    try {
+      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+      const params: Record<string, unknown> = { month: monthParam, category: s.category }
+      if (target === 'labop') params.invoice_submission_id = s.id
+      else params.as_user_id = s.user_id
+      const surname = (s.user_display_name ?? '').split(/[\s　]/)[0] ?? ''
+      const targetSuffix = target === 'labop' ? '_株式会社ラボップ' : ''
+      const filename = `${surname}_立替金_${s.year}年_${s.month}月分${targetSuffix}.xlsx`
+      const { blob, filename: fn } = await fetchExportBlob('/exports/expense.xlsx', params, filename)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   const filtered = useMemo(() => {
     return items
@@ -132,11 +181,17 @@ export default function InvoicesPage() {
                 <th className="px-2 py-2 text-right">金額</th>
                 <th className="px-2 py-2 text-center">ステータス</th>
                 <th className="px-2 py-2 text-left">申請日時</th>
+                <th className="px-2 py-2 text-center">DL</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => (
-                <tr key={`${s.kind}-${s.id}`} className="border-t border-[var(--color-border)]">
+              {filtered.map((s) => {
+                const rowKey = `${s.kind}-${s.id}`
+                const busyPdf = busyId === rowKey
+                const busyXlsx = busyId === `${rowKey}-xlsx`
+                const isApproved = s.status === 'approved'
+                return (
+                <tr key={rowKey} className="border-t border-[var(--color-border)]">
                   <td className="px-2 py-2 font-mono">{s.year}/{String(s.month).padStart(2, '0')}</td>
                   <td className="px-2 py-2">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] ${s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -164,8 +219,35 @@ export default function InvoicesPage() {
                   <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">
                     {s.submitted_at ? new Date(s.submitted_at).toLocaleString('ja-JP') : '—'}
                   </td>
+                  <td className="px-2 py-2 text-center">
+                    <div className="flex gap-1 justify-center flex-wrap">
+                      <button onClick={() => downloadInvoice(s, 'self')} disabled={busyPdf}
+                        className="rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[10px] hover:bg-gray-50 disabled:opacity-50" title="申請者ベースの PDF">
+                        {busyPdf ? '…' : '📥 PDF'}
+                      </button>
+                      {s.kind === 'expense' && (
+                        <button onClick={() => downloadExpenseXlsx(s, 'self')} disabled={busyXlsx}
+                          className="rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[10px] hover:bg-gray-50 disabled:opacity-50" title="申請者ベースの Excel">
+                          {busyXlsx ? '…' : '📊 xlsx'}
+                        </button>
+                      )}
+                      {isApproved && me?.admin && (
+                        <button onClick={() => downloadInvoice(s, 'labop')} disabled={busyPdf}
+                          className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50" title="ラボップ宛 PDF">
+                          🏢 ラボップ
+                        </button>
+                      )}
+                      {isApproved && me?.admin && s.kind === 'expense' && (
+                        <button onClick={() => downloadExpenseXlsx(s, 'labop')} disabled={busyXlsx}
+                          className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50" title="ラボップ宛 Excel">
+                          🏢 xlsx
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

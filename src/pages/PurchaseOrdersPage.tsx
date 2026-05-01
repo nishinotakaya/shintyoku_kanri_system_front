@@ -122,8 +122,12 @@ export default function PurchaseOrdersPage() {
       {msg && <div className={`text-[11px] ${msg.includes('失敗') ? 'text-red-500' : 'text-emerald-600'}`}>{msg}</div>}
 
       {editing && (
-        <div className="glass rounded-xl p-3 shadow-md space-y-2">
-          <div className="text-sm font-semibold">{editing.id ? '編集' : '新規追加'}</div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={cancel}>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-xl bg-white p-4 shadow-xl space-y-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold">{editing.id ? '📋 注文書を編集' : '📋 注文書を新規追加'}</div>
+            <button onClick={cancel} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">発注番号 *</div>
@@ -181,12 +185,13 @@ export default function PurchaseOrdersPage() {
                 rows={2} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
             </label>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
             <button onClick={cancel} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
             <button onClick={save} disabled={busy}
               className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
               {busy ? '保存中…' : '💾 保存'}
             </button>
+          </div>
           </div>
         </div>
       )}
