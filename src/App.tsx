@@ -7,6 +7,8 @@ import Dashboard from './pages/Dashboard'
 import ProgressPage from './pages/ProgressPage'
 import CalendarPage from './pages/CalendarPage'
 import UsersPage from './pages/UsersPage'
+import PurchaseOrdersPage from './pages/PurchaseOrdersPage'
+import InvoicesPage from './pages/InvoicesPage'
 import { fetchMe, isAuthed, signOut } from './lib/auth'
 import { api } from './lib/api'
 import type { Me } from './lib/api'
@@ -23,6 +25,8 @@ const NAV: NavItem[] = [
   { to: '/', label: 'カレンダー', icon: '📅' },
   { to: '/attendance', label: '勤怠', icon: '🕒' },
   { to: '/progress', label: '進捗管理', icon: '📊' },
+  { to: '/purchase-orders', label: '注文書', icon: '📋' },
+  { to: '/invoices', label: '請求書一覧', icon: '📄' },
   { to: '/users', label: 'ユーザー一覧', icon: '👥', adminOnly: true },
 ]
 
@@ -242,6 +246,26 @@ export default function App() {
           <RequireAuth>
             <Layout>
               <UsersPage />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/purchase-orders"
+        element={
+          <RequireAuth>
+            <Layout>
+              <PurchaseOrdersPage />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/invoices"
+        element={
+          <RequireAuth>
+            <Layout>
+              <InvoicesPage />
             </Layout>
           </RequireAuth>
         }

@@ -60,6 +60,7 @@ export type Expense = {
   amount: number
   payee_or_line: string | null
   category: string | null
+  company_burden?: boolean
 }
 
 export type Me = {
