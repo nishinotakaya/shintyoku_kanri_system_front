@@ -108,7 +108,7 @@ export default function PurchaseOrdersPage() {
         <div>
           <div className="text-lg font-semibold tracking-tight">📋 注文書一覧</div>
           <div className="text-[11px] text-[var(--color-text-sub)]">
-            ラボップから受領した発注書を管理。請求書は発注書ごとに紐付けて発行
+            ラボップから受領した注文書を管理。請求書は注文書ごとに紐付けて発行
           </div>
         </div>
         {isAdmin && (
@@ -175,7 +175,7 @@ export default function PurchaseOrdersPage() {
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
             </label>
             <label className="block col-span-2">
-              <div className="text-[11px] font-semibold mb-0.5">発注書 PDF URL（Google Drive 等）</div>
+              <div className="text-[11px] font-semibold mb-0.5">注文書 PDF URL（Google Drive 等）</div>
               <input value={editing.file_url ?? ''} onChange={(e) => setEditing({ ...editing, file_url: e.target.value })}
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="https://drive.google.com/file/..." />
             </label>

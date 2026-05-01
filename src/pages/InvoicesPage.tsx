@@ -543,7 +543,7 @@ export default function InvoicesPage() {
                   <option value="invoice">請求書</option>
                   <option value="expense">立替金</option>
                 </select></label>
-              <label className="col-span-2"><div className="text-[11px] font-semibold mb-0.5">対応する発注書（請求書のみ）</div>
+              <label className="col-span-2"><div className="text-[11px] font-semibold mb-0.5">対応する注文書（請求書のみ）</div>
                 <select value={createForm.received_purchase_order_id} onChange={(e) => setCreateForm({ ...createForm, received_purchase_order_id: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full rounded-md border px-2 py-1 text-sm">
                   <option value="">— 紐付けなし —</option>
                   {pos.map((po) => <option key={po.id} value={po.id}>{po.order_no}{po.subject ? ` / ${po.subject.slice(0, 30)}` : ''}</option>)}

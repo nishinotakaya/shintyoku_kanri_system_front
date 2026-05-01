@@ -106,7 +106,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [xlsxHtml, setXlsxHtml] = useState<string | null>(null)
   const [xlsxLoading, setXlsxLoading] = useState(false)
 
-  // 申請時に紐付ける受領発注書 (PO) 一覧
+  // 申請時に紐付ける受領注文書 (PO) 一覧
   type ReceivedPO = { id: number; order_no: string; subject: string | null; user_id: number; category: string | null }
   const [pos, setPos] = useState<ReceivedPO[]>([])
   const [selectedPoId, setSelectedPoId] = useState<number | ''>('') // 申請に使う PO id
@@ -410,9 +410,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
           </div>
           {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
         </div>
-        {/* 請求書を発注書に紐付ける（任意） */}
+        {/* 請求書を注文書に紐付ける（任意） */}
         <div className="mb-1.5 flex items-center gap-2 text-[11px] bg-amber-50 px-2 py-1 rounded">
-          <span className="text-[var(--color-text-sub)] font-semibold">対応する発注書（請求書のみ任意）:</span>
+          <span className="text-[var(--color-text-sub)] font-semibold">対応する注文書（請求書のみ任意）:</span>
           <select value={selectedPoId} onChange={(e) => setSelectedPoId(e.target.value === '' ? '' : Number(e.target.value))}
             className="flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px]">
             <option value="">— 紐付けなし —</option>
