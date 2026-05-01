@@ -32,6 +32,9 @@ type Props = {
   onCreateTeamSchedule?: (date: string, person: string, status: string) => void
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
+  // 出社ボタン: 押すとその日の Wings work_report に default 乗車区間+交通費を反映
+  defaultTransit?: { from: string; to: string; fee: number } | null
+  onToggleAttendance?: (date: string, attended: boolean) => void
 }
 
 // 1日のステータス → { living, tama } 予定時間
@@ -63,7 +66,7 @@ function statusClass(status: string) {
   return 'bg-amber-100 text-amber-700'
 }
 
-export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname }: Props) {
+export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, defaultTransit, onToggleAttendance }: Props) {
   const teamMap = useMemo(() => {
     const map = new Map<string, TeamScheduleEntry[]>()
     teamSchedules.forEach((entry) => {
@@ -294,6 +297,25 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                   ¥{c.expenses.reduce((s, e) => s + e.amount, 0).toLocaleString()}
                 </div>
               )}
+
+              {/* 出社/取消ボタン: Wings の work_report に交通費が入っていれば「取消」、なければ「出社」 */}
+              {onToggleAttendance && defaultTransit && (() => {
+                const wingsReport = c.reports.find((r) => (r.category ?? 'wings') === 'wings' && r.transit_fee != null)
+                const attended = !!wingsReport
+                return (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleAttendance(c.date, attended) }}
+                    title={attended ? `取消: ${wingsReport!.transit_section ?? ''} ¥${wingsReport!.transit_fee}` : `出社: ${defaultTransit.from}〜${defaultTransit.to} ¥${defaultTransit.fee.toLocaleString()}`}
+                    className={`mt-auto rounded-md px-2 py-0.5 text-[10px] font-bold shadow-sm transition ${
+                      attended
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600'
+                        : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600'
+                    }`}
+                  >
+                    {attended ? '取消' : '出社'}
+                  </button>
+                )
+              })()}
 
               {/* チーム予定（西野・川村・大隅 を常に 3 行表示） */}
               {(onCreateTeamSchedule || onUpdateTeamSchedule || (teamMap.get(c.date) ?? []).length > 0) && (
