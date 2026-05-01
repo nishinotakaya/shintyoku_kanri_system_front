@@ -56,7 +56,7 @@ export default function PurchaseOrderMailModal({ orderNo, subjectHint, fetchPdfB
       fd.append('to', to)
       fd.append('subject', subject)
       fd.append('body', body)
-      fd.append('files[]', new File([pdfBlob], `発注書_${orderNo}.pdf`, { type: 'application/pdf' }))
+      fd.append('files[]', new File([pdfBlob], `注文書_${orderNo}.pdf`, { type: 'application/pdf' }))
       extraFiles.forEach((f) => fd.append('files[]', f))
       const r = await api.post<{ ok: boolean; sent_to: string }>('/emails/purchase_order_send', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -74,7 +74,7 @@ export default function PurchaseOrderMailModal({ orderNo, subjectHint, fetchPdfB
       <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-2">
           <div>
-            <div className="text-sm font-semibold">📧 川村へ発注書を送付</div>
+            <div className="text-sm font-semibold">📧 川村へ注文書を送付</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">注文番号: {orderNo}</div>
           </div>
           <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
@@ -101,7 +101,7 @@ export default function PurchaseOrderMailModal({ orderNo, subjectHint, fetchPdfB
         </label>
 
         <div className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] text-[var(--color-text-sub)]">
-          標準添付: 発注書 PDF（送信時に最新内容で再生成）
+          標準添付: 注文書 PDF（送信時に最新内容で再生成）
         </div>
 
         <div className="mt-2">

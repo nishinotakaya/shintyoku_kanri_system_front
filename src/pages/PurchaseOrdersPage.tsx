@@ -63,7 +63,7 @@ export default function PurchaseOrdersPage() {
 
   const save = async () => {
     if (!editing) return
-    if (!editing.order_no?.trim()) { setMsg('発注番号を入力してください'); return }
+    if (!editing.order_no?.trim()) { setMsg('注文番号を入力してください'); return }
     setBusy(true); setMsg(null)
     try {
       const payload = {
@@ -130,7 +130,7 @@ export default function PurchaseOrdersPage() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">発注番号 *</div>
+              <div className="text-[11px] font-semibold mb-0.5">注文番号 *</div>
               <input value={editing.order_no ?? ''} onChange={(e) => setEditing({ ...editing, order_no: e.target.value })}
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="ORD-010014" />
             </label>
@@ -205,7 +205,7 @@ export default function PurchaseOrdersPage() {
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
-                <th className="px-2 py-2 text-left">発注番号</th>
+                <th className="px-2 py-2 text-left">注文番号</th>
                 <th className="px-2 py-2 text-left">受注者</th>
                 <th className="px-2 py-2 text-left">案件名</th>
                 <th className="px-2 py-2 text-left">期間</th>

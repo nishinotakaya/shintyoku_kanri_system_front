@@ -23,8 +23,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean }
 const NAV: NavItem[] = [
   { to: '/', label: 'カレンダー', icon: '📅' },
-  { to: '/attendance', label: '勤怠', icon: '🕒' },
   { to: '/progress', label: '進捗管理', icon: '📊' },
+  { to: '/attendance', label: '勤怠', icon: '🕒' },
   { to: '/purchase-orders', label: '注文書', icon: '📋' },
   { to: '/invoices', label: '請求書一覧', icon: '📄' },
   { to: '/users', label: 'ユーザー一覧', icon: '👥', adminOnly: true },

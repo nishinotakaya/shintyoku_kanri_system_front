@@ -189,6 +189,50 @@ export default function InvoicesPage() {
     } finally { setEditBusy(false) }
   }
 
+  // 集約 PDF/Excel 関連
+  const fetchMergedBlob = async (m: { kind: 'merged_expense' | 'merged_invoice'; ids: number[]; po: string | null; users: string[]; year: number; month: number; category: string }, format: 'pdf' | 'xlsx', preview = false) => {
+    const path = m.kind === 'merged_expense'
+      ? (format === 'xlsx' ? '/exports/merged_expense.xlsx' : '/exports/merged_expense.pdf')
+      : '/exports/merged_invoice.pdf'
+    const fd = new FormData()
+    if (m.kind === 'merged_expense') {
+      m.ids.forEach((id) => fd.append('expense_submission_ids[]', String(id)))
+    } else {
+      m.ids.forEach((id) => fd.append('invoice_submission_ids[]', String(id)))
+    }
+    if (preview) fd.append('disposition', 'inline')
+    const res = await api.post(path, fd, { responseType: 'blob' })
+    return res.data as Blob
+  }
+  const downloadMerged = async (m: any, format: 'pdf' | 'xlsx') => {
+    try {
+      const blob = await fetchMergedBlob(m, format)
+      const ym = `${m.year}年_${m.month}月分`
+      const surnames = m.users.map((u: string) => u.split(/[\s　]/)[0]).join('_')
+      const cat = CATEGORY_LABELS[m.category] ?? m.category
+      const ext = format
+      const filename = m.kind === 'merged_expense' ? `立替金_${surnames}_${cat}_${ym}.${ext}` : `${surnames}_請求書_${cat}_${ym}.${ext}`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+  const previewMerged = async (m: any) => {
+    try {
+      const blob = await fetchMergedBlob(m, 'pdf', true)
+      const url = URL.createObjectURL(blob)
+      // プレビューモーダル経路を流用
+      setPreviewSub({ id: 0, user_id: 0, user_display_name: m.users.join(' + '), year: m.year, month: m.month, category: m.category, kind: m.kind === 'merged_expense' ? 'expense' : 'invoice', status: 'approved', submitted_at: null, reviewed_at: null, note: m.po ?? null, total_override: m.total, default_total: null, received_purchase_order_no: m.po, received_purchase_order_subject: null } as Submission)
+      setPreviewUrl(url)
+      setPreviewLoading(false)
+    } catch (e: any) {
+      alert(`プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+
   const removeSubmission = async (s: Submission) => {
     if (!confirm(`${s.year}/${s.month} ${s.kind === 'invoice' ? '請求書' : '立替金'}（${s.user_display_name}）を削除しますか？`)) return
     try {
@@ -354,8 +398,8 @@ export default function InvoicesPage() {
             <div className="text-xs font-semibold text-fuchsia-700 mb-1">🔗 集約（複数ユーザー / PO まとめ）— ラボップ送付時は自動で 1 PDF に統合</div>
             <ul className="text-[11px] space-y-1">
               {mergedRows.map((m) => (
-                <li key={m.key} className="flex items-baseline justify-between border-t border-fuchsia-200 pt-1 first:border-t-0 first:pt-0">
-                  <div className="flex items-baseline gap-2 min-w-0">
+                <li key={m.key} className="flex items-baseline justify-between gap-2 border-t border-fuchsia-200 pt-1 first:border-t-0 first:pt-0">
+                  <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${m.kind === 'merged_expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
                       {m.kind === 'merged_expense' ? '立替金 集約' : '請求書 PO マージ'}
                     </span>
@@ -363,8 +407,18 @@ export default function InvoicesPage() {
                     <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[m.category] ?? m.category}</span>
                     {m.po && <span className="font-mono text-fuchsia-600">{m.po}</span>}
                     <span className="font-semibold">{m.users.join(' + ')}</span>
+                    <span className="font-mono tabular-nums text-[var(--color-text-sub)]">¥{m.total.toLocaleString()}</span>
                   </div>
-                  <span className="font-mono tabular-nums text-[var(--color-text-sub)]">¥{m.total.toLocaleString()}</span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => previewMerged(m)}
+                      className="rounded border border-sky-400 bg-white px-2 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50">🔍</button>
+                    <button onClick={() => downloadMerged(m, 'pdf')}
+                      className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow">📥 PDF</button>
+                    {m.kind === 'merged_expense' && (
+                      <button onClick={() => downloadMerged(m, 'xlsx')}
+                        className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow">📊 xlsx</button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -379,7 +433,7 @@ export default function InvoicesPage() {
                 <th className="px-2 py-2 text-left">種別</th>
                 <th className="px-2 py-2 text-left">カテゴリ</th>
                 <th className="px-2 py-2 text-left">申請者</th>
-                <th className="px-2 py-2 text-left">発注番号</th>
+                <th className="px-2 py-2 text-left">注文番号</th>
                 <th className="px-2 py-2 text-right">金額</th>
                 <th className="px-2 py-2 text-center">ステータス</th>
                 <th className="px-2 py-2 text-left">申請日時</th>
@@ -548,7 +602,7 @@ export default function InvoicesPage() {
                   <option value="">— 紐付けなし —</option>
                   {pos.map((po) => <option key={po.id} value={po.id}>{po.order_no}{po.subject ? ` / ${po.subject.slice(0, 30)}` : ''}</option>)}
                 </select></label>
-              <label className="col-span-2"><div className="text-[11px] font-semibold mb-0.5">備考（発注番号等）</div>
+              <label className="col-span-2"><div className="text-[11px] font-semibold mb-0.5">備考（注文番号等）</div>
                 <textarea value={createForm.note} onChange={(e) => setCreateForm({ ...createForm, note: e.target.value })} rows={2} className="w-full rounded-md border px-2 py-1 text-sm" /></label>
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
@@ -591,7 +645,7 @@ export default function InvoicesPage() {
               {editingSub.received_purchase_order_no && <span className="ml-2 font-mono text-fuchsia-600">{editingSub.received_purchase_order_no}</span>}
             </div>
             <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">備考（発注番号や補足）</div>
+              <div className="text-[11px] font-semibold mb-0.5">備考（注文番号や補足）</div>
               <textarea value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
                 rows={3} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-xs"
                 placeholder="ORD-010014 / タマリビング案件 西野・川村" />

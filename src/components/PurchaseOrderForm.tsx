@@ -390,7 +390,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
   const purchaseOrderFetchSpec = async () => {
     const payload = buildPayload()
     const res = await api.post('/exports/purchase_order.pdf', payload, { responseType: 'blob' })
-    const filename = `発注書_${CATEGORY_LABEL[category]}_${orderNo}.pdf`
+    const filename = `注文書_${CATEGORY_LABEL[category]}_${orderNo}.pdf`
     const monthFolderName = `${new Date().getMonth() + 1}月`
     // 発行履歴に DB 保存 (失敗しても DL 自体は止めない)
     try {
@@ -439,7 +439,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-widest text-[var(--color-text-sub)]">
-            発注書 — {CATEGORY_LABEL[category]}
+            注文書 — {CATEGORY_LABEL[category]}
             {position > 0 && <span className="ml-2 text-fuchsia-500">#{position + 1}枚目</span>}
           </div>
           <div className="mt-1 text-sm font-semibold text-[var(--color-text)] truncate">
@@ -476,13 +476,13 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
           <button
             onClick={() => setMailModalOpen(true)}
             className="rounded-md whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
-            title="川村へ発注書をメールで送付"
+            title="川村へ注文書をメールで送付"
           >
             📧 川村へ送付
           </button>
           {onRemove && (
             <button
-              onClick={() => { if (confirm('この発注書を削除しますか？')) onRemove() }}
+              onClick={() => { if (confirm('この注文書を削除しますか？')) onRemove() }}
               className="rounded-md whitespace-nowrap border border-red-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-500 hover:bg-red-50"
               title="このシートを削除"
             >
@@ -498,7 +498,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
           <div className="w-full max-w-4xl h-[88vh] rounded-xl bg-white p-3 shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-2">
               <div>
-                <div className="text-sm font-semibold">🔍 発注書プレビュー</div>
+                <div className="text-sm font-semibold">🔍 注文書プレビュー</div>
                 <div className="text-[11px] text-[var(--color-text-sub)]">注文番号 {orderNo} ／ {cfg.subject}</div>
               </div>
               <button onClick={closePreview} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
@@ -506,7 +506,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
             <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] overflow-hidden">
               {previewLoading && <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-sub)]">PDF を生成中…</div>}
               {!previewLoading && previewUrl && (
-                <iframe src={previewUrl} className="w-full h-full" title="発注書プレビュー" />
+                <iframe src={previewUrl} className="w-full h-full" title="注文書プレビュー" />
               )}
             </div>
             <div className="mt-2 flex justify-end gap-2">
@@ -522,7 +522,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3" onClick={() => setExpanded(false)}>
       <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-3">
-        <div className="text-sm font-semibold">✏️ 発注書を編集 — {CATEGORY_LABEL[category]}{position > 0 && <span className="ml-2 text-fuchsia-500">#{position + 1}枚目</span>}</div>
+        <div className="text-sm font-semibold">✏️ 注文書を編集 — {CATEGORY_LABEL[category]}{position > 0 && <span className="ml-2 text-fuchsia-500">#{position + 1}枚目</span>}</div>
         <div className="flex items-center gap-2">
           <button
             onClick={openContractModal}
@@ -568,7 +568,7 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
             className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm" />
         </label>
         <label className="block">
-          <span className="text-xs text-[var(--color-text-sub)]">発注書番号</span>
+          <span className="text-xs text-[var(--color-text-sub)]">注文書番号</span>
           <input value={orderNo} onChange={(e) => setOrderNo(e.target.value)}
             className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm font-mono" />
         </label>

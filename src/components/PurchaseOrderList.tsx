@@ -10,7 +10,7 @@ export default function PurchaseOrderList({ me, category }: { me: Me | null; cat
   const [loaded, setLoaded] = useState(false)
   const [page, setPage] = useState(0)
 
-  // カテゴリ切替で既存発注書の枚数を取得
+  // カテゴリ切替で既存注文書の枚数を取得
   useEffect(() => {
     setLoaded(false)
     setPage(0)
@@ -51,7 +51,7 @@ export default function PurchaseOrderList({ me, category }: { me: Me | null; cat
     <div className="rounded-2xl border border-[var(--color-border)] bg-white/60 p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <div className="text-sm font-semibold text-[var(--color-text)]">発注書一覧</div>
+          <div className="text-sm font-semibold text-[var(--color-text)]">注文書一覧</div>
           <div className="text-[11px] text-[var(--color-text-sub)]">
             {positions.length} 件
             {totalPages > 1 && <span className="ml-2">／ {safePage + 1} / {totalPages} ページ</span>}
@@ -61,7 +61,7 @@ export default function PurchaseOrderList({ me, category }: { me: Me | null; cat
           onClick={addSheet}
           className="rounded-md whitespace-nowrap border border-dashed border-[var(--color-primary)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-bg)]"
         >
-          ＋ 発注書を追加
+          ＋ 注文書を追加
         </button>
       </div>
 
