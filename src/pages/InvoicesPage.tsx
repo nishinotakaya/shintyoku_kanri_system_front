@@ -65,6 +65,58 @@ export default function InvoicesPage() {
   }, [])
 
   const [busyId, setBusyId] = useState<string | null>(null)
+  // プレビューモーダル
+  const [previewSub, setPreviewSub] = useState<Submission | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  // 編集モーダル
+  const [editingSub, setEditingSub] = useState<Submission | null>(null)
+  const [editForm, setEditForm] = useState<{ note: string; total_override: string; subject_override: string }>({ note: '', total_override: '', subject_override: '' })
+  const [editBusy, setEditBusy] = useState(false)
+
+  const openPreview = async (s: Submission) => {
+    setPreviewSub(s); setPreviewUrl(null); setPreviewLoading(true)
+    try {
+      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+      const path = s.kind === 'expense' ? '/exports/expense.pdf' : '/exports/invoice.pdf'
+      const params: Record<string, unknown> = { month: monthParam, category: s.category, as_user_id: s.user_id }
+      if (s.status === 'approved') params.invoice_submission_id = s.id
+      const { blob } = await fetchExportBlob(path, params, 'preview.pdf')
+      setPreviewUrl(URL.createObjectURL(blob))
+    } catch (e: any) {
+      alert(`プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      setPreviewSub(null)
+    } finally { setPreviewLoading(false) }
+  }
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null); setPreviewSub(null); setPreviewLoading(false)
+  }
+
+  const openEdit = (s: Submission) => {
+    setEditingSub(s)
+    setEditForm({
+      note: s.note ?? '',
+      total_override: s.total_override != null ? String(s.total_override) : '',
+      subject_override: '',
+    })
+  }
+  const closeEdit = () => { setEditingSub(null) }
+  const saveEdit = async () => {
+    if (!editingSub) return
+    setEditBusy(true)
+    try {
+      await api.patch(`/invoice_submissions/${editingSub.id}`, {
+        note: editForm.note,
+        total_override: editForm.total_override.replace(/[^\d-]/g, ''),
+        subject_override: editForm.subject_override,
+      })
+      await load()
+      closeEdit()
+    } catch (e: any) {
+      alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setEditBusy(false) }
+  }
 
   const downloadInvoice = async (s: Submission, target: 'self' | 'labop') => {
     setBusyId(`${s.kind}-${s.id}`)
@@ -221,6 +273,16 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-2 py-2 text-center">
                     <div className="flex gap-1 justify-center flex-wrap">
+                      <button onClick={() => openPreview(s)}
+                        className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50" title="PDF を確認">
+                        🔍
+                      </button>
+                      {me?.admin && (
+                        <button onClick={() => openEdit(s)}
+                          className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="編集">
+                          ✏️
+                        </button>
+                      )}
                       <button onClick={() => downloadInvoice(s, 'self')} disabled={busyPdf}
                         className="rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[10px] hover:bg-gray-50 disabled:opacity-50" title="申請者ベースの PDF">
                         {busyPdf ? '…' : '📥 PDF'}
@@ -250,6 +312,81 @@ export default function InvoicesPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* プレビューモーダル */}
+      {previewSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closePreview}>
+          <div className="w-full max-w-4xl h-[85vh] rounded-xl bg-white p-3 shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <div className="text-sm font-semibold">🔍 {KIND_LABELS[previewSub.kind]} プレビュー</div>
+                <div className="text-[11px] text-[var(--color-text-sub)]">
+                  {previewSub.user_display_name} ／ {previewSub.year}年{previewSub.month}月（{CATEGORY_LABELS[previewSub.category]}）
+                  {previewSub.received_purchase_order_no && <span className="ml-2 font-mono text-fuchsia-600">{previewSub.received_purchase_order_no}</span>}
+                </div>
+              </div>
+              <button onClick={closePreview} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] overflow-hidden">
+              {previewLoading && <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-sub)]">読込中…</div>}
+              {!previewLoading && previewUrl && <iframe src={previewUrl} className="w-full h-full" title="preview" />}
+              {!previewLoading && !previewUrl && <div className="h-full flex items-center justify-center text-sm text-red-500">取得できませんでした</div>}
+            </div>
+            <div className="mt-2 flex justify-end gap-2">
+              <button onClick={() => downloadInvoice(previewSub, 'self')}
+                className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">📥 申請者ベースで DL</button>
+              {me?.admin && previewSub.status === 'approved' && (
+                <button onClick={() => downloadInvoice(previewSub, 'labop')}
+                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white">📥 ラボップ宛で DL</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 編集モーダル */}
+      {editingSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeEdit}>
+          <div className="w-full max-w-xl rounded-xl bg-white p-4 shadow-xl space-y-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">✏️ {KIND_LABELS[editingSub.kind]} を編集</div>
+              <button onClick={closeEdit} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="text-[11px] text-[var(--color-text-sub)]">
+              {editingSub.user_display_name} ／ {editingSub.year}年{editingSub.month}月（{CATEGORY_LABELS[editingSub.category]}）
+              {editingSub.received_purchase_order_no && <span className="ml-2 font-mono text-fuchsia-600">{editingSub.received_purchase_order_no}</span>}
+            </div>
+            <label className="block">
+              <div className="text-[11px] font-semibold mb-0.5">備考（発注番号や補足）</div>
+              <textarea value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                rows={3} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-xs"
+                placeholder="ORD-010014 / タマリビング案件 西野・川村" />
+            </label>
+            <label className="block">
+              <div className="text-[11px] font-semibold mb-0.5">税込合計（ラボップ宛上書き）</div>
+              <input type="text" inputMode="numeric" value={editForm.total_override}
+                onChange={(e) => setEditForm({ ...editForm, total_override: e.target.value })}
+                placeholder="例: 330000 / マイナス値も可（相殺）"
+                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm font-mono" />
+            </label>
+            <label className="block">
+              <div className="text-[11px] font-semibold mb-0.5">件名 上書き（任意）</div>
+              <input value={editForm.subject_override} onChange={(e) => setEditForm({ ...editForm, subject_override: e.target.value })}
+                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+            </label>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button onClick={closeEdit} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
+              <button onClick={saveEdit} disabled={editBusy}
+                className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+                {editBusy ? '保存中…' : '💾 保存'}
+              </button>
+            </div>
+            <div className="text-[10px] text-[var(--color-text-sub)] pt-1">
+              ※ 保存後は新しい PDF が再生成されます。「PDF 上で直接編集」は次フェーズ実装予定。
+            </div>
+          </div>
         </div>
       )}
     </div>
