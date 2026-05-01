@@ -46,6 +46,8 @@ export default function InvoicesPage() {
   const [filterKind, setFilterKind] = useState<'all' | 'invoice' | 'expense'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
   const [filterMonth, setFilterMonth] = useState<string>('') // YYYY-MM
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 20
 
   const load = async () => {
     setLoading(true)
@@ -110,9 +112,15 @@ export default function InvoicesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   // 編集モーダル
+  type ItemRow = { label: string; qty: number; unit: string; unit_price: number; amount: number }
   const [editingSub, setEditingSub] = useState<Submission | null>(null)
-  const [editForm, setEditForm] = useState<{ note: string; total_override: string; subject_override: string }>({ note: '', total_override: '', subject_override: '' })
+  const [editForm, setEditForm] = useState<{ note: string; total_override: string; subject_override: string; items: ItemRow[] }>({ note: '', total_override: '', subject_override: '', items: [] })
   const [editBusy, setEditBusy] = useState(false)
+  const updateEditItem = (i: number, patch: Partial<ItemRow>) => {
+    setEditForm((p) => ({ ...p, items: p.items.map((it, idx) => idx === i ? { ...it, ...patch } : it) }))
+  }
+  const addEditItem = () => setEditForm((p) => ({ ...p, items: [...p.items, { label: '', qty: 1, unit: '式', unit_price: 0, amount: 0 }] }))
+  const removeEditItem = (i: number) => setEditForm((p) => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }))
 
   const openPreview = async (s: Submission) => {
     setPreviewSub(s); setPreviewUrl(null); setPreviewLoading(true)
@@ -133,29 +141,62 @@ export default function InvoicesPage() {
     setPreviewUrl(null); setPreviewSub(null); setPreviewLoading(false)
   }
 
-  const openEdit = (s: Submission) => {
+  const openEdit = async (s: Submission) => {
     setEditingSub(s)
-    setEditForm({
-      note: s.note ?? '',
-      total_override: s.total_override != null ? String(s.total_override) : '',
-      subject_override: '',
-    })
+    // 詳細フェッチして default_items 等を取得
+    try {
+      const r = await api.get<Submission & { items_override: ItemRow[] | null; default_items: ItemRow[] | null; default_subject: string | null }>('/invoice_submissions', { params: { kind: s.kind, status: 'all' } })
+      const detail = (r.data as any[]).find((x) => x.id === s.id) || s
+      const items: ItemRow[] = (detail.items_override && detail.items_override.length > 0 ? detail.items_override : (detail.default_items ?? [])) as ItemRow[]
+      setEditForm({
+        note: detail.note ?? '',
+        total_override: detail.total_override != null ? String(detail.total_override) : '',
+        subject_override: detail.subject_override ?? detail.default_subject ?? '',
+        items: items.length > 0 ? items : [],
+      })
+    } catch {
+      setEditForm({
+        note: s.note ?? '',
+        total_override: s.total_override != null ? String(s.total_override) : '',
+        subject_override: '',
+        items: [],
+      })
+    }
   }
   const closeEdit = () => { setEditingSub(null) }
   const saveEdit = async () => {
     if (!editingSub) return
     setEditBusy(true)
     try {
-      await api.patch(`/invoice_submissions/${editingSub.id}`, {
+      const payload: Record<string, unknown> = {
         note: editForm.note,
         total_override: editForm.total_override.replace(/[^\d-]/g, ''),
         subject_override: editForm.subject_override,
-      })
+      }
+      // 明細変更があれば items_override として保存
+      const itemsClean = editForm.items.filter((it) => it.label.trim() !== '' || it.amount > 0)
+      if (itemsClean.length > 0) {
+        payload.items_override = itemsClean.map((it) => ({
+          label: it.label, qty: Number(it.qty) || 0, unit: it.unit || '式',
+          unit_price: Number(it.unit_price) || 0, amount: Number(it.amount) || 0,
+        }))
+      }
+      await api.patch(`/invoice_submissions/${editingSub.id}`, payload)
       await load()
       closeEdit()
     } catch (e: any) {
       alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setEditBusy(false) }
+  }
+
+  const removeSubmission = async (s: Submission) => {
+    if (!confirm(`${s.year}/${s.month} ${s.kind === 'invoice' ? '請求書' : '立替金'}（${s.user_display_name}）を削除しますか？`)) return
+    try {
+      await api.delete(`/invoice_submissions/${s.id}`)
+      await load()
+    } catch (e: any) {
+      alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
   }
 
   const downloadInvoice = async (s: Submission, target: 'self' | 'labop') => {
@@ -203,6 +244,38 @@ export default function InvoicesPage() {
       setBusyId(null)
     }
   }
+
+  // 同じ (year, month, category, kind=expense, status=approved) で複数ユーザーがある場合の集約 row（virtual）
+  // 同じ PO に複数の invoice 申請があれば「PO マージ」row も追加
+  type MergedRow = { kind: 'merged_expense' | 'merged_invoice'; key: string; year: number; month: number; category: string; users: string[]; ids: number[]; po: string | null; total: number }
+  const mergedRows: MergedRow[] = useMemo(() => {
+    const rows: MergedRow[] = []
+    // 立替金 集約: 承認済 expense を (year, month, category) でグループ化、複数ユーザー
+    const expGroups = new Map<string, Submission[]>()
+    items.filter((s) => s.kind === 'expense' && s.status === 'approved').forEach((s) => {
+      const key = `${s.year}-${s.month}-${s.category}`
+      const arr = expGroups.get(key) ?? []; arr.push(s); expGroups.set(key, arr)
+    })
+    expGroups.forEach((subs, key) => {
+      const userSet = new Set(subs.map((s) => s.user_display_name))
+      if (userSet.size < 2) return
+      const totalSum = subs.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0)
+      rows.push({ kind: 'merged_expense', key: `me-${key}`, year: subs[0].year, month: subs[0].month, category: subs[0].category, users: Array.from(userSet), ids: subs.map((s) => s.id), po: null, total: totalSum })
+    })
+    // 請求書 PO マージ: 承認済 invoice を received_purchase_order_no でグループ化、2件以上
+    const invGroups = new Map<string, Submission[]>()
+    items.filter((s) => s.kind === 'invoice' && s.status === 'approved' && s.received_purchase_order_no).forEach((s) => {
+      const key = `${s.received_purchase_order_no}`
+      const arr = invGroups.get(key) ?? []; arr.push(s); invGroups.set(key, arr)
+    })
+    invGroups.forEach((subs, po) => {
+      if (subs.length < 2) return
+      const userSet = new Set(subs.map((s) => s.user_display_name))
+      const totalSum = subs.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0)
+      rows.push({ kind: 'merged_invoice', key: `mi-${po}`, year: subs[0].year, month: subs[0].month, category: subs[0].category, users: Array.from(userSet), ids: subs.map((s) => s.id), po, total: totalSum })
+    })
+    return rows
+  }, [items])
 
   const filtered = useMemo(() => {
     return items
@@ -275,6 +348,28 @@ export default function InvoicesPage() {
       ) : filtered.length === 0 ? (
         <div className="text-sm text-[var(--color-text-sub)]">該当する申請がありません</div>
       ) : (
+        <>
+        {mergedRows.length > 0 && (
+          <div className="glass rounded-xl shadow-md p-3 mb-2 bg-fuchsia-50/50 border border-fuchsia-200">
+            <div className="text-xs font-semibold text-fuchsia-700 mb-1">🔗 集約（複数ユーザー / PO まとめ）— ラボップ送付時は自動で 1 PDF に統合</div>
+            <ul className="text-[11px] space-y-1">
+              {mergedRows.map((m) => (
+                <li key={m.key} className="flex items-baseline justify-between border-t border-fuchsia-200 pt-1 first:border-t-0 first:pt-0">
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${m.kind === 'merged_expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
+                      {m.kind === 'merged_expense' ? '立替金 集約' : '請求書 PO マージ'}
+                    </span>
+                    <span className="font-mono">{m.year}/{String(m.month).padStart(2, '0')}</span>
+                    <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[m.category] ?? m.category}</span>
+                    {m.po && <span className="font-mono text-fuchsia-600">{m.po}</span>}
+                    <span className="font-semibold">{m.users.join(' + ')}</span>
+                  </div>
+                  <span className="font-mono tabular-nums text-[var(--color-text-sub)]">¥{m.total.toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="glass rounded-xl shadow-md overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
@@ -292,7 +387,7 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => {
+              {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((s) => {
                 const rowKey = `${s.kind}-${s.id}`
                 const busyPdf = busyId === rowKey
                 const busyXlsx = busyId === `${rowKey}-xlsx`
@@ -345,6 +440,12 @@ export default function InvoicesPage() {
                           ✏️
                         </button>
                       )}
+                      {(me?.admin || me?.id === s.user_id) && (
+                        <button onClick={() => removeSubmission(s)}
+                          className="rounded border border-red-300 bg-white px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-50" title="削除">
+                          🗑
+                        </button>
+                      )}
                       <button onClick={() => downloadInvoice(s, 'self')} disabled={busyPdf}
                         className="rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[10px] hover:bg-gray-50 disabled:opacity-50" title="申請者ベースの PDF">
                         {busyPdf ? '…' : '📥 PDF'}
@@ -375,6 +476,18 @@ export default function InvoicesPage() {
             </tbody>
           </table>
         </div>
+        {filtered.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between mt-2 text-[11px]">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+              className="rounded border border-[var(--color-border)] bg-white px-2 py-1 disabled:opacity-40">← 前</button>
+            <span className="text-[var(--color-text-sub)]">
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} / {filtered.length} 件
+            </span>
+            <button onClick={() => setPage((p) => p + 1)} disabled={page * PAGE_SIZE >= filtered.length}
+              className="rounded border border-[var(--color-border)] bg-white px-2 py-1 disabled:opacity-40">次 →</button>
+          </div>
+        )}
+        </>
       )}
 
       {/* プレビューモーダル */}
@@ -495,6 +608,40 @@ export default function InvoicesPage() {
               <input value={editForm.subject_override} onChange={(e) => setEditForm({ ...editForm, subject_override: e.target.value })}
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
             </label>
+            <div className="block">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[11px] font-semibold">品番・品名 / 明細</div>
+                <button onClick={addEditItem} className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px]">＋ 行追加</button>
+              </div>
+              <table className="w-full text-[11px]">
+                <thead className="text-[var(--color-text-sub)]">
+                  <tr>
+                    <th className="text-left">品番・品名</th>
+                    <th className="w-12">数量</th>
+                    <th className="w-12">単位</th>
+                    <th className="w-20">単価</th>
+                    <th className="w-20">金額</th>
+                    <th className="w-6"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editForm.items.map((it, i) => (
+                    <tr key={i} className="border-t">
+                      <td><input value={it.label} onChange={(e) => updateEditItem(i, { label: e.target.value })} className="w-full px-1 py-0.5 text-[11px] border rounded" /></td>
+                      <td><input type="number" step="0.5" value={it.qty} onChange={(e) => updateEditItem(i, { qty: Number(e.target.value) })} className="w-full px-1 py-0.5 text-[11px] text-right border rounded" /></td>
+                      <td><input value={it.unit} onChange={(e) => updateEditItem(i, { unit: e.target.value })} className="w-full px-1 py-0.5 text-[11px] border rounded" /></td>
+                      <td><input type="number" value={it.unit_price} onChange={(e) => {
+                        const up = Number(e.target.value)
+                        updateEditItem(i, { unit_price: up, amount: Math.round(up * (Number(it.qty) || 0)) })
+                      }} className="w-full px-1 py-0.5 text-[11px] text-right border rounded" /></td>
+                      <td><input type="number" value={it.amount} onChange={(e) => updateEditItem(i, { amount: Number(e.target.value) })} className="w-full px-1 py-0.5 text-[11px] text-right border rounded" /></td>
+                      <td className="text-center"><button onClick={() => removeEditItem(i)} className="text-gray-400 hover:text-red-500">🗑</button></td>
+                    </tr>
+                  ))}
+                  {editForm.items.length === 0 && <tr><td colSpan={6} className="text-center text-[10px] text-[var(--color-text-sub)] py-1">明細未入力（PDF生成時は default_items から自動）</td></tr>}
+                </tbody>
+              </table>
+            </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button onClick={closeEdit} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
               <button onClick={saveEdit} disabled={editBusy}
