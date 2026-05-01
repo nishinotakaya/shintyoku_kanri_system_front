@@ -189,6 +189,24 @@ export default function InvoicesPage() {
     } finally { setEditBusy(false) }
   }
 
+  // チェック済み複数件を統合 PDF 生成（同種・同 year/month/category であれば）
+  const mergeChecked = async () => {
+    const selected = items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`) && s.status === 'approved')
+    if (selected.length < 2) { alert('2 件以上選択してください'); return }
+    const kinds = new Set(selected.map((s) => s.kind))
+    if (kinds.size > 1) { alert('種別が混在しています（請求書 と 立替金 の同時統合は不可）'); return }
+    const groups = new Set(selected.map((s) => `${s.year}-${s.month}-${s.category}`))
+    if (groups.size > 1) { alert('年月・カテゴリが揃った申請のみ統合できます'); return }
+    const m = {
+      kind: selected[0].kind === 'expense' ? 'merged_expense' as const : 'merged_invoice' as const,
+      ids: selected.map((s) => s.id),
+      year: selected[0].year, month: selected[0].month, category: selected[0].category,
+      users: Array.from(new Set(selected.map((s) => s.user_display_name))),
+      po: selected[0].received_purchase_order_no,
+      total: selected.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0),
+    }
+    await previewMerged(m)
+  }
   // 集約 PDF/Excel 関連
   const fetchMergedBlob = async (m: { kind: 'merged_expense' | 'merged_invoice'; ids: number[]; po: string | null; users: string[]; year: number; month: number; category: string }, format: 'pdf' | 'xlsx', preview = false) => {
     const path = m.kind === 'merged_expense'
@@ -353,6 +371,13 @@ export default function InvoicesPage() {
               ＋ 自分の申請を新規作成
             </button>
           )}
+          {me?.admin && checkedIds.size >= 2 && (
+            <button onClick={() => mergeChecked()}
+              className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
+              title="選択した請求書/立替金を 1 PDF に統合（同種・同月のみ）">
+              🔗 選択 {checkedIds.size} 件を統合 PDF
+            </button>
+          )}
           {me?.admin && checkedIds.size > 0 && (
             <button onClick={() => setBulkOpen(true)}
               className="rounded-md bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
@@ -393,37 +418,6 @@ export default function InvoicesPage() {
         <div className="text-sm text-[var(--color-text-sub)]">該当する申請がありません</div>
       ) : (
         <>
-        {mergedRows.length > 0 && (
-          <div className="glass rounded-xl shadow-md p-3 mb-2 bg-fuchsia-50/50 border border-fuchsia-200">
-            <div className="text-xs font-semibold text-fuchsia-700 mb-1">🔗 集約（複数ユーザー / PO まとめ）— ラボップ送付時は自動で 1 PDF に統合</div>
-            <ul className="text-[11px] space-y-1">
-              {mergedRows.map((m) => (
-                <li key={m.key} className="flex items-baseline justify-between gap-2 border-t border-fuchsia-200 pt-1 first:border-t-0 first:pt-0">
-                  <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${m.kind === 'merged_expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
-                      {m.kind === 'merged_expense' ? '立替金 集約' : '請求書 PO マージ'}
-                    </span>
-                    <span className="font-mono">{m.year}/{String(m.month).padStart(2, '0')}</span>
-                    <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[m.category] ?? m.category}</span>
-                    {m.po && <span className="font-mono text-fuchsia-600">{m.po}</span>}
-                    <span className="font-semibold">{m.users.join(' + ')}</span>
-                    <span className="font-mono tabular-nums text-[var(--color-text-sub)]">¥{m.total.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => previewMerged(m)}
-                      className="rounded border border-sky-400 bg-white px-2 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50">🔍</button>
-                    <button onClick={() => downloadMerged(m, 'pdf')}
-                      className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow">📥 PDF</button>
-                    {m.kind === 'merged_expense' && (
-                      <button onClick={() => downloadMerged(m, 'xlsx')}
-                        className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow">📊 xlsx</button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
         <div className="glass rounded-xl shadow-md overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
@@ -441,6 +435,33 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody>
+              {/* 集約（複数ユーザー / PO マージ）行: テーブル先頭に表示 */}
+              {mergedRows.map((m) => (
+                <tr key={m.key} className="border-t border-fuchsia-200 bg-fuchsia-50/40">
+                  {me?.admin && <td className="px-1 py-2 text-center"></td>}
+                  <td className="px-2 py-2 font-mono">{m.year}/{String(m.month).padStart(2, '0')}</td>
+                  <td className="px-2 py-2">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${m.kind === 'merged_expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
+                      🔗 {m.kind === 'merged_expense' ? '立替金 集約' : '請求書 PO マージ'}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-[var(--color-text-sub)]">{CATEGORY_LABELS[m.category] ?? m.category}</td>
+                  <td className="px-2 py-2 font-semibold text-fuchsia-700">{m.users.join(' + ')}</td>
+                  <td className="px-2 py-2 font-mono text-[10px]">{m.po ?? '—'}</td>
+                  <td className="px-2 py-2 text-right font-mono tabular-nums">¥{m.total.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-center"><span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-fuchsia-100 text-fuchsia-700">統合</span></td>
+                  <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">—</td>
+                  <td className="px-2 py-2 text-center">
+                    <div className="flex gap-1 justify-center flex-wrap">
+                      <button onClick={() => previewMerged(m)} className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50" title="統合 PDF を確認">🔍</button>
+                      <button onClick={() => downloadMerged(m, 'pdf')} className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 PDF</button>
+                      {m.kind === 'merged_expense' && (
+                        <button onClick={() => downloadMerged(m, 'xlsx')} className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📊 xlsx</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
               {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((s) => {
                 const rowKey = `${s.kind}-${s.id}`
                 const busyPdf = busyId === rowKey
