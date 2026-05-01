@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import { fetchExportBlob } from '../components/FolderSaveButtons'
+import LabopMailModal from '../components/LabopMailModal'
 
 type Submission = {
   id: number
@@ -65,6 +66,45 @@ export default function InvoicesPage() {
   }, [])
 
   const [busyId, setBusyId] = useState<string | null>(null)
+  // チェック済み (admin の一括メール送信用) — key="invoice-{id}" or "expense-{id}"
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const toggleCheck = (s: Submission) => {
+    const k = `${s.kind}-${s.id}`
+    setCheckedIds((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
+  }
+  // 新規申請モーダル (admin が自分の申請を作る)
+  const [creating, setCreating] = useState(false)
+  const [createForm, setCreateForm] = useState<{ year: number; month: number; category: string; kind: 'invoice' | 'expense'; received_purchase_order_id: number | ''; note: string }>(
+    () => {
+      const now = new Date()
+      return { year: now.getFullYear(), month: now.getMonth() + 1, category: 'wings', kind: 'invoice', received_purchase_order_id: '', note: '' }
+    }
+  )
+  type ReceivedPO = { id: number; order_no: string; subject: string | null; user_id: number; category: string | null }
+  const [pos, setPos] = useState<ReceivedPO[]>([])
+  useEffect(() => {
+    if (!creating) return
+    api.get<ReceivedPO[]>('/received_purchase_orders', { params: { year: createForm.year, month: createForm.month } })
+      .then((r) => setPos(r.data.filter((po) => !po.category || po.category === createForm.category)))
+      .catch(() => setPos([]))
+  }, [creating, createForm.year, createForm.month, createForm.category])
+  const submitCreate = async () => {
+    try {
+      await api.post('/invoice_submissions', {
+        year: createForm.year,
+        month: createForm.month,
+        category: createForm.category,
+        kind: createForm.kind,
+        note: createForm.note || null,
+        received_purchase_order_id: createForm.received_purchase_order_id || null,
+      })
+      setCreating(false)
+      await load()
+    } catch (e: any) {
+      alert(`作成失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
   // プレビューモーダル
   const [previewSub, setPreviewSub] = useState<Submission | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -189,6 +229,20 @@ export default function InvoicesPage() {
             {me?.admin ? '全ユーザーの請求書/立替金 申請' : '自分の請求書/立替金 申請'}
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          {me?.admin && (
+            <button onClick={() => setCreating(true)}
+              className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
+              ＋ 自分の申請を新規作成
+            </button>
+          )}
+          {me?.admin && checkedIds.size > 0 && (
+            <button onClick={() => setBulkOpen(true)}
+              className="rounded-md bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
+              📧 選択 {checkedIds.size} 件をラボップ送付
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -225,6 +279,7 @@ export default function InvoicesPage() {
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
+                {me?.admin && <th className="px-1 py-2 text-center w-6"></th>}
                 <th className="px-2 py-2 text-left">年月</th>
                 <th className="px-2 py-2 text-left">種別</th>
                 <th className="px-2 py-2 text-left">カテゴリ</th>
@@ -244,6 +299,13 @@ export default function InvoicesPage() {
                 const isApproved = s.status === 'approved'
                 return (
                 <tr key={rowKey} className="border-t border-[var(--color-border)]">
+                  {me?.admin && (
+                    <td className="px-1 py-2 text-center">
+                      {s.status === 'approved' && (
+                        <input type="checkbox" checked={checkedIds.has(rowKey)} onChange={() => toggleCheck(s)} />
+                      )}
+                    </td>
+                  )}
                   <td className="px-2 py-2 font-mono">{s.year}/{String(s.month).padStart(2, '0')}</td>
                   <td className="px-2 py-2">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] ${s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -345,6 +407,63 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+
+      {/* 新規申請モーダル */}
+      {creating && me?.admin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCreating(false)}>
+          <div className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl space-y-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">＋ 自分の請求書/立替金 申請を新規作成</div>
+              <button onClick={() => setCreating(false)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label><div className="text-[11px] font-semibold mb-0.5">年</div>
+                <input type="number" value={createForm.year} onChange={(e) => setCreateForm({ ...createForm, year: Number(e.target.value) })} className="w-full rounded-md border px-2 py-1 text-sm" /></label>
+              <label><div className="text-[11px] font-semibold mb-0.5">月</div>
+                <input type="number" min={1} max={12} value={createForm.month} onChange={(e) => setCreateForm({ ...createForm, month: Number(e.target.value) })} className="w-full rounded-md border px-2 py-1 text-sm" /></label>
+              <label><div className="text-[11px] font-semibold mb-0.5">カテゴリ</div>
+                <select value={createForm.category} onChange={(e) => setCreateForm({ ...createForm, category: e.target.value })} className="w-full rounded-md border px-2 py-1 text-sm">
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select></label>
+              <label><div className="text-[11px] font-semibold mb-0.5">種別</div>
+                <select value={createForm.kind} onChange={(e) => setCreateForm({ ...createForm, kind: e.target.value as 'invoice' | 'expense' })} className="w-full rounded-md border px-2 py-1 text-sm">
+                  <option value="invoice">請求書</option>
+                  <option value="expense">立替金</option>
+                </select></label>
+              <label className="col-span-2"><div className="text-[11px] font-semibold mb-0.5">対応する発注書（請求書のみ）</div>
+                <select value={createForm.received_purchase_order_id} onChange={(e) => setCreateForm({ ...createForm, received_purchase_order_id: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full rounded-md border px-2 py-1 text-sm">
+                  <option value="">— 紐付けなし —</option>
+                  {pos.map((po) => <option key={po.id} value={po.id}>{po.order_no}{po.subject ? ` / ${po.subject.slice(0, 30)}` : ''}</option>)}
+                </select></label>
+              <label className="col-span-2"><div className="text-[11px] font-semibold mb-0.5">備考（発注番号等）</div>
+                <textarea value={createForm.note} onChange={(e) => setCreateForm({ ...createForm, note: e.target.value })} rows={2} className="w-full rounded-md border px-2 py-1 text-sm" /></label>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button onClick={() => setCreating(false)} className="rounded-md border bg-white px-3 py-1.5 text-xs">キャンセル</button>
+              <button onClick={submitCreate}
+                className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
+                💾 作成（admin は自動承認）
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 一括メール送信モーダル */}
+      {bulkOpen && (() => {
+        const selected = items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`) && s.status === 'approved')
+        const invs = selected.filter((s) => s.kind === 'invoice').map((s) => ({
+          id: s.id, user_display_name: s.user_display_name, year: s.year, month: s.month, category: s.category,
+          kind: 'invoice' as const, total_override: s.total_override, default_total: s.default_total
+        }))
+        const exps = selected.filter((s) => s.kind === 'expense').map((s) => ({
+          id: s.id, user_display_name: s.user_display_name, year: s.year, month: s.month, category: s.category,
+          kind: 'expense' as const, total_override: s.total_override, default_total: s.default_total
+        }))
+        return (
+          <LabopMailModal invoices={invs} expenses={exps} onClose={() => setBulkOpen(false)} />
+        )
+      })()}
 
       {/* 編集モーダル */}
       {editingSub && (
