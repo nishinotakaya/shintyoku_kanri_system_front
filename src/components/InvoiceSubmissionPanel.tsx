@@ -106,6 +106,11 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [xlsxHtml, setXlsxHtml] = useState<string | null>(null)
   const [xlsxLoading, setXlsxLoading] = useState(false)
 
+  // 申請時に紐付ける受領発注書 (PO) 一覧
+  type ReceivedPO = { id: number; order_no: string; subject: string | null; user_id: number; category: string | null }
+  const [pos, setPos] = useState<ReceivedPO[]>([])
+  const [selectedPoId, setSelectedPoId] = useState<number | ''>('') // 申請に使う PO id
+
   // ラボップ宛 一括メール送付モーダル (admin が全承認済みを一挙に送付)
   const [mailModalOpen, setMailModalOpen] = useState(false)
   const [allApprovedAcrossKinds, setAllApprovedAcrossKinds] = useState<Submission[]>([])
@@ -154,6 +159,16 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
     loadAll().catch(() => {})
   }, [isAdmin, year, month, category, kind])
 
+  // PO 一覧を取得（その月・カテゴリにマッチするもの）
+  useEffect(() => {
+    api.get<ReceivedPO[]>('/received_purchase_orders', { params: { year, month } })
+      .then((r) => {
+        const matched = r.data.filter((po) => !po.category || po.category === category)
+        setPos(matched)
+      })
+      .catch(() => setPos([]))
+  }, [year, month, category])
+
   // 大隅は申請対象外
   if (isOsumi) return null
 
@@ -166,7 +181,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const submitKind = async (k: SubmissionKind, note?: string) => {
     setBusy(true); setMsg(null)
     try {
-      await api.post('/invoice_submissions', { year, month, category, kind: k, note })
+      // 請求書 (kind=invoice) のみ PO 紐付け、立替金は不要
+      const poId = k === 'invoice' ? (selectedPoId || null) : null
+      await api.post('/invoice_submissions', { year, month, category, kind: k, note, received_purchase_order_id: poId })
       setMsg('申請しました')
       await loadAll()
     } catch (e: any) {
@@ -392,6 +409,20 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
             )}
           </div>
           {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
+        </div>
+        {/* 請求書を発注書に紐付ける（任意） */}
+        <div className="mb-1.5 flex items-center gap-2 text-[11px] bg-amber-50 px-2 py-1 rounded">
+          <span className="text-[var(--color-text-sub)] font-semibold">対応する発注書（請求書のみ任意）:</span>
+          <select value={selectedPoId} onChange={(e) => setSelectedPoId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px]">
+            <option value="">— 紐付けなし —</option>
+            {pos.map((po) => (
+              <option key={po.id} value={po.id}>{po.order_no}{po.subject ? ` / ${po.subject.slice(0, 30)}` : ''}</option>
+            ))}
+          </select>
+          {pos.length === 0 && (
+            <a href="/purchase-orders" className="text-fuchsia-500 hover:underline text-[10px]">＋ 注文書を登録</a>
+          )}
         </div>
         <ul className="divide-y divide-[var(--color-border)]">
           {rows.map(({ k, label, sub, dlOk }) => {
