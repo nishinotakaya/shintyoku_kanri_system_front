@@ -112,6 +112,8 @@ export default function InvoicesPage() {
   const [previewSub, setPreviewSub] = useState<Submission | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewMergeContext, setPreviewMergeContext] = useState<any>(null) // 集約プレビュー時の元データ
+  const [previewSaveBusy, setPreviewSaveBusy] = useState(false)
   // 編集モーダル
   type ItemRow = { label: string; qty: number; unit: string; unit_price: number; amount: number }
   const [editingSub, setEditingSub] = useState<Submission | null>(null)
@@ -140,6 +142,7 @@ export default function InvoicesPage() {
   const closePreview = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null); setPreviewSub(null); setPreviewLoading(false)
+    setPreviewMergeContext(null)
   }
 
   const openEdit = async (s: Submission) => {
@@ -270,6 +273,7 @@ export default function InvoicesPage() {
     const busyKey = `${(m as any).key ?? m.ids.join(',')}-preview`
     setMergeBusy(busyKey)
     setPreviewLoading(true)
+    setPreviewMergeContext(m)
     setPreviewSub({ id: 0, user_id: 0, user_display_name: m.users.join(' + '), year: m.year, month: m.month, category: m.category, kind: m.kind === 'merged_expense' ? 'expense' : 'invoice', status: 'approved', submitted_at: null, reviewed_at: null, note: m.po ?? null, total_override: m.total, default_total: null, received_purchase_order_no: m.po, received_purchase_order_subject: null } as Submission)
     try {
       const blob = await fetchMergedBlob(m, 'pdf', true)
@@ -668,10 +672,27 @@ export default function InvoicesPage() {
             </div>
             <div className="mt-2 flex justify-end gap-2">
               {previewUrl && (
-                <a href={previewUrl} download={`${previewSub.user_display_name}_${previewSub.kind === 'expense' ? '立替金' : '請求書'}_${previewSub.year}年_${previewSub.month}月分.pdf`}
-                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
-                  💾 保存
-                </a>
+                <button
+                  onClick={async () => {
+                    if (previewMergeContext) {
+                      // 集約: DB に保存 + ローカル DL
+                      setPreviewSaveBusy(true)
+                      try {
+                        await saveMergedToDb(previewMergeContext, 'pdf')
+                        await downloadMerged(previewMergeContext, 'pdf')
+                      } finally { setPreviewSaveBusy(false) }
+                    } else {
+                      // 単一: ローカル DL のみ（個別 submission は元々 DB にある）
+                      const a = document.createElement('a')
+                      a.href = previewUrl
+                      a.download = `${previewSub!.user_display_name}_${previewSub!.kind === 'expense' ? '立替金' : '請求書'}_${previewSub!.year}年_${previewSub!.month}月分.pdf`
+                      document.body.appendChild(a); a.click(); a.remove()
+                    }
+                  }}
+                  disabled={previewSaveBusy}
+                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+                  {previewSaveBusy ? <><Spinner /> 保存中</> : (previewMergeContext ? '💾 DB保存 + DL' : '💾 保存')}
+                </button>
               )}
               {previewSub.id !== 0 && (
                 <button onClick={() => downloadInvoice(previewSub, 'self')}
