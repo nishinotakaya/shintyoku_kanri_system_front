@@ -540,8 +540,9 @@ export default function InvoicesPage() {
                     )}
                   </td>
                   <td className="px-2 py-2 text-right font-mono tabular-nums">
-                    {s.total_override != null ? `¥${s.total_override.toLocaleString()}` :
-                     s.default_total != null ? `¥${s.default_total.toLocaleString()}` : '—'}
+                    {s.total_override != null && s.total_override !== 0 ? `¥${s.total_override.toLocaleString()}` :
+                     s.default_total != null && s.default_total !== 0 ? `¥${s.default_total.toLocaleString()}` :
+                     <span className="text-amber-600 text-[10px]">未設定</span>}
                   </td>
                   <td className="px-2 py-2 text-center">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[s.status]}`}>
@@ -720,6 +721,9 @@ export default function InvoicesPage() {
             <div className="text-[11px] text-[var(--color-text-sub)]">
               {editingSub.user_display_name} ／ {editingSub.year}年{editingSub.month}月（{CATEGORY_LABELS[editingSub.category]}）
               {editingSub.received_purchase_order_no && <span className="ml-2 font-mono text-fuchsia-600">{editingSub.received_purchase_order_no}</span>}
+            </div>
+            <div className="text-[10px] text-[var(--color-text-sub)] bg-amber-50 px-2 py-1.5 rounded border border-amber-200">
+              💡 PDF には別途 <strong>お振込先（口座番号）</strong> が自動表示されます — ⚙ 設定 → 請求書設定 → 銀行情報 で編集
             </div>
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">備考（注文番号や補足）</div>
