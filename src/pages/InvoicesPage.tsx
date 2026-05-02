@@ -68,6 +68,7 @@ export default function InvoicesPage() {
   }, [])
 
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [mergeBusy, setMergeBusy] = useState<string | null>(null) // 統合系処理中のキー
   // チェック済み (admin の一括メール送信用) — key="invoice-{id}" or "expense-{id}"
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -223,6 +224,8 @@ export default function InvoicesPage() {
     return res.data as Blob
   }
   const downloadMerged = async (m: any, format: 'pdf' | 'xlsx') => {
+    const busyKey = `${(m as any).key ?? m.ids.join(',')}-${format}`
+    setMergeBusy(busyKey)
     try {
       const blob = await fetchMergedBlob(m, format)
       const ym = `${m.year}年_${m.month}月分`
@@ -236,20 +239,32 @@ export default function InvoicesPage() {
       URL.revokeObjectURL(url)
     } catch (e: any) {
       alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-    }
+    } finally { setMergeBusy(null) }
   }
   const previewMerged = async (m: any) => {
+    const busyKey = `${(m as any).key ?? m.ids.join(',')}-preview`
+    setMergeBusy(busyKey)
+    setPreviewLoading(true)
+    setPreviewSub({ id: 0, user_id: 0, user_display_name: m.users.join(' + '), year: m.year, month: m.month, category: m.category, kind: m.kind === 'merged_expense' ? 'expense' : 'invoice', status: 'approved', submitted_at: null, reviewed_at: null, note: m.po ?? null, total_override: m.total, default_total: null, received_purchase_order_no: m.po, received_purchase_order_subject: null } as Submission)
     try {
       const blob = await fetchMergedBlob(m, 'pdf', true)
       const url = URL.createObjectURL(blob)
-      // プレビューモーダル経路を流用
-      setPreviewSub({ id: 0, user_id: 0, user_display_name: m.users.join(' + '), year: m.year, month: m.month, category: m.category, kind: m.kind === 'merged_expense' ? 'expense' : 'invoice', status: 'approved', submitted_at: null, reviewed_at: null, note: m.po ?? null, total_override: m.total, default_total: null, received_purchase_order_no: m.po, received_purchase_order_subject: null } as Submission)
       setPreviewUrl(url)
-      setPreviewLoading(false)
     } catch (e: any) {
       alert(`プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      setPreviewSub(null)
+    } finally {
+      setMergeBusy(null)
+      setPreviewLoading(false)
     }
   }
+
+  const Spinner = () => (
+    <svg className="inline-block animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
+      <path d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+    </svg>
+  )
 
   const removeSubmission = async (s: Submission) => {
     if (!confirm(`${s.year}/${s.month} ${s.kind === 'invoice' ? '請求書' : '立替金'}（${s.user_display_name}）を削除しますか？`)) return
@@ -436,9 +451,32 @@ export default function InvoicesPage() {
             </thead>
             <tbody>
               {/* 集約（複数ユーザー / PO マージ）行: テーブル先頭に表示 */}
-              {mergedRows.map((m) => (
+              {mergedRows.map((m) => {
+                const previewBusy = mergeBusy === `${m.key}-preview`
+                const pdfBusy = mergeBusy === `${m.key}-pdf`
+                const xlsxBusy = mergeBusy === `${m.key}-xlsx`
+                // チェックボックス: m.ids すべてが checkedIds に含まれていれば true
+                const allChecked = m.ids.every((id) => {
+                  const k = `${m.kind === 'merged_expense' ? 'expense' : 'invoice'}-${id}`
+                  return checkedIds.has(k)
+                })
+                const toggleMergedCheck = () => {
+                  setCheckedIds((prev) => {
+                    const next = new Set(prev)
+                    m.ids.forEach((id) => {
+                      const k = `${m.kind === 'merged_expense' ? 'expense' : 'invoice'}-${id}`
+                      allChecked ? next.delete(k) : next.add(k)
+                    })
+                    return next
+                  })
+                }
+                return (
                 <tr key={m.key} className="border-t border-fuchsia-200 bg-fuchsia-50/40">
-                  {me?.admin && <td className="px-1 py-2 text-center"></td>}
+                  {me?.admin && (
+                    <td className="px-1 py-2 text-center">
+                      <input type="checkbox" checked={allChecked} onChange={toggleMergedCheck} title="この統合に含まれる申請を全選択" />
+                    </td>
+                  )}
                   <td className="px-2 py-2 font-mono">{m.year}/{String(m.month).padStart(2, '0')}</td>
                   <td className="px-2 py-2">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${m.kind === 'merged_expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
@@ -453,15 +491,25 @@ export default function InvoicesPage() {
                   <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">—</td>
                   <td className="px-2 py-2 text-center">
                     <div className="flex gap-1 justify-center flex-wrap">
-                      <button onClick={() => previewMerged(m)} className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50" title="統合 PDF を確認">🔍</button>
-                      <button onClick={() => downloadMerged(m, 'pdf')} className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 PDF</button>
+                      <button onClick={() => previewMerged(m)} disabled={previewBusy}
+                        className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50 disabled:opacity-50" title="統合 PDF を確認">
+                        {previewBusy ? <Spinner /> : '🔍'}
+                      </button>
+                      <button onClick={() => downloadMerged(m, 'pdf')} disabled={pdfBusy}
+                        className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50">
+                        {pdfBusy ? <><Spinner /> 生成中</> : '📥 PDF'}
+                      </button>
                       {m.kind === 'merged_expense' && (
-                        <button onClick={() => downloadMerged(m, 'xlsx')} className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📊 xlsx</button>
+                        <button onClick={() => downloadMerged(m, 'xlsx')} disabled={xlsxBusy}
+                          className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50">
+                          {xlsxBusy ? <><Spinner /> 生成中</> : '📊 xlsx'}
+                        </button>
                       )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
               {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((s) => {
                 const rowKey = `${s.kind}-${s.id}`
                 const busyPdf = busyId === rowKey
@@ -585,9 +633,17 @@ export default function InvoicesPage() {
               {!previewLoading && !previewUrl && <div className="h-full flex items-center justify-center text-sm text-red-500">取得できませんでした</div>}
             </div>
             <div className="mt-2 flex justify-end gap-2">
-              <button onClick={() => downloadInvoice(previewSub, 'self')}
-                className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">📥 申請者ベースで DL</button>
-              {me?.admin && previewSub.status === 'approved' && (
+              {previewUrl && (
+                <a href={previewUrl} download={`${previewSub.user_display_name}_${previewSub.kind === 'expense' ? '立替金' : '請求書'}_${previewSub.year}年_${previewSub.month}月分.pdf`}
+                  className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
+                  💾 保存
+                </a>
+              )}
+              {previewSub.id !== 0 && (
+                <button onClick={() => downloadInvoice(previewSub, 'self')}
+                  className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">📥 申請者ベースで DL</button>
+              )}
+              {me?.admin && previewSub.id !== 0 && previewSub.status === 'approved' && (
                 <button onClick={() => downloadInvoice(previewSub, 'labop')}
                   className="rounded-md whitespace-nowrap bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white">📥 ラボップ宛で DL</button>
               )}
