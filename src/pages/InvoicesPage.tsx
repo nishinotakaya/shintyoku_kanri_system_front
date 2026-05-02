@@ -190,6 +190,31 @@ export default function InvoicesPage() {
     } finally { setEditBusy(false) }
   }
 
+  // 統合 + DB 保存（save=1 を立てて呼ぶ）
+  const saveMergedToDb = async (m: any, format: 'pdf' | 'xlsx' = 'pdf') => {
+    setMergeBusy(`${m.key}-save`)
+    try {
+      const path = m.kind === 'merged_expense'
+        ? (format === 'xlsx' ? '/exports/merged_expense.xlsx' : '/exports/merged_expense.pdf')
+        : '/exports/merged_invoice.pdf'
+      const fd = new FormData()
+      const idKey = m.kind === 'merged_expense' ? 'expense_submission_ids[]' : 'invoice_submission_ids[]'
+      m.ids.forEach((id: number) => fd.append(idKey, String(id)))
+      fd.append('save', '1')
+      await api.post(path, fd, { responseType: 'blob' })
+      alert('💾 DB に保存しました（請求書一覧 履歴で確認可）')
+    } catch (e: any) {
+      alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setMergeBusy(null) }
+  }
+
+  // 統合行をラボップ宛メール送付モーダルで開く
+  const sendMergedToLabop = (m: any) => {
+    const linkedSubs = items.filter((s) => m.ids.includes(s.id) && s.kind === (m.kind === 'merged_expense' ? 'expense' : 'invoice'))
+    setCheckedIds(new Set(linkedSubs.map((s) => `${s.kind}-${s.id}`)))
+    setBulkOpen(true)
+  }
+
   // チェック済み複数件を統合 PDF 生成（同種・同 year/month/category であれば）
   const mergeChecked = async () => {
     const selected = items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`) && s.status === 'approved')
@@ -505,6 +530,14 @@ export default function InvoicesPage() {
                           {xlsxBusy ? <><Spinner /> 生成中</> : '📊 xlsx'}
                         </button>
                       )}
+                      <button onClick={() => saveMergedToDb(m, 'pdf')} disabled={mergeBusy === `${m.key}-save`}
+                        className="rounded bg-gradient-to-r from-amber-500 to-orange-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50" title="統合 PDF を DB に保管">
+                        {mergeBusy === `${m.key}-save` ? <><Spinner /> 保存中</> : '💾 DB保存'}
+                      </button>
+                      <button onClick={() => sendMergedToLabop(m)}
+                        className="rounded bg-gradient-to-r from-rose-500 to-pink-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" title="ラボップにメール送信">
+                        📧 送信
+                      </button>
                     </div>
                   </td>
                 </tr>
