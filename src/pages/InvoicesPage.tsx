@@ -39,9 +39,27 @@ const STATUS_BADGE: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 }
 
+type IssuedPdf = {
+  id: number
+  user_id: number
+  user_display_name: string | null
+  kind: 'invoice' | 'expense'
+  file_format: 'pdf' | 'xlsx'
+  year: number | null
+  month: number | null
+  category: string | null
+  purchase_order_no: string | null
+  source_submission_ids: number[]
+  merged: boolean
+  total_amount: number | null
+  filename: string
+  generated_at: string | null
+}
+
 export default function InvoicesPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [items, setItems] = useState<Submission[]>([])
+  const [issuedPdfs, setIssuedPdfs] = useState<IssuedPdf[]>([])
   const [loading, setLoading] = useState(true)
   const [filterKind, setFilterKind] = useState<'all' | 'invoice' | 'expense'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
@@ -52,11 +70,13 @@ export default function InvoicesPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const [inv, exp] = await Promise.all([
+      const [inv, exp, issued] = await Promise.all([
         api.get<Submission[]>('/invoice_submissions', { params: { kind: 'invoice', status: 'all' } }),
         api.get<Submission[]>('/invoice_submissions', { params: { kind: 'expense', status: 'all' } }),
+        api.get<IssuedPdf[]>('/issued_invoice_pdfs').catch(() => ({ data: [] as IssuedPdf[] })),
       ])
       setItems([...inv.data, ...exp.data])
+      setIssuedPdfs(issued.data)
     } finally {
       setLoading(false)
     }
@@ -479,6 +499,43 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody>
+              {/* 保存済 統合 PDF (issued_invoice_pdfs) を最上部に表示 */}
+              {issuedPdfs.map((p) => {
+                const surnames = p.source_submission_ids.map((id) => items.find((s) => s.id === id)?.user_display_name).filter(Boolean) as string[]
+                const usersStr = Array.from(new Set(surnames)).join(' + ') || (p.user_display_name ?? '—')
+                return (
+                  <tr key={`issued-${p.id}`} className="border-t border-amber-200 bg-amber-50/40">
+                    {me?.admin && <td className="px-1 py-2 text-center"></td>}
+                    <td className="px-2 py-2 font-mono">{p.year}/{String(p.month).padStart(2, '0')}</td>
+                    <td className="px-2 py-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${p.kind === 'expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
+                        💾 {p.kind === 'expense' ? '立替金 統合(保存済)' : '請求書 統合(保存済)'}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-[var(--color-text-sub)]">{p.category ? (CATEGORY_LABELS[p.category] ?? p.category) : '—'}</td>
+                    <td className="px-2 py-2 font-semibold text-amber-700">{usersStr}</td>
+                    <td className="px-2 py-2 font-mono text-[10px]">{p.purchase_order_no ?? '—'}</td>
+                    <td className="px-2 py-2 text-right font-mono tabular-nums">{p.total_amount != null ? `¥${p.total_amount.toLocaleString()}` : '—'}</td>
+                    <td className="px-2 py-2 text-center"><span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700">統合</span></td>
+                    <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">{p.generated_at ? new Date(p.generated_at).toLocaleString('ja-JP') : '—'}</td>
+                    <td className="px-2 py-2 text-center">
+                      <div className="flex gap-1 justify-center flex-wrap">
+                        <a href={`/api/v1/issued_invoice_pdfs/${p.id}/download?disposition=inline`} target="_blank" rel="noreferrer"
+                          className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50">🔍</a>
+                        <a href={`/api/v1/issued_invoice_pdfs/${p.id}/download`} download={p.filename}
+                          className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</a>
+                        {me?.admin && (
+                          <button onClick={async () => {
+                            if (!confirm(`保存済 ${p.filename} を削除しますか？`)) return
+                            try { await api.delete(`/issued_invoice_pdfs/${p.id}`); await load() } catch (e: any) { alert(`削除失敗: ${e?.message ?? ''}`) }
+                          }}
+                            className="rounded border border-red-300 bg-white px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-50">🗑</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
               {/* 集約（複数ユーザー / PO マージ）行: テーブル先頭に表示 */}
               {mergedRows.map((m) => {
                 const previewBusy = mergeBusy === `${m.key}-preview`
