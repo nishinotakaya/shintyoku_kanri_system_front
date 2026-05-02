@@ -91,10 +91,28 @@ export default function InvoicesPage() {
   const [mergeBusy, setMergeBusy] = useState<string | null>(null) // 統合系処理中のキー
   // チェック済み (admin の一括メール送信用) — key="invoice-{id}" or "expense-{id}"
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [checkedIssuedIds, setCheckedIssuedIds] = useState<Set<number>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
   const toggleCheck = (s: Submission) => {
     const k = `${s.kind}-${s.id}`
     setCheckedIds((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
+  }
+  const toggleIssuedCheck = (id: number) => {
+    setCheckedIssuedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  const removeIssuedPdf = async (id: number, filename: string) => {
+    if (!confirm(`保存済 ${filename} を削除しますか？`)) return
+    try { await api.delete(`/issued_invoice_pdfs/${id}`); await load() }
+    catch (e: any) { alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
+  }
+  const bulkDeleteIssued = async () => {
+    if (checkedIssuedIds.size === 0) return
+    if (!confirm(`選択した保存済 ${checkedIssuedIds.size} 件を削除しますか？`)) return
+    try {
+      await Promise.all(Array.from(checkedIssuedIds).map((id) => api.delete(`/issued_invoice_pdfs/${id}`)))
+      setCheckedIssuedIds(new Set())
+      await load()
+    } catch (e: any) { alert(`一括削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
   }
   // 新規申請モーダル (admin が自分の申請を作る)
   const [creating, setCreating] = useState(false)
@@ -448,6 +466,12 @@ export default function InvoicesPage() {
               📧 選択 {checkedIds.size} 件をラボップ送付
             </button>
           )}
+          {me?.admin && checkedIssuedIds.size > 0 && (
+            <button onClick={bulkDeleteIssued}
+              className="rounded-md bg-gradient-to-r from-red-500 to-rose-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
+              🗑 保存済 {checkedIssuedIds.size} 件を一括削除
+            </button>
+          )}
         </div>
       </div>
 
@@ -505,7 +529,11 @@ export default function InvoicesPage() {
                 const usersStr = Array.from(new Set(surnames)).join(' + ') || (p.user_display_name ?? '—')
                 return (
                   <tr key={`issued-${p.id}`} className="border-t border-amber-200 bg-amber-50/40">
-                    {me?.admin && <td className="px-1 py-2 text-center"></td>}
+                    {me?.admin && (
+                      <td className="px-1 py-2 text-center">
+                        <input type="checkbox" checked={checkedIssuedIds.has(p.id)} onChange={() => toggleIssuedCheck(p.id)} />
+                      </td>
+                    )}
                     <td className="px-2 py-2 font-mono">{p.year}/{String(p.month).padStart(2, '0')}</td>
                     <td className="px-2 py-2">
                       <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${p.kind === 'expense' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
@@ -525,10 +553,7 @@ export default function InvoicesPage() {
                         <a href={`/api/v1/issued_invoice_pdfs/${p.id}/download`} download={p.filename}
                           className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</a>
                         {me?.admin && (
-                          <button onClick={async () => {
-                            if (!confirm(`保存済 ${p.filename} を削除しますか？`)) return
-                            try { await api.delete(`/issued_invoice_pdfs/${p.id}`); await load() } catch (e: any) { alert(`削除失敗: ${e?.message ?? ''}`) }
-                          }}
+                          <button onClick={() => removeIssuedPdf(p.id, p.filename)}
                             className="rounded border border-red-300 bg-white px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-50">🗑</button>
                         )}
                       </div>
