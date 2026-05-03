@@ -539,12 +539,22 @@ export default function InvoicesPage() {
               🔗 選択 {checkedIds.size} 件を統合 PDF
             </button>
           )}
-          {me?.admin && (checkedIds.size + checkedIssuedIds.size + mergedSubmissionIds.size) > 0 && (
-            <button onClick={() => setBulkOpen(true)}
-              className="rounded-md bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
-              📧 選択 {(() => { const u = new Set<number>(); checkedIds.forEach((k) => u.add(Number(k.split('-')[1]))); mergedSubmissionIds.forEach((id) => u.add(id)); return u.size + checkedIssuedIds.size })()} 件をラボップ送付
-            </button>
-          )}
+          {me?.admin && items.some((s) => s.status === 'approved') && (() => {
+            const inFilter = (s: Submission) => {
+              if (s.status !== 'approved') return false
+              if (filterMonth) { const ym = `${s.year}-${String(s.month).padStart(2, '0')}`; if (ym !== filterMonth) return false }
+              if (filterUserId && s.user_id !== filterUserId) return false
+              return true
+            }
+            const cnt = items.filter(inFilter).length + checkedIssuedIds.size
+            return (
+              <button onClick={() => setBulkOpen(true)}
+                className="rounded-md bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
+                title="現在の年月/申請者フィルタの承認済 + チェック中の保存済PDFを全部モーダルに渡す（モーダル内で取捨選択可）">
+                📧 承認済 {cnt} 件をラボップ送付
+              </button>
+            )
+          })()}
           {me?.admin && checkedIssuedIds.size > 0 && (
             <button onClick={bulkDeleteIssued}
               className="rounded-md bg-gradient-to-r from-red-500 to-rose-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
@@ -917,16 +927,21 @@ export default function InvoicesPage() {
 
       {/* 一括メール送信モーダル */}
       {bulkOpen && (() => {
-        const selected = items.filter((s) =>
-          s.status === 'approved' && (
-            checkedIds.has(`${s.kind}-${s.id}`) || mergedSubmissionIds.has(s.id)
-          )
-        )
-        const invs = selected.filter((s) => s.kind === 'invoice').map((s) => ({
+        // 「ラボップ送付」ボタンを押したら、現在の年月／申請者フィルタにマッチする
+        // 承認済みアイテム全部をモーダルに渡す（チェックボックスによる絞り込みは無視）。
+        // モーダル内で個別にチェック解除できる。
+        const inFilter = (s: Submission) => {
+          if (s.status !== 'approved') return false
+          if (filterMonth) { const ym = `${s.year}-${String(s.month).padStart(2, '0')}`; if (ym !== filterMonth) return false }
+          if (filterUserId && s.user_id !== filterUserId) return false
+          return true
+        }
+        const approved = items.filter(inFilter)
+        const invs = approved.filter((s) => s.kind === 'invoice').map((s) => ({
           id: s.id, user_display_name: s.user_display_name, year: s.year, month: s.month, category: s.category,
           kind: 'invoice' as const, total_override: s.total_override, default_total: s.default_total
         }))
-        const exps = selected.filter((s) => s.kind === 'expense').map((s) => ({
+        const exps = approved.filter((s) => s.kind === 'expense').map((s) => ({
           id: s.id, user_display_name: s.user_display_name, year: s.year, month: s.month, category: s.category,
           kind: 'expense' as const, total_override: s.total_override, default_total: s.default_total
         }))
