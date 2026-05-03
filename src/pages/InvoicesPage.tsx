@@ -3,6 +3,9 @@ import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import { fetchExportBlob } from '../components/FolderSaveButtons'
 import LabopMailModal from '../components/LabopMailModal'
+import ExpenseEditList from '../components/ExpenseEditList'
+import IssuedPdfEditModal from '../components/IssuedPdfEditModal'
+import MergedRowEditModal from '../components/MergedRowEditModal'
 
 type Submission = {
   id: number
@@ -20,6 +23,8 @@ type Submission = {
   default_total: number | null
   received_purchase_order_no: string | null
   received_purchase_order_subject: string | null
+  purchase_order_no_override?: string | null
+  effective_purchase_order_no?: string | null
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -64,6 +69,7 @@ export default function InvoicesPage() {
   const [filterKind, setFilterKind] = useState<'all' | 'invoice' | 'expense'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
   const [filterMonth, setFilterMonth] = useState<string>('') // YYYY-MM
+  const [filterUserId, setFilterUserId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 20
 
@@ -92,6 +98,7 @@ export default function InvoicesPage() {
   // チェック済み (admin の一括メール送信用) — key="invoice-{id}" or "expense-{id}"
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [checkedIssuedIds, setCheckedIssuedIds] = useState<Set<number>>(new Set())
+  const [checkedMergedKeys, setCheckedMergedKeys] = useState<Set<string>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
   const toggleCheck = (s: Submission) => {
     const k = `${s.kind}-${s.id}`
@@ -104,6 +111,36 @@ export default function InvoicesPage() {
     if (!confirm(`保存済 ${filename} を削除しますか？`)) return
     try { await api.delete(`/issued_invoice_pdfs/${id}`); await load() }
     catch (e: any) { alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
+  }
+  const downloadIssuedPdf = async (p: IssuedPdf) => {
+    try {
+      const res = await api.get(`/issued_invoice_pdfs/${p.id}/download`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = p.filename; document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+  const previewIssuedPdf = async (p: IssuedPdf) => {
+    setPreviewLoading(true)
+    setPreviewSub({
+      id: 0, user_id: p.user_id, user_display_name: p.user_display_name ?? '保存済 統合 PDF',
+      year: p.year ?? 0, month: p.month ?? 0, category: p.category ?? '',
+      kind: p.kind, status: 'approved', submitted_at: null, reviewed_at: null,
+      note: p.filename, total_override: p.total_amount, default_total: null,
+      received_purchase_order_no: p.purchase_order_no, received_purchase_order_subject: null,
+    } as Submission)
+    setPreviewMergeContext(null)
+    try {
+      const res = await api.get(`/issued_invoice_pdfs/${p.id}/download`, { params: { disposition: 'inline' }, responseType: 'blob' })
+      const url = URL.createObjectURL(res.data as Blob)
+      setPreviewUrl(url)
+    } catch (e: any) {
+      alert(`プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      setPreviewSub(null)
+    } finally { setPreviewLoading(false) }
   }
   const bulkDeleteIssued = async () => {
     if (checkedIssuedIds.size === 0) return
@@ -154,8 +191,10 @@ export default function InvoicesPage() {
   const [previewSaveBusy, setPreviewSaveBusy] = useState(false)
   // 編集モーダル
   type ItemRow = { label: string; qty: number; unit: string; unit_price: number; amount: number }
+  const [editingIssued, setEditingIssued] = useState<IssuedPdf | null>(null)
+  const [editingMergedRow, setEditingMergedRow] = useState<{ ids: number[]; po: string | null; kind: 'merged_expense' | 'merged_invoice' } | null>(null)
   const [editingSub, setEditingSub] = useState<Submission | null>(null)
-  const [editForm, setEditForm] = useState<{ note: string; total_override: string; subject_override: string; items: ItemRow[] }>({ note: '', total_override: '', subject_override: '', items: [] })
+  const [editForm, setEditForm] = useState<{ note: string; purchase_order_no_override: string; total_override: string; subject_override: string; items: ItemRow[] }>({ note: '', purchase_order_no_override: '', total_override: '', subject_override: '', items: [] })
   const [editBusy, setEditBusy] = useState(false)
   const updateEditItem = (i: number, patch: Partial<ItemRow>) => {
     setEditForm((p) => ({ ...p, items: p.items.map((it, idx) => idx === i ? { ...it, ...patch } : it) }))
@@ -192,6 +231,7 @@ export default function InvoicesPage() {
       const items: ItemRow[] = (detail.items_override && detail.items_override.length > 0 ? detail.items_override : (detail.default_items ?? [])) as ItemRow[]
       setEditForm({
         note: detail.note ?? '',
+        purchase_order_no_override: (detail as any).purchase_order_no_override ?? (detail.received_purchase_order_no ?? ''),
         total_override: detail.total_override != null ? String(detail.total_override) : '',
         subject_override: detail.subject_override ?? detail.default_subject ?? '',
         items: items.length > 0 ? items : [],
@@ -199,6 +239,7 @@ export default function InvoicesPage() {
     } catch {
       setEditForm({
         note: s.note ?? '',
+        purchase_order_no_override: s.received_purchase_order_no ?? '',
         total_override: s.total_override != null ? String(s.total_override) : '',
         subject_override: '',
         items: [],
@@ -212,6 +253,7 @@ export default function InvoicesPage() {
     try {
       const payload: Record<string, unknown> = {
         note: editForm.note,
+        purchase_order_no_override: editForm.purchase_order_no_override,
         total_override: editForm.total_override.replace(/[^\d-]/g, ''),
         subject_override: editForm.subject_override,
       }
@@ -231,9 +273,10 @@ export default function InvoicesPage() {
     } finally { setEditBusy(false) }
   }
 
-  // 統合 + DB 保存（save=1 を立てて呼ぶ）
+  // 統合 + DB 保存 + 同時にローカル DL（save=1 を立てて呼ぶ）
   const saveMergedToDb = async (m: any, format: 'pdf' | 'xlsx' = 'pdf') => {
-    setMergeBusy(`${m.key}-save`)
+    const busyKey = format === 'xlsx' ? `${m.key}-save-xlsx` : `${m.key}-save`
+    setMergeBusy(busyKey)
     try {
       const path = m.kind === 'merged_expense'
         ? (format === 'xlsx' ? '/exports/merged_expense.xlsx' : '/exports/merged_expense.pdf')
@@ -242,8 +285,19 @@ export default function InvoicesPage() {
       const idKey = m.kind === 'merged_expense' ? 'expense_submission_ids[]' : 'invoice_submission_ids[]'
       m.ids.forEach((id: number) => fd.append(idKey, String(id)))
       fd.append('save', '1')
-      await api.post(path, fd, { responseType: 'blob' })
-      alert('💾 DB に保存しました（請求書一覧 履歴で確認可）')
+      const res = await api.post(path, fd, { responseType: 'blob' })
+      // ついでにローカル DL
+      const ym = `${m.year}年_${m.month}月分`
+      const surnames = m.users.map((u: string) => u.split(/[\s　]/)[0]).join('_')
+      const cat = CATEGORY_LABELS[m.category] ?? m.category
+      const filename = m.kind === 'merged_expense'
+        ? `立替金_${surnames}_${cat}_${ym}.${format}`
+        : `${surnames}_請求書_${cat}_${ym}.${format}`
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      await load()
     } catch (e: any) {
       alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setMergeBusy(null) }
@@ -271,8 +325,13 @@ export default function InvoicesPage() {
       users: Array.from(new Set(selected.map((s) => s.user_display_name))),
       po: selected[0].received_purchase_order_no,
       total: selected.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0),
+      key: `merged-${selected[0].kind}-${selected[0].year}-${selected[0].month}-${selected[0].category}`,
     }
     await previewMerged(m)
+    // 立替金の統合は Excel もセットでダウンロード（ラボップ宛 PDF＋社内 Excel）
+    if (m.kind === 'merged_expense') {
+      try { await downloadMerged(m, 'xlsx') } catch {}
+    }
   }
   // 集約 PDF/Excel 関連
   const fetchMergedBlob = async (m: { kind: 'merged_expense' | 'merged_invoice'; ids: number[]; po: string | null; users: string[]; year: number; month: number; category: string }, format: 'pdf' | 'xlsx', preview = false) => {
@@ -421,6 +480,15 @@ export default function InvoicesPage() {
     return rows
   }, [items])
 
+  // 集約行 (merged_invoice / merged_expense) のチェックを構成する個別 submission の id 集合に展開
+  const mergedSubmissionIds = useMemo(() => {
+    const ids = new Set<number>()
+    mergedRows.forEach((m) => {
+      if (checkedMergedKeys.has(m.key)) m.ids.forEach((id) => ids.add(id))
+    })
+    return ids
+  }, [mergedRows, checkedMergedKeys])
+
   const filtered = useMemo(() => {
     return items
       .filter((s) => filterKind === 'all' || s.kind === filterKind)
@@ -430,12 +498,23 @@ export default function InvoicesPage() {
         const ym = `${s.year}-${String(s.month).padStart(2, '0')}`
         return ym === filterMonth
       })
+      .filter((s) => {
+        if (!filterUserId) return true
+        return s.user_id === filterUserId
+      })
       .sort((a, b) => {
         const ka = `${a.year}-${String(a.month).padStart(2, '0')}-${a.kind}-${a.id}`
         const kb = `${b.year}-${String(b.month).padStart(2, '0')}-${b.kind}-${b.id}`
         return kb.localeCompare(ka)
       })
-  }, [items, filterKind, filterStatus, filterMonth])
+  }, [items, filterKind, filterStatus, filterMonth, filterUserId])
+
+  // 申請者一覧（重複除去）
+  const userOptions = useMemo(() => {
+    const map = new Map<number, string>()
+    items.forEach((s) => { if (!map.has(s.user_id)) map.set(s.user_id, s.user_display_name) })
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+  }, [items])
 
   return (
     <div className="space-y-3">
@@ -460,10 +539,10 @@ export default function InvoicesPage() {
               🔗 選択 {checkedIds.size} 件を統合 PDF
             </button>
           )}
-          {me?.admin && checkedIds.size > 0 && (
+          {me?.admin && (checkedIds.size + checkedIssuedIds.size + mergedSubmissionIds.size) > 0 && (
             <button onClick={() => setBulkOpen(true)}
               className="rounded-md bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
-              📧 選択 {checkedIds.size} 件をラボップ送付
+              📧 選択 {(() => { const u = new Set<number>(); checkedIds.forEach((k) => u.add(Number(k.split('-')[1]))); mergedSubmissionIds.forEach((id) => u.add(id)); return u.size + checkedIssuedIds.size })()} 件をラボップ送付
             </button>
           )}
           {me?.admin && checkedIssuedIds.size > 0 && (
@@ -495,6 +574,16 @@ export default function InvoicesPage() {
         <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}
           className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs" />
         {filterMonth && <button onClick={() => setFilterMonth('')} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
+        {me?.admin && (
+          <select value={filterUserId ?? ''} onChange={(e) => setFilterUserId(e.target.value === '' ? null : Number(e.target.value))}
+            className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs">
+            <option value="">全申請者</option>
+            {userOptions.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        )}
+        {filterUserId != null && <button onClick={() => setFilterUserId(null)} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
         <span className="ml-auto text-[11px] text-[var(--color-text-sub)]">
           {filtered.length} / {items.length} 件
         </span>
@@ -542,16 +631,20 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-2 py-2 text-[var(--color-text-sub)]">{p.category ? (CATEGORY_LABELS[p.category] ?? p.category) : '—'}</td>
                     <td className="px-2 py-2 font-semibold text-amber-700">{usersStr}</td>
-                    <td className="px-2 py-2 font-mono text-[10px]">{p.purchase_order_no ?? '—'}</td>
+                    <td className="px-2 py-2 font-mono text-xs">{p.purchase_order_no ?? '—'}</td>
                     <td className="px-2 py-2 text-right font-mono tabular-nums">{p.total_amount != null ? `¥${p.total_amount.toLocaleString()}` : '—'}</td>
                     <td className="px-2 py-2 text-center"><span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700">統合</span></td>
                     <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">{p.generated_at ? new Date(p.generated_at).toLocaleString('ja-JP') : '—'}</td>
                     <td className="px-2 py-2 text-center">
                       <div className="flex gap-1 justify-center flex-wrap">
-                        <a href={`/api/v1/issued_invoice_pdfs/${p.id}/download?disposition=inline`} target="_blank" rel="noreferrer"
-                          className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50">🔍</a>
-                        <a href={`/api/v1/issued_invoice_pdfs/${p.id}/download`} download={p.filename}
-                          className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</a>
+                        <button onClick={() => previewIssuedPdf(p)}
+                          className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50">🔍</button>
+                        {me?.admin && (
+                          <button onClick={() => setEditingIssued(p)}
+                            className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="編集 → 再生成">✏️</button>
+                        )}
+                        <button onClick={() => downloadIssuedPdf(p)}
+                          className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</button>
                         {me?.admin && (
                           <button onClick={() => removeIssuedPdf(p.id, p.filename)}
                             className="rounded border border-red-300 bg-white px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-50">🗑</button>
@@ -566,20 +659,10 @@ export default function InvoicesPage() {
                 const previewBusy = mergeBusy === `${m.key}-preview`
                 const pdfBusy = mergeBusy === `${m.key}-pdf`
                 const xlsxBusy = mergeBusy === `${m.key}-xlsx`
-                // チェックボックス: m.ids すべてが checkedIds に含まれていれば true
-                const allChecked = m.ids.every((id) => {
-                  const k = `${m.kind === 'merged_expense' ? 'expense' : 'invoice'}-${id}`
-                  return checkedIds.has(k)
-                })
+                // チェックボックス: 集約専用 state でトラッキング（個別 submission には伝播しない）
+                const allChecked = checkedMergedKeys.has(m.key)
                 const toggleMergedCheck = () => {
-                  setCheckedIds((prev) => {
-                    const next = new Set(prev)
-                    m.ids.forEach((id) => {
-                      const k = `${m.kind === 'merged_expense' ? 'expense' : 'invoice'}-${id}`
-                      allChecked ? next.delete(k) : next.add(k)
-                    })
-                    return next
-                  })
+                  setCheckedMergedKeys((prev) => { const n = new Set(prev); n.has(m.key) ? n.delete(m.key) : n.add(m.key); return n })
                 }
                 return (
                 <tr key={m.key} className="border-t border-fuchsia-200 bg-fuchsia-50/40">
@@ -596,7 +679,7 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-2 py-2 text-[var(--color-text-sub)]">{CATEGORY_LABELS[m.category] ?? m.category}</td>
                   <td className="px-2 py-2 font-semibold text-fuchsia-700">{m.users.join(' + ')}</td>
-                  <td className="px-2 py-2 font-mono text-[10px]">{m.po ?? '—'}</td>
+                  <td className="px-2 py-2 font-mono text-xs">{m.po ?? '—'}</td>
                   <td className="px-2 py-2 text-right font-mono tabular-nums">¥{m.total.toLocaleString()}</td>
                   <td className="px-2 py-2 text-center"><span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-fuchsia-100 text-fuchsia-700">統合</span></td>
                   <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">—</td>
@@ -606,20 +689,22 @@ export default function InvoicesPage() {
                         className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50 disabled:opacity-50" title="統合 PDF を確認">
                         {previewBusy ? <Spinner /> : '🔍'}
                       </button>
-                      <button onClick={() => downloadMerged(m, 'pdf')} disabled={pdfBusy}
-                        className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50">
-                        {pdfBusy ? <><Spinner /> 生成中</> : '📥 PDF'}
-                      </button>
-                      {m.kind === 'merged_expense' && (
-                        <button onClick={() => downloadMerged(m, 'xlsx')} disabled={xlsxBusy}
-                          className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50">
-                          {xlsxBusy ? <><Spinner /> 生成中</> : '📊 xlsx'}
+                      {me?.admin && (
+                        <button onClick={() => setEditingMergedRow({ ids: m.ids, po: m.po, kind: m.kind })}
+                          className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="注文番号を編集">
+                          ✏️
                         </button>
                       )}
                       <button onClick={() => saveMergedToDb(m, 'pdf')} disabled={mergeBusy === `${m.key}-save`}
-                        className="rounded bg-gradient-to-r from-amber-500 to-orange-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50" title="統合 PDF を DB に保管">
-                        {mergeBusy === `${m.key}-save` ? <><Spinner /> 保存中</> : '💾 DB保存'}
+                        className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50" title="統合 PDF を DB 保存 + DL">
+                        {mergeBusy === `${m.key}-save` ? <><Spinner /> 生成中</> : '📥 PDF'}
                       </button>
+                      {m.kind === 'merged_expense' && (
+                        <button onClick={() => saveMergedToDb(m, 'xlsx')} disabled={mergeBusy === `${m.key}-save-xlsx`}
+                          className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50" title="統合 Excel を DB 保存 + DL">
+                          {mergeBusy === `${m.key}-save-xlsx` ? <><Spinner /> 生成中</> : '📊 Excel'}
+                        </button>
+                      )}
                       <button onClick={() => sendMergedToLabop(m)}
                         className="rounded bg-gradient-to-r from-rose-500 to-pink-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" title="ラボップにメール送信">
                         📧 送信
@@ -651,12 +736,12 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-2 py-2 text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</td>
                   <td className="px-2 py-2 font-semibold">{s.user_display_name}</td>
-                  <td className="px-2 py-2 font-mono text-[10px]">
-                    {s.received_purchase_order_no ? (
-                      <span title={s.received_purchase_order_subject ?? ''}>{s.received_purchase_order_no}</span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
+                  <td className="px-2 py-2 font-mono text-xs">
+                    {(() => {
+                      const effective = s.effective_purchase_order_no || s.purchase_order_no_override || s.received_purchase_order_no
+                      if (!effective) return <span className="text-gray-400">—</span>
+                      return <span title={s.received_purchase_order_subject ?? ''}>{effective}</span>
+                    })()}
                   </td>
                   <td className="px-2 py-2 text-right font-mono tabular-nums">
                     {s.total_override != null && s.total_override !== 0 ? `¥${s.total_override.toLocaleString()}` :
@@ -832,7 +917,11 @@ export default function InvoicesPage() {
 
       {/* 一括メール送信モーダル */}
       {bulkOpen && (() => {
-        const selected = items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`) && s.status === 'approved')
+        const selected = items.filter((s) =>
+          s.status === 'approved' && (
+            checkedIds.has(`${s.kind}-${s.id}`) || mergedSubmissionIds.has(s.id)
+          )
+        )
         const invs = selected.filter((s) => s.kind === 'invoice').map((s) => ({
           id: s.id, user_display_name: s.user_display_name, year: s.year, month: s.month, category: s.category,
           kind: 'invoice' as const, total_override: s.total_override, default_total: s.default_total
@@ -841,10 +930,34 @@ export default function InvoicesPage() {
           id: s.id, user_display_name: s.user_display_name, year: s.year, month: s.month, category: s.category,
           kind: 'expense' as const, total_override: s.total_override, default_total: s.default_total
         }))
+        const issued = issuedPdfs.filter((p) => checkedIssuedIds.has(p.id)).map((p) => ({
+          id: p.id, filename: p.filename, kind: p.kind, file_format: p.file_format,
+          total_amount: p.total_amount, year: p.year, month: p.month, category: p.category,
+        }))
         return (
-          <LabopMailModal invoices={invs} expenses={exps} onClose={() => setBulkOpen(false)} />
+          <LabopMailModal invoices={invs} expenses={exps} issuedPdfs={issued} onClose={() => setBulkOpen(false)} />
         )
       })()}
+
+      {/* 保存済み統合 PDF 編集モーダル */}
+      {editingIssued && (
+        <IssuedPdfEditModal
+          issued={editingIssued}
+          onClose={() => setEditingIssued(null)}
+          onSaved={async () => { await load(); setEditingIssued(null) }}
+        />
+      )}
+
+      {/* 統合（未保存）行の注文番号編集モーダル */}
+      {editingMergedRow && (
+        <MergedRowEditModal
+          ids={editingMergedRow.ids}
+          currentPo={editingMergedRow.po}
+          kind={editingMergedRow.kind}
+          onClose={() => setEditingMergedRow(null)}
+          onSaved={async () => { await load(); setEditingMergedRow(null) }}
+        />
+      )}
 
       {/* 編集モーダル */}
       {editingSub && (
@@ -862,10 +975,22 @@ export default function InvoicesPage() {
               💡 PDF には別途 <strong>お振込先（口座番号）</strong> が自動表示されます — ⚙ 設定 → 請求書設定 → 銀行情報 で編集
             </div>
             <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">備考（注文番号や補足）</div>
+              <div className="text-[11px] font-semibold mb-0.5">注文番号（PDF 備考の先頭に「注文番号: XXX」として出力）</div>
+              <input value={editForm.purchase_order_no_override}
+                onChange={(e) => setEditForm({ ...editForm, purchase_order_no_override: e.target.value })}
+                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm font-mono"
+                placeholder="ORD-010014" />
+              {editingSub.received_purchase_order_no && (
+                <div className="text-[10px] text-[var(--color-text-sub)] mt-0.5">
+                  PO 連携: <span className="font-mono">{editingSub.received_purchase_order_no}</span>（空欄ならこちらが使われます）
+                </div>
+              )}
+            </label>
+            <label className="block">
+              <div className="text-[11px] font-semibold mb-0.5">備考（補足メモのみ。注文番号は上の欄）</div>
               <textarea value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
                 rows={3} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-xs"
-                placeholder="ORD-010014 / タマリビング案件 西野・川村" />
+                placeholder="例: タマリビング案件 西野・川村" />
             </label>
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">税込合計（ラボップ宛上書き）</div>
@@ -874,11 +999,17 @@ export default function InvoicesPage() {
                 placeholder="例: 330000 / マイナス値も可（相殺）"
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm font-mono" />
             </label>
+            {editingSub.kind === 'invoice' && (
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">件名 上書き（任意）</div>
               <input value={editForm.subject_override} onChange={(e) => setEditForm({ ...editForm, subject_override: e.target.value })}
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
             </label>
+            )}
+            {editingSub.kind === 'expense' && (
+              <ExpenseEditList submissionUserId={editingSub.user_id} year={editingSub.year} month={editingSub.month} category={editingSub.category} />
+            )}
+            {editingSub.kind === 'invoice' && (
             <div className="block">
               <div className="flex items-center justify-between mb-1">
                 <div className="text-[11px] font-semibold">品番・品名 / 明細</div>
@@ -913,6 +1044,7 @@ export default function InvoicesPage() {
                 </tbody>
               </table>
             </div>
+            )}
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button onClick={closeEdit} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
               <button onClick={saveEdit} disabled={editBusy}
