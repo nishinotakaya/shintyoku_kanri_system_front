@@ -12,10 +12,23 @@ type Submission = {
   default_total: number | null
 }
 
+type IssuedPdf = {
+  id: number
+  filename: string
+  kind: string
+  file_format: string
+  total_amount: number | null
+  year: number | null
+  month: number | null
+  category: string | null
+}
+
 type Props = {
   // 全ての承認済み (invoice + expense) を渡す
   invoices: Submission[]
   expenses: Submission[]
+  // 保存済み 統合 PDF (IssuedInvoicePdf) — チェック済みのものをそのまま添付できる
+  issuedPdfs?: IssuedPdf[]
   onClose: () => void
 }
 
@@ -26,12 +39,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   resystems: 'REシステムズ',
 }
 
-export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
-  // 既定で全添付タイプ全選択（請求書PDF / 業務報告書Excel / 立替金PDF / 立替金Excel）
+export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], onClose }: Props) {
+  // 既定で全添付タイプ全選択（請求書PDF / 業務報告書Excel / 立替金PDF / 立替金Excel / 保存済 統合 PDF）
   const [selectedInvoicePdfIds, setSelectedInvoicePdfIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
   const [selectedWorkReportXlsxIds, setSelectedWorkReportXlsxIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
   const [selectedExpensePdfIds, setSelectedExpensePdfIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [selectedExpenseXlsxIds, setSelectedExpenseXlsxIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
+  const [selectedIssuedIds, setSelectedIssuedIds] = useState<Set<number>>(() => new Set(issuedPdfs.map((s) => s.id)))
   const [to, setTo] = useState('takaya777boxing@gmail.com') // テスト送信先を初期値に
   const [recipientName, setRecipientName] = useState('株式会社ラボップ 御中')
   const [subject, setSubject] = useState('')
@@ -46,7 +60,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
   const expenseInvolvedIds = useMemo(() => {
     const s = new Set<number>(); selectedExpensePdfIds.forEach((id) => s.add(id)); selectedExpenseXlsxIds.forEach((id) => s.add(id)); return s
   }, [selectedExpensePdfIds, selectedExpenseXlsxIds])
-  const totalSelected = selectedInvoicePdfIds.size + selectedWorkReportXlsxIds.size + selectedExpensePdfIds.size + selectedExpenseXlsxIds.size
+  const totalSelected = selectedInvoicePdfIds.size + selectedWorkReportXlsxIds.size + selectedExpensePdfIds.size + selectedExpenseXlsxIds.size + selectedIssuedIds.size
 
   useEffect(() => { void requestDraft() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [])
 
@@ -60,6 +74,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
       const r = await api.post<{ subject: string; body: string }>('/emails/labop_draft', {
         invoice_submission_ids: Array.from(selectedInvoicePdfIds),
         expense_submission_ids: Array.from(expenseInvolvedIds),
+        issued_invoice_pdf_ids: Array.from(selectedIssuedIds),
         recipient_name: recipientName,
         extra_count: extraFiles.length,
       })
@@ -90,6 +105,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
       Array.from(selectedWorkReportXlsxIds).forEach((id) => fd.append('work_report_xlsx_submission_ids[]', String(id)))
       Array.from(selectedExpensePdfIds).forEach((id) => fd.append('expense_pdf_submission_ids[]', String(id)))
       Array.from(selectedExpenseXlsxIds).forEach((id) => fd.append('expense_xlsx_submission_ids[]', String(id)))
+      Array.from(selectedIssuedIds).forEach((id) => fd.append('issued_invoice_pdf_ids[]', String(id)))
       fd.append('to', to)
       fd.append('subject', subject)
       fd.append('body', body)
@@ -113,6 +129,7 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
             <div className="text-sm font-semibold text-[var(--color-text)]">📧 ラボップへ一括送付</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
               請求書PDF {selectedInvoicePdfIds.size}/{invoices.length} ／ 業務報告書Excel {selectedWorkReportXlsxIds.size}/{invoices.length} ／ 立替金PDF {selectedExpensePdfIds.size}/{expenses.length} ／ 立替金Excel {selectedExpenseXlsxIds.size}/{expenses.length}
+              {issuedPdfs.length > 0 && <> ／ 統合PDF {selectedIssuedIds.size}/{issuedPdfs.length}</>}
             </div>
           </div>
           <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
@@ -185,7 +202,19 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
               </div>
             </>
           )}
-          {invoices.length === 0 && expenses.length === 0 && (
+          {issuedPdfs.length > 0 && (
+            <div className="mt-2 border-t pt-2">
+              <div className="text-[10px] text-amber-600 font-semibold mb-0.5">保存済み 統合 PDF（バイナリそのまま添付）</div>
+              {issuedPdfs.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                  <input type="checkbox" checked={selectedIssuedIds.has(s.id)} onChange={() => toggleSet(setSelectedIssuedIds, s.id)} />
+                  <span>{s.filename}</span>
+                  {s.total_amount != null && <span className="text-amber-600">¥{s.total_amount.toLocaleString()}</span>}
+                </label>
+              ))}
+            </div>
+          )}
+          {invoices.length === 0 && expenses.length === 0 && issuedPdfs.length === 0 && (
             <div className="text-[11px] text-[var(--color-text-sub)]">承認済み申請がありません</div>
           )}
         </div>
@@ -216,6 +245,9 @@ export default function LabopMailModal({ invoices, expenses, onClose }: Props) {
             ))}
             {expenses.filter((s) => selectedExpenseXlsxIds.has(s.id)).map((s) => (
               <li key={`ex${s.id}`}>立替金 Excel（{s.user_display_name} {s.year}/{s.month} {CATEGORY_LABELS[s.category]}）</li>
+            ))}
+            {issuedPdfs.filter((s) => selectedIssuedIds.has(s.id)).map((s) => (
+              <li key={`ip${s.id}`}>統合 {s.file_format.toUpperCase()}（{s.filename}）</li>
             ))}
           </ul>
         </div>
