@@ -19,6 +19,24 @@ type PO = {
   has_pdf?: boolean
   ai_extracted_at?: string | null
   invoice_submission_count: number
+  // 自社が発行した発注書 (purchase_order_histories) を統合表示するための種別。
+  // 'received' = ラボップから受け取った PDF / 'issued' = 自社で作成して川村等に送った発注書
+  kind?: 'received' | 'issued'
+  recipient_name?: string | null  // issued のみ: 受領者 (例: 川村 卓也)
+  issued_at?: string | null       // issued のみ: 発行日時
+}
+
+type IssuedHistory = {
+  id: number
+  category: string
+  position: number
+  order_no: string
+  subject: string
+  recipient_name: string
+  period_start: string | null
+  period_end: string | null
+  total_amount: number
+  issued_at: string | null
 }
 
 type ExtractResult = {
@@ -118,8 +136,35 @@ export default function PurchaseOrdersPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const r = await api.get<PO[]>('/received_purchase_orders')
-      setItems(r.data)
+      // ラボップから受領した PO + 勤怠で発行した PO 履歴 を両方取って統合
+      const [recvRes, issuedRes] = await Promise.all([
+        api.get<PO[]>('/received_purchase_orders'),
+        api.get<IssuedHistory[]>('/purchase_order_histories').catch(() => ({ data: [] as IssuedHistory[] })),
+      ])
+      const received: PO[] = recvRes.data.map((r) => ({ ...r, kind: 'received' as const }))
+      const issued: PO[] = issuedRes.data.map((h) => ({
+        id: h.id,
+        user_id: 0,
+        user_display_name: null,
+        order_no: h.order_no,
+        customer_name: null,
+        category: h.category,
+        subject: h.subject,
+        period_start: h.period_start,
+        period_end: h.period_end,
+        total_amount: h.total_amount,
+        note: null,
+        file_url: null,
+        filename: null,
+        has_pdf: false,
+        ai_extracted_at: null,
+        invoice_submission_count: 0,
+        kind: 'issued' as const,
+        recipient_name: h.recipient_name,
+        issued_at: h.issued_at,
+      }))
+      // issued は新しい順、received はそのまま (period_start desc)
+      setItems([...received, ...issued])
     } finally {
       setLoading(false)
     }
@@ -191,7 +236,10 @@ export default function PurchaseOrdersPage() {
 
   const downloadPdf = async (po: PO) => {
     try {
-      const res = await api.get(`/received_purchase_orders/${po.id}/download`, { responseType: 'blob' })
+      const path = po.kind === 'issued'
+        ? `/purchase_order_histories/${po.id}/regenerate.pdf`
+        : `/received_purchase_orders/${po.id}/download`
+      const res = await api.get(path, { responseType: 'blob' })
       const url = URL.createObjectURL(res.data as Blob)
       const a = document.createElement('a')
       a.href = url; a.target = '_blank'; a.rel = 'noreferrer'
@@ -346,8 +394,9 @@ export default function PurchaseOrdersPage() {
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
+                <th className="px-2 py-2 text-left">種別</th>
                 <th className="px-2 py-2 text-left">注文番号</th>
-                <th className="px-2 py-2 text-left">受注者</th>
+                <th className="px-2 py-2 text-left">受注者 / 受領者</th>
                 <th className="px-2 py-2 text-left">案件名</th>
                 <th className="px-2 py-2 text-left">期間</th>
                 <th className="px-2 py-2 text-right">金額</th>
@@ -358,9 +407,16 @@ export default function PurchaseOrdersPage() {
             </thead>
             <tbody>
               {items.map((po) => (
-                <tr key={po.id} className="border-t border-[var(--color-border)]">
+                <tr key={`${po.kind}-${po.id}`} className={`border-t border-[var(--color-border)] ${po.kind === 'issued' ? 'bg-sky-50/30' : ''}`}>
+                  <td className="px-2 py-2 text-center">
+                    {po.kind === 'issued' ? (
+                      <span className="rounded bg-sky-100 text-sky-700 px-1.5 py-0.5 text-[10px] font-semibold" title="自社で発行した発注書 (勤怠 → 注文書一覧)">📤 発行</span>
+                    ) : (
+                      <span className="rounded bg-fuchsia-100 text-fuchsia-700 px-1.5 py-0.5 text-[10px] font-semibold" title="ラボップから受領した発注書">📥 受領</span>
+                    )}
+                  </td>
                   <td className="px-2 py-2 font-mono font-semibold">{po.order_no}</td>
-                  <td className="px-2 py-2">{po.user_display_name ?? '—'}</td>
+                  <td className="px-2 py-2">{po.kind === 'issued' ? (po.recipient_name ?? '—') : (po.user_display_name ?? '—')}</td>
                   <td className="px-2 py-2">{po.subject ?? '—'}</td>
                   <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">
                     {po.period_start ?? '—'} 〜 {po.period_end ?? '—'}
@@ -369,23 +425,30 @@ export default function PurchaseOrdersPage() {
                     {po.total_amount ? `¥${po.total_amount.toLocaleString()}` : '—'}
                   </td>
                   <td className="px-2 py-2 text-center">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] ${po.invoice_submission_count > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {po.invoice_submission_count}件
-                    </span>
+                    {po.kind === 'received' ? (
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${po.invoice_submission_count > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {po.invoice_submission_count}件
+                      </span>
+                    ) : '—'}
                   </td>
                   <td className="px-2 py-2 text-center">
-                    {po.has_pdf ? (
+                    {po.kind === 'issued' ? (
+                      <button onClick={() => downloadPdf(po)} className="text-sky-500 hover:underline">📎 PDF</button>
+                    ) : po.has_pdf ? (
                       <button onClick={() => downloadPdf(po)} className="text-fuchsia-500 hover:underline">📎 PDF</button>
                     ) : po.file_url ? (
                       <a href={po.file_url} target="_blank" rel="noreferrer" className="text-fuchsia-500 hover:underline">📎 URL</a>
                     ) : '—'}
                   </td>
                   <td className="px-2 py-2 text-right">
-                    {isAdmin && (
+                    {isAdmin && po.kind === 'received' && (
                       <>
                         <button onClick={() => startEdit(po)} className="text-fuchsia-500 hover:text-fuchsia-400 mr-2">編集</button>
                         <button onClick={() => remove(po)} className="text-gray-400 hover:text-red-500">🗑</button>
                       </>
+                    )}
+                    {isAdmin && po.kind === 'issued' && (
+                      <span className="text-[10px] text-[var(--color-text-sub)]">勤怠から編集</span>
                     )}
                   </td>
                 </tr>
