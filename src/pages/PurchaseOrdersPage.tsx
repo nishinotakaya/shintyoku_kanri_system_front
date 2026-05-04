@@ -21,7 +21,8 @@ type PO = {
   invoice_submission_count: number
   // 自社が発行した発注書 (purchase_order_histories) を統合表示するための種別。
   // 'received' = ラボップから受け取った PDF / 'issued' = 自社で作成して川村等に送った発注書
-  kind?: 'received' | 'issued'
+  // 'issued_template' = 勤怠 page で保存中の発注書テンプレ (purchase_order_settings)
+  kind?: 'received' | 'issued' | 'issued_template'
   recipient_name?: string | null  // issued のみ: 受領者 (例: 川村 卓也)
   issued_at?: string | null       // issued のみ: 発行日時
 }
@@ -37,6 +38,21 @@ type IssuedHistory = {
   period_end: string | null
   total_amount: number
   issued_at: string | null
+}
+
+// 勤怠 page の注文書一覧で使われる「設定済み発注書テンプレ」(purchase_order_settings)
+// (PurchaseOrderHistory ではなく、こちらが勤怠側でフォーム保存されているデータ)
+type IssuedSetting = {
+  category: string
+  position: number
+  exists?: boolean
+  subject: string | null
+  recipient_name: string | null
+  period_start: string | null
+  period_end: string | null
+  base_monthly: number | null
+  rate_per_hour: number | null
+  hours_per_cycle: number | null
 }
 
 type ExtractResult = {
@@ -136,13 +152,21 @@ export default function PurchaseOrdersPage() {
   const load = async () => {
     setLoading(true)
     try {
-      // ラボップから受領した PO + 勤怠で発行した PO 履歴 を両方取って統合
-      const [recvRes, issuedRes] = await Promise.all([
+      // ラボップから受領した PO (received_purchase_orders)
+      // + 勤怠で発行した PO 履歴 (purchase_order_histories)
+      // + 勤怠 page の注文書一覧 = カテゴリ別の発注テンプレ (purchase_order_settings)
+      // を全部取って統合表示
+      const cats = ['wings', 'living', 'techleaders', 'resystems'] as const
+      const [recvRes, issuedRes, ...settingResults] = await Promise.all([
         api.get<PO[]>('/received_purchase_orders'),
         api.get<IssuedHistory[]>('/purchase_order_histories').catch(() => ({ data: [] as IssuedHistory[] })),
+        ...cats.map((c) =>
+          api.get<IssuedSetting[]>('/purchase_order_settings', { params: { category: c } })
+            .catch(() => ({ data: [] as IssuedSetting[] }))
+        ),
       ])
       const received: PO[] = recvRes.data.map((r) => ({ ...r, kind: 'received' as const }))
-      const issued: PO[] = issuedRes.data.map((h) => ({
+      const issuedHistory: PO[] = issuedRes.data.map((h) => ({
         id: h.id,
         user_id: 0,
         user_display_name: null,
@@ -153,18 +177,36 @@ export default function PurchaseOrdersPage() {
         period_start: h.period_start,
         period_end: h.period_end,
         total_amount: h.total_amount,
-        note: null,
-        file_url: null,
-        filename: null,
-        has_pdf: false,
-        ai_extracted_at: null,
+        note: null, file_url: null, filename: null, has_pdf: false, ai_extracted_at: null,
         invoice_submission_count: 0,
         kind: 'issued' as const,
         recipient_name: h.recipient_name,
         issued_at: h.issued_at,
       }))
-      // issued は新しい順、received はそのまま (period_start desc)
-      setItems([...received, ...issued])
+      const issuedSettings: PO[] = settingResults.flatMap((res, idx) => {
+        const cat = cats[idx]
+        return (res.data ?? []).filter((s) => s.exists !== false).map((s, i) => {
+          const total = s.base_monthly ?? ((s.rate_per_hour ?? 0) * (s.hours_per_cycle ?? 0))
+          return {
+            id: 1_000_000 + idx * 100 + (s.position ?? i), // 衝突しない仮想 ID
+            user_id: 0,
+            user_display_name: null,
+            order_no: '—',
+            customer_name: null,
+            category: cat,
+            subject: s.subject || '(案件名未設定)',
+            period_start: s.period_start,
+            period_end: s.period_end,
+            total_amount: total > 0 ? total : null,
+            note: null, file_url: null, filename: null, has_pdf: false, ai_extracted_at: null,
+            invoice_submission_count: 0,
+            kind: 'issued_template' as const,
+            recipient_name: s.recipient_name,
+            issued_at: null,
+          }
+        })
+      })
+      setItems([...received, ...issuedHistory, ...issuedSettings])
     } finally {
       setLoading(false)
     }
@@ -410,13 +452,15 @@ export default function PurchaseOrdersPage() {
                 <tr key={`${po.kind}-${po.id}`} className={`border-t border-[var(--color-border)] ${po.kind === 'issued' ? 'bg-sky-50/30' : ''}`}>
                   <td className="px-2 py-2 text-center">
                     {po.kind === 'issued' ? (
-                      <span className="rounded bg-sky-100 text-sky-700 px-1.5 py-0.5 text-[10px] font-semibold" title="自社で発行した発注書 (勤怠 → 注文書一覧)">📤 発行</span>
+                      <span className="rounded bg-sky-100 text-sky-700 px-1.5 py-0.5 text-[10px] font-semibold" title="自社で発行した発注書 (履歴)">📤 発行</span>
+                    ) : po.kind === 'issued_template' ? (
+                      <span className="rounded bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-semibold" title="勤怠ページで保存中の発注書テンプレ">📝 テンプレ</span>
                     ) : (
                       <span className="rounded bg-fuchsia-100 text-fuchsia-700 px-1.5 py-0.5 text-[10px] font-semibold" title="ラボップから受領した発注書">📥 受領</span>
                     )}
                   </td>
                   <td className="px-2 py-2 font-mono font-semibold">{po.order_no}</td>
-                  <td className="px-2 py-2">{po.kind === 'issued' ? (po.recipient_name ?? '—') : (po.user_display_name ?? '—')}</td>
+                  <td className="px-2 py-2">{(po.kind === 'issued' || po.kind === 'issued_template') ? (po.recipient_name ?? '—') : (po.user_display_name ?? '—')}</td>
                   <td className="px-2 py-2">{po.subject ?? '—'}</td>
                   <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">
                     {po.period_start ?? '—'} 〜 {po.period_end ?? '—'}
@@ -447,7 +491,7 @@ export default function PurchaseOrdersPage() {
                         <button onClick={() => remove(po)} className="text-gray-400 hover:text-red-500">🗑</button>
                       </>
                     )}
-                    {isAdmin && po.kind === 'issued' && (
+                    {isAdmin && (po.kind === 'issued' || po.kind === 'issued_template') && (
                       <span className="text-[10px] text-[var(--color-text-sub)]">勤怠から編集</span>
                     )}
                   </td>
