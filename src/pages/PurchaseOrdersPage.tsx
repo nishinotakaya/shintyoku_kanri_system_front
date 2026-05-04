@@ -15,7 +15,22 @@ type PO = {
   total_amount: number | null
   note: string | null
   file_url: string | null
+  filename?: string | null
+  has_pdf?: boolean
+  ai_extracted_at?: string | null
   invoice_submission_count: number
+}
+
+type ExtractResult = {
+  order_no?: string | null
+  customer_name?: string | null
+  subject?: string | null
+  period_start?: string | null
+  period_end?: string | null
+  total_amount?: number | null
+  contractor_name?: string | null
+  raw_text?: string | null
+  error?: string | null
 }
 
 type PickableUser = { id: number; display_name: string; email: string; admin: boolean }
@@ -33,10 +48,72 @@ export default function PurchaseOrdersPage() {
   const [users, setUsers] = useState<PickableUser[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Partial<PO> | null>(null)
+  const [pendingPdf, setPendingPdf] = useState<File | null>(null)
+  const [extractRawText, setExtractRawText] = useState<string>('')
+  const [dropping, setDropping] = useState(false)
+  const [extracting, setExtracting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   const isAdmin = !!me?.admin
+
+  // PDF を Drop して AI 抽出 → 編集モーダルにプリフィル
+  const onDropPdf = async (file: File) => {
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+      setMsg('PDF ファイルを落としてください'); return
+    }
+    setExtracting(true); setMsg(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await api.post<ExtractResult>('/received_purchase_orders/extract', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const ex = r.data
+      if (ex.error) { setMsg(`抽出失敗: ${ex.error}`); return }
+      // 受注者推定: contractor_name が display_name の部分一致するユーザーがいれば紐付け
+      const matchedUser = ex.contractor_name
+        ? users.find((u) => u.display_name.includes(ex.contractor_name!.split(/[\s　]/)[0]))
+        : null
+      // カテゴリ推定: subject に「リビング」「Wings/Tama」が含まれるか
+      const inferredCategory = (() => {
+        const s = `${ex.subject ?? ''} ${ex.customer_name ?? ''}`
+        if (s.includes('リビング')) return 'living'
+        if (s.includes('テックリーダーズ')) return 'techleaders'
+        if (s.includes('REシステムズ')) return 'resystems'
+        return 'wings'
+      })()
+      setEditing({
+        user_id: matchedUser?.id ?? me?.id,
+        order_no: ex.order_no ?? '',
+        customer_name: ex.customer_name ?? '',
+        category: inferredCategory,
+        subject: ex.subject ?? '',
+        period_start: ex.period_start ?? '',
+        period_end: ex.period_end ?? '',
+        total_amount: ex.total_amount ?? null,
+        note: '',
+        file_url: '',
+      })
+      setPendingPdf(file)
+      setExtractRawText(ex.raw_text ?? '')
+      setMsg('🤖 AI 抽出完了。内容を確認して保存してください')
+    } catch (e: any) {
+      setMsg(`抽出失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const onDropEvent = (e: React.DragEvent) => {
+    e.preventDefault(); setDropping(false)
+    const file = e.dataTransfer.files[0]
+    if (file) onDropPdf(file)
+  }
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) onDropPdf(file)
+    e.target.value = ''
+  }
 
   const load = async () => {
     setLoading(true)
@@ -54,41 +131,76 @@ export default function PurchaseOrdersPage() {
     api.get<PickableUser[]>('/users/pickable').then((r) => setUsers(r.data)).catch(() => {})
   }, [])
 
-  const startNew = () => setEditing({
+  const startNew = () => { setPendingPdf(null); setExtractRawText(''); setEditing({
     user_id: me?.id, order_no: '', customer_name: '', category: 'wings', subject: '',
     period_start: '', period_end: '', total_amount: null, note: '', file_url: '',
-  })
-  const startEdit = (po: PO) => setEditing({ ...po })
-  const cancel = () => { setEditing(null); setMsg(null) }
+  }) }
+  const startEdit = (po: PO) => { setPendingPdf(null); setExtractRawText(''); setEditing({ ...po }) }
+  const cancel = () => { setEditing(null); setPendingPdf(null); setExtractRawText(''); setMsg(null) }
 
   const save = async () => {
     if (!editing) return
     if (!editing.order_no?.trim()) { setMsg('注文番号を入力してください'); return }
     setBusy(true); setMsg(null)
     try {
-      const payload = {
-        order_no: editing.order_no,
-        customer_name: editing.customer_name,
-        category: editing.category,
-        subject: editing.subject,
-        period_start: editing.period_start || null,
-        period_end: editing.period_end || null,
-        total_amount: editing.total_amount,
-        note: editing.note,
-        file_url: editing.file_url,
-        user_id: editing.user_id,
-      }
-      if (editing.id) {
-        await api.patch(`/received_purchase_orders/${editing.id}`, payload)
+      // 新規作成 + PDF Drop 経由 → /upload で multipart 送信
+      if (!editing.id && pendingPdf) {
+        const fd = new FormData()
+        fd.append('file', pendingPdf)
+        fd.append('order_no', editing.order_no ?? '')
+        fd.append('customer_name', editing.customer_name ?? '')
+        fd.append('category', editing.category ?? 'wings')
+        fd.append('subject', editing.subject ?? '')
+        if (editing.period_start) fd.append('period_start', editing.period_start)
+        if (editing.period_end) fd.append('period_end', editing.period_end)
+        if (editing.total_amount != null) fd.append('total_amount', String(editing.total_amount))
+        fd.append('note', editing.note ?? '')
+        fd.append('file_url', editing.file_url ?? '')
+        if (editing.user_id) fd.append('user_id', String(editing.user_id))
+        fd.append('ai_extracted', 'true')
+        if (extractRawText) fd.append('ai_raw_text', extractRawText)
+        await api.post('/received_purchase_orders/upload', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
       } else {
-        await api.post('/received_purchase_orders', payload)
+        const payload = {
+          order_no: editing.order_no,
+          customer_name: editing.customer_name,
+          category: editing.category,
+          subject: editing.subject,
+          period_start: editing.period_start || null,
+          period_end: editing.period_end || null,
+          total_amount: editing.total_amount,
+          note: editing.note,
+          file_url: editing.file_url,
+          user_id: editing.user_id,
+        }
+        if (editing.id) {
+          await api.patch(`/received_purchase_orders/${editing.id}`, payload)
+        } else {
+          await api.post('/received_purchase_orders', payload)
+        }
       }
       setMsg('保存しました')
-      setEditing(null)
+      setEditing(null); setPendingPdf(null); setExtractRawText('')
       await load()
     } catch (e: any) {
       setMsg(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setBusy(false) }
+  }
+
+  const downloadPdf = async (po: PO) => {
+    try {
+      const res = await api.get(`/received_purchase_orders/${po.id}/download`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url; a.target = '_blank'; a.rel = 'noreferrer'
+      a.download = po.filename ?? `発注書_${po.order_no}.pdf`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert(`PDF DL 失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
   }
 
   const remove = async (po: PO) => {
@@ -119,15 +231,44 @@ export default function PurchaseOrdersPage() {
         )}
       </div>
 
+      {isAdmin && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDropping(true) }}
+          onDragLeave={() => setDropping(false)}
+          onDrop={onDropEvent}
+          className={`rounded-xl border-2 border-dashed p-4 text-center transition ${
+            dropping ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-gray-300 bg-gray-50'
+          } ${extracting ? 'opacity-60 pointer-events-none' : ''}`}
+        >
+          <div className="text-sm font-semibold text-[var(--color-text)]">
+            {extracting ? '🤖 AI で読み取り中…' : '📎 ラボップから受領した発注書 PDF をここにドラッグ&ドロップ'}
+          </div>
+          <div className="text-[11px] text-[var(--color-text-sub)] mt-1">
+            注文番号 / 案件名 / 期間 / 金額 / 受注者を AI が自動抽出。確認後に保存できます。
+          </div>
+          <label className="inline-block mt-2 cursor-pointer rounded-md bg-white border border-fuchsia-400 px-3 py-1.5 text-xs font-semibold text-fuchsia-600 hover:bg-fuchsia-50">
+            またはファイルを選択
+            <input type="file" accept="application/pdf" className="hidden" onChange={onPickFile} />
+          </label>
+        </div>
+      )}
+
       {msg && <div className={`text-[11px] ${msg.includes('失敗') ? 'text-red-500' : 'text-emerald-600'}`}>{msg}</div>}
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={cancel}>
           <div className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-xl bg-white p-4 shadow-xl space-y-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">{editing.id ? '📋 注文書を編集' : '📋 注文書を新規追加'}</div>
+            <div className="text-sm font-semibold">
+              {editing.id ? '📋 注文書を編集' : pendingPdf ? '📋 PDF から AI 抽出 → 内容確認' : '📋 注文書を新規追加'}
+            </div>
             <button onClick={cancel} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
           </div>
+          {pendingPdf && (
+            <div className="rounded-md bg-fuchsia-50 border border-fuchsia-200 px-2 py-1.5 text-[11px] text-fuchsia-700">
+              📎 添付予定: <span className="font-mono">{pendingPdf.name}</span>（保存と同時に DB に PDF バイナリが保管されます）
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">注文番号 *</div>
@@ -233,7 +374,11 @@ export default function PurchaseOrdersPage() {
                     </span>
                   </td>
                   <td className="px-2 py-2 text-center">
-                    {po.file_url ? <a href={po.file_url} target="_blank" rel="noreferrer" className="text-fuchsia-500 hover:underline">📎 開く</a> : '—'}
+                    {po.has_pdf ? (
+                      <button onClick={() => downloadPdf(po)} className="text-fuchsia-500 hover:underline">📎 PDF</button>
+                    ) : po.file_url ? (
+                      <a href={po.file_url} target="_blank" rel="noreferrer" className="text-fuchsia-500 hover:underline">📎 URL</a>
+                    ) : '—'}
                   </td>
                   <td className="px-2 py-2 text-right">
                     {isAdmin && (
