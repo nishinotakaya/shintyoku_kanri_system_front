@@ -451,8 +451,28 @@ export default function InvoicesPage() {
   // 同じ (year, month, category, kind=expense, status=approved) で複数ユーザーがある場合の集約 row（virtual）
   // 同じ PO に複数の invoice 申請があれば「PO マージ」row も追加
   type MergedRow = { kind: 'merged_expense' | 'merged_invoice'; key: string; year: number; month: number; category: string; users: string[]; ids: number[]; po: string | null; total: number }
+  // 一覧から手動で隠した集約行 (ゴミ箱ボタン押下分)。localStorage に永続化
+  const [dismissedMergedKeys, setDismissedMergedKeys] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('dismissedMergedKeys') || '[]')) } catch { return new Set() }
+  })
+  const dismissMergedRow = (key: string) => {
+    setDismissedMergedKeys((prev) => {
+      const next = new Set(prev); next.add(key)
+      try { localStorage.setItem('dismissedMergedKeys', JSON.stringify(Array.from(next))) } catch {}
+      return next
+    })
+  }
   const mergedRows: MergedRow[] = useMemo(() => {
     const rows: MergedRow[] = []
+    // 既に保存済 統合 PDF (IssuedInvoicePdf) があれば virtual 行は重複なので隠す
+    const savedExpenseKeys = new Set(
+      issuedPdfs.filter((p) => p.kind === 'expense' && p.merged && p.year && p.month && p.category)
+        .map((p) => `${p.year}-${p.month}-${p.category}`)
+    )
+    const savedInvoicePoKeys = new Set(
+      issuedPdfs.filter((p) => p.kind === 'invoice' && p.merged && p.purchase_order_no)
+        .map((p) => `${p.purchase_order_no}`)
+    )
     // 立替金 集約: 承認済 expense を (year, month, category) でグループ化、複数ユーザー
     const expGroups = new Map<string, Submission[]>()
     items.filter((s) => s.kind === 'expense' && s.status === 'approved').forEach((s) => {
@@ -462,6 +482,8 @@ export default function InvoicesPage() {
     expGroups.forEach((subs, key) => {
       const userSet = new Set(subs.map((s) => s.user_display_name))
       if (userSet.size < 2) return
+      if (savedExpenseKeys.has(key)) return
+      if (dismissedMergedKeys.has(`me-${key}`)) return
       const totalSum = subs.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0)
       rows.push({ kind: 'merged_expense', key: `me-${key}`, year: subs[0].year, month: subs[0].month, category: subs[0].category, users: Array.from(userSet), ids: subs.map((s) => s.id), po: null, total: totalSum })
     })
@@ -473,12 +495,14 @@ export default function InvoicesPage() {
     })
     invGroups.forEach((subs, po) => {
       if (subs.length < 2) return
+      if (savedInvoicePoKeys.has(po)) return
+      if (dismissedMergedKeys.has(`mi-${po}`)) return
       const userSet = new Set(subs.map((s) => s.user_display_name))
       const totalSum = subs.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0)
       rows.push({ kind: 'merged_invoice', key: `mi-${po}`, year: subs[0].year, month: subs[0].month, category: subs[0].category, users: Array.from(userSet), ids: subs.map((s) => s.id), po, total: totalSum })
     })
     return rows
-  }, [items])
+  }, [items, issuedPdfs, dismissedMergedKeys])
 
   // 集約行 (merged_invoice / merged_expense) のチェックを構成する個別 submission の id 集合に展開
   const mergedSubmissionIds = useMemo(() => {
@@ -708,6 +732,10 @@ export default function InvoicesPage() {
                       <button onClick={() => sendMergedToLabop(m)}
                         className="rounded bg-gradient-to-r from-rose-500 to-pink-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow" title="ラボップにメール送信">
                         📧 送信
+                      </button>
+                      <button onClick={() => { if (confirm('この集約行を一覧から非表示にしますか？（個別行と保存済PDFは残ります。再表示は localStorage クリア）')) dismissMergedRow(m.key) }}
+                        className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300" title="この集約行を一覧から非表示にする (DB のデータは消えません)">
+                        🗑
                       </button>
                     </div>
                   </td>
