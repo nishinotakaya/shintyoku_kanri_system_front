@@ -25,6 +25,11 @@ type PO = {
   kind?: 'received' | 'issued' | 'issued_template'
   recipient_name?: string | null  // issued のみ: 受領者 (例: 川村 卓也)
   issued_at?: string | null       // issued のみ: 発行日時
+  template_position?: number | null  // issued_template のみ: PATCH/DELETE 用 position
+  template_base_monthly?: number | null  // issued_template の base_monthly
+  template_hours_per_cycle?: number | null
+  template_rate_per_hour?: number | null
+  template_remarks?: string | null
 }
 
 type IssuedHistory = {
@@ -195,7 +200,6 @@ export default function PurchaseOrdersPage() {
       const issuedSettings: PO[] = settingResults.flatMap((res, idx) => {
         const cat = cats[idx]
         return (res.data ?? []).filter((s) => s.exists !== false).map((s) => ({
-          // 実 setting の id をそのまま入れる (PO[] の id は number だが kind で区別するので衝突しない)
           id: s.id,
           user_id: 0,
           user_display_name: null,
@@ -213,6 +217,11 @@ export default function PurchaseOrdersPage() {
           kind: 'issued_template' as const,
           recipient_name: s.recipient_name,
           issued_at: null,
+          template_position: s.position ?? 0,
+          template_base_monthly: s.base_monthly ?? null,
+          template_hours_per_cycle: s.hours_per_cycle ?? null,
+          template_rate_per_hour: s.rate_per_hour ?? null,
+          template_remarks: s.remarks ?? null,
         }))
       })
       setItems([...received, ...issuedHistory, ...issuedSettings])
@@ -236,9 +245,28 @@ export default function PurchaseOrdersPage() {
 
   const save = async () => {
     if (!editing) return
-    if (!editing.order_no?.trim()) { setMsg('注文番号を入力してください'); return }
     setBusy(true); setMsg(null)
     try {
+      // テンプレ (purchase_order_settings) の編集 → PATCH /purchase_order_setting
+      if (editing.kind === 'issued_template') {
+        const payload: Record<string, unknown> = {
+          purchase_order_setting: {
+            subject: editing.subject ?? '',
+            recipient_name: editing.recipient_name ?? '',
+            period_start: editing.period_start || null,
+            period_end: editing.period_end || null,
+            base_monthly: editing.template_base_monthly ?? null,
+            hours_per_cycle: editing.template_hours_per_cycle ?? null,
+            rate_per_hour: editing.template_rate_per_hour ?? null,
+            remarks: editing.template_remarks ?? '',
+          },
+        }
+        await api.patch('/purchase_order_setting', payload, { params: { category: editing.category, position: editing.template_position ?? 0 } })
+        setMsg('テンプレを保存しました')
+        setEditing(null); await load()
+        return
+      }
+      if (!editing.order_no?.trim()) { setMsg('注文番号を入力してください'); return }
       // 新規作成 + PDF Drop 経由 → /upload で multipart 送信
       if (!editing.id && pendingPdf) {
         const fd = new FormData()
@@ -337,10 +365,19 @@ export default function PurchaseOrdersPage() {
   }
 
   const remove = async (po: PO) => {
-    if (!confirm(`${po.order_no} を削除しますか？`)) return
+    const label = po.kind === 'issued_template' ? `テンプレ「${po.subject ?? po.category}」` :
+                  po.kind === 'issued' ? `発行履歴「${po.order_no}」` :
+                  po.order_no
+    if (!confirm(`${label} を削除しますか？`)) return
     setBusy(true)
     try {
-      await api.delete(`/received_purchase_orders/${po.id}`)
+      if (po.kind === 'issued_template') {
+        await api.delete('/purchase_order_setting', { params: { category: po.category, position: po.template_position ?? 0 } })
+      } else if (po.kind === 'issued') {
+        await api.delete(`/purchase_order_histories/${po.id}`)
+      } else {
+        await api.delete(`/received_purchase_orders/${po.id}`)
+      }
       await load()
     } catch (e: any) {
       alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
@@ -403,41 +440,77 @@ export default function PurchaseOrdersPage() {
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">注文番号 *</div>
-              <input value={editing.order_no ?? ''} onChange={(e) => setEditing({ ...editing, order_no: e.target.value })}
-                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="ORD-010014" />
-            </label>
+            {editing.kind !== 'issued_template' && (
+              <label className="block">
+                <div className="text-[11px] font-semibold mb-0.5">注文番号 *</div>
+                <input value={editing.order_no ?? ''} onChange={(e) => setEditing({ ...editing, order_no: e.target.value })}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="ORD-010014" />
+              </label>
+            )}
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">案件名</div>
               <input value={editing.subject ?? ''} onChange={(e) => setEditing({ ...editing, subject: e.target.value })}
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="タマリビング様新ISN基幹システム開発" />
             </label>
-            <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">受注者</div>
-              <select value={editing.user_id ?? me?.id ?? ''} onChange={(e) => setEditing({ ...editing, user_id: Number(e.target.value) })}
-                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm">
-                {users.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
-              </select>
-            </label>
+            {editing.kind === 'issued_template' ? (
+              <label className="block">
+                <div className="text-[11px] font-semibold mb-0.5">受領者 (発注先)</div>
+                <input value={editing.recipient_name ?? ''} onChange={(e) => setEditing({ ...editing, recipient_name: e.target.value })}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="川村 卓也" />
+              </label>
+            ) : (
+              <label className="block">
+                <div className="text-[11px] font-semibold mb-0.5">受注者</div>
+                <select value={editing.user_id ?? me?.id ?? ''} onChange={(e) => setEditing({ ...editing, user_id: Number(e.target.value) })}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm">
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+                </select>
+              </label>
+            )}
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">カテゴリ</div>
               <select value={editing.category ?? 'wings'} onChange={(e) => setEditing({ ...editing, category: e.target.value })}
-                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm">
+                disabled={editing.kind === 'issued_template'}
+                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm disabled:bg-gray-50 disabled:text-gray-500">
                 {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
-            <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">顧客</div>
-              <input value={editing.customer_name ?? ''} onChange={(e) => setEditing({ ...editing, customer_name: e.target.value })}
-                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="タマホーム" />
-            </label>
-            <label className="block">
-              <div className="text-[11px] font-semibold mb-0.5">金額（税込）</div>
-              <input type="number" value={editing.total_amount ?? ''}
-                onChange={(e) => setEditing({ ...editing, total_amount: e.target.value === '' ? null : Number(e.target.value) })}
-                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
-            </label>
+            {editing.kind !== 'issued_template' && (
+              <label className="block">
+                <div className="text-[11px] font-semibold mb-0.5">顧客</div>
+                <input value={editing.customer_name ?? ''} onChange={(e) => setEditing({ ...editing, customer_name: e.target.value })}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="タマホーム" />
+              </label>
+            )}
+            {editing.kind === 'issued_template' ? (
+              <>
+                <label className="block">
+                  <div className="text-[11px] font-semibold mb-0.5">月額基準 (円・税抜)</div>
+                  <input type="number" value={editing.template_base_monthly ?? ''}
+                    onChange={(e) => setEditing({ ...editing, template_base_monthly: e.target.value === '' ? null : Number(e.target.value) })}
+                    className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+                </label>
+                <label className="block">
+                  <div className="text-[11px] font-semibold mb-0.5">月想定時間</div>
+                  <input type="number" value={editing.template_hours_per_cycle ?? ''}
+                    onChange={(e) => setEditing({ ...editing, template_hours_per_cycle: e.target.value === '' ? null : Number(e.target.value) })}
+                    className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+                </label>
+                <label className="block">
+                  <div className="text-[11px] font-semibold mb-0.5">時間単価</div>
+                  <input type="number" value={editing.template_rate_per_hour ?? ''}
+                    onChange={(e) => setEditing({ ...editing, template_rate_per_hour: e.target.value === '' ? null : Number(e.target.value) })}
+                    className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+                </label>
+              </>
+            ) : (
+              <label className="block">
+                <div className="text-[11px] font-semibold mb-0.5">金額（税込）</div>
+                <input type="number" value={editing.total_amount ?? ''}
+                  onChange={(e) => setEditing({ ...editing, total_amount: e.target.value === '' ? null : Number(e.target.value) })}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+              </label>
+            )}
             <label className="block">
               <div className="text-[11px] font-semibold mb-0.5">期間 開始</div>
               <input type="date" value={editing.period_start ?? ''} onChange={(e) => setEditing({ ...editing, period_start: e.target.value })}
@@ -448,16 +521,26 @@ export default function PurchaseOrdersPage() {
               <input type="date" value={editing.period_end ?? ''} onChange={(e) => setEditing({ ...editing, period_end: e.target.value })}
                 className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
             </label>
-            <label className="block col-span-2">
-              <div className="text-[11px] font-semibold mb-0.5">注文書 PDF URL（Google Drive 等）</div>
-              <input value={editing.file_url ?? ''} onChange={(e) => setEditing({ ...editing, file_url: e.target.value })}
-                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="https://drive.google.com/file/..." />
-            </label>
-            <label className="block col-span-2">
-              <div className="text-[11px] font-semibold mb-0.5">備考（注文書の特記事項。例: ※シェアラウンジ回数券（押上5回分）支給）</div>
-              <textarea value={editing.note ?? ''} onChange={(e) => setEditing({ ...editing, note: e.target.value })}
-                rows={2} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
-            </label>
+            {editing.kind !== 'issued_template' && (
+              <label className="block col-span-2">
+                <div className="text-[11px] font-semibold mb-0.5">注文書 PDF URL（Google Drive 等）</div>
+                <input value={editing.file_url ?? ''} onChange={(e) => setEditing({ ...editing, file_url: e.target.value })}
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" placeholder="https://drive.google.com/file/..." />
+              </label>
+            )}
+            {editing.kind === 'issued_template' ? (
+              <label className="block col-span-2">
+                <div className="text-[11px] font-semibold mb-0.5">備考 / 契約条件 (PDF 末尾の remarks 欄)</div>
+                <textarea value={editing.template_remarks ?? ''} onChange={(e) => setEditing({ ...editing, template_remarks: e.target.value })}
+                  rows={6} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm font-mono" />
+              </label>
+            ) : (
+              <label className="block col-span-2">
+                <div className="text-[11px] font-semibold mb-0.5">備考（注文書の特記事項。例: ※シェアラウンジ回数券（押上5回分）支給）</div>
+                <textarea value={editing.note ?? ''} onChange={(e) => setEditing({ ...editing, note: e.target.value })}
+                  rows={2} className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+              </label>
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
             <button onClick={cancel} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
@@ -575,17 +658,11 @@ export default function PurchaseOrdersPage() {
                   </td>
                   <td className="px-2 py-2 text-right whitespace-nowrap">
                     <button onClick={() => setViewing(po)} className="text-sky-600 hover:text-sky-500 mr-2 text-[11px]">🔍 詳細</button>
-                    {isAdmin && po.kind === 'received' && (
-                      <>
-                        <button onClick={() => startEdit(po)} className="text-fuchsia-500 hover:text-fuchsia-400 mr-2 text-[11px]">✏️ 編集</button>
-                        <button onClick={() => remove(po)} className="text-gray-400 hover:text-red-500 text-[11px]">🗑</button>
-                      </>
+                    {isAdmin && (po.kind === 'received' || po.kind === 'issued_template') && (
+                      <button onClick={() => startEdit(po)} className="text-fuchsia-500 hover:text-fuchsia-400 mr-2 text-[11px]">✏️ 編集</button>
                     )}
-                    {isAdmin && po.kind === 'issued_template' && (
-                      <button onClick={() => editTemplate(po)} className="text-fuchsia-500 hover:text-fuchsia-400 text-[11px]">✏️ 勤怠で編集</button>
-                    )}
-                    {isAdmin && po.kind === 'issued' && (
-                      <span className="text-[10px] text-[var(--color-text-sub)]">履歴は変更不可</span>
+                    {isAdmin && (po.kind === 'received' || po.kind === 'issued_template' || po.kind === 'issued') && (
+                      <button onClick={() => remove(po)} className="text-gray-400 hover:text-red-500 text-[11px]">🗑</button>
                     )}
                   </td>
                 </tr>
