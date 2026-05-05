@@ -43,6 +43,7 @@ type IssuedHistory = {
 // 勤怠 page の注文書一覧で使われる「設定済み発注書テンプレ」(purchase_order_settings)
 // (PurchaseOrderHistory ではなく、こちらが勤怠側でフォーム保存されているデータ)
 type IssuedSetting = {
+  id: number
   category: string
   position: number
   exists?: boolean
@@ -53,6 +54,13 @@ type IssuedSetting = {
   base_monthly: number | null
   rate_per_hour: number | null
   hours_per_cycle: number | null
+  total_amount: number | null   // バックエンドが items 合計 × 1.1 で計算済 (税込)
+  remarks?: string | null
+  delivery_location?: string | null
+  payment_method?: string | null
+  issuer_company?: string | null
+  issuer_representative?: string | null
+  items?: Array<{ description: string; qty: number; unit: string; unit_price: number; amount: number }>
 }
 
 type ExtractResult = {
@@ -82,6 +90,7 @@ export default function PurchaseOrdersPage() {
   const [users, setUsers] = useState<PickableUser[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Partial<PO> | null>(null)
+  const [viewing, setViewing] = useState<PO | null>(null)
   const [pendingPdf, setPendingPdf] = useState<File | null>(null)
   const [extractRawText, setExtractRawText] = useState<string>('')
   const [dropping, setDropping] = useState(false)
@@ -185,26 +194,26 @@ export default function PurchaseOrdersPage() {
       }))
       const issuedSettings: PO[] = settingResults.flatMap((res, idx) => {
         const cat = cats[idx]
-        return (res.data ?? []).filter((s) => s.exists !== false).map((s, i) => {
-          const total = s.base_monthly ?? ((s.rate_per_hour ?? 0) * (s.hours_per_cycle ?? 0))
-          return {
-            id: 1_000_000 + idx * 100 + (s.position ?? i), // 衝突しない仮想 ID
-            user_id: 0,
-            user_display_name: null,
-            order_no: '—',
-            customer_name: null,
-            category: cat,
-            subject: s.subject || '(案件名未設定)',
-            period_start: s.period_start,
-            period_end: s.period_end,
-            total_amount: total > 0 ? total : null,
-            note: null, file_url: null, filename: null, has_pdf: false, ai_extracted_at: null,
-            invoice_submission_count: 0,
-            kind: 'issued_template' as const,
-            recipient_name: s.recipient_name,
-            issued_at: null,
-          }
-        })
+        return (res.data ?? []).filter((s) => s.exists !== false).map((s) => ({
+          // 実 setting の id をそのまま入れる (PO[] の id は number だが kind で区別するので衝突しない)
+          id: s.id,
+          user_id: 0,
+          user_display_name: null,
+          order_no: '—',
+          customer_name: null,
+          category: cat,
+          subject: s.subject || '(案件名未設定)',
+          period_start: s.period_start,
+          period_end: s.period_end,
+          // 発注金額（税込）= バックエンドが items 合計に 10% 加算済
+          total_amount: s.total_amount ?? null,
+          note: s.remarks ?? null,
+          file_url: null, filename: null, has_pdf: false, ai_extracted_at: null,
+          invoice_submission_count: 0,
+          kind: 'issued_template' as const,
+          recipient_name: s.recipient_name,
+          issued_at: null,
+        }))
       })
       setItems([...received, ...issuedHistory, ...issuedSettings])
     } finally {
@@ -278,6 +287,34 @@ export default function PurchaseOrdersPage() {
 
   const downloadPdf = async (po: PO) => {
     try {
+      // テンプレ (purchase_order_settings) → 勤怠 page と同じ payload を組み立てて
+      // /exports/purchase_order.pdf を叩く
+      if (po.kind === 'issued_template') {
+        const r = await api.get<IssuedSetting>('/purchase_order_setting', { params: { category: po.category, position: 0 } })
+        const s = r.data
+        const total = s.total_amount ?? 0
+        const subtotal = total > 0 ? Math.round(total / 1.1) : 0
+        const payload = {
+          order_no: 'ORD-' + Math.floor(Math.random() * 1000000).toString().padStart(6, '0'),
+          subject: s.subject ?? '',
+          tax_rate: 10,
+          category: po.category ?? 'wings',
+          period_start: s.period_start, period_end: s.period_end,
+          delivery_location: s.delivery_location ?? '客先指定場所',
+          payment_method: s.payment_method ?? '振込',
+          remarks: s.remarks ?? '',
+          recipient: { name: s.recipient_name ?? '', postal_code: '', address: '' },
+          issuer: { company_name: s.issuer_company ?? '', representative: s.issuer_representative ?? '', postal_code: '', address: '' },
+          items: s.items ?? [{ description: s.subject ?? '', qty: 1, unit: '式', unit_price: subtotal, amount: subtotal }],
+        }
+        const res = await api.post('/exports/purchase_order.pdf', payload, { responseType: 'blob' })
+        const url = URL.createObjectURL(res.data as Blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `発注書_${po.subject ?? po.category}_${po.period_start ?? ''}.pdf`
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
+        return
+      }
       const path = po.kind === 'issued'
         ? `/purchase_order_histories/${po.id}/regenerate.pdf`
         : `/received_purchase_orders/${po.id}/download`
@@ -291,6 +328,12 @@ export default function PurchaseOrdersPage() {
     } catch (e: any) {
       alert(`PDF DL 失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
+  }
+
+  // テンプレ編集: 勤怠 page を開く（カテゴリ指定）
+  const editTemplate = (po: PO) => {
+    if (!po.category) return
+    window.open(`/attendance?category=${po.category}#purchase-orders`, '_blank')
   }
 
   const remove = async (po: PO) => {
@@ -427,6 +470,50 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
 
+      {viewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewing(null)}>
+          <div className="w-full max-w-xl max-h-[90vh] overflow-auto rounded-xl bg-white p-4 shadow-xl space-y-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">
+                🔍 詳細
+                <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                  viewing.kind === 'issued' ? 'bg-sky-100 text-sky-700' :
+                  viewing.kind === 'issued_template' ? 'bg-amber-100 text-amber-700' :
+                  'bg-fuchsia-100 text-fuchsia-700'
+                }`}>
+                  {viewing.kind === 'issued' ? '📤 発行履歴' : viewing.kind === 'issued_template' ? '📝 テンプレ' : '📥 受領'}
+                </span>
+              </div>
+              <button onClick={() => setViewing(null)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <dl className="grid grid-cols-3 gap-1 text-[12px]">
+              <dt className="text-[var(--color-text-sub)]">注文番号</dt>
+              <dd className="col-span-2 font-mono font-semibold">{viewing.order_no}</dd>
+              <dt className="text-[var(--color-text-sub)]">案件名</dt>
+              <dd className="col-span-2">{viewing.subject ?? '—'}</dd>
+              <dt className="text-[var(--color-text-sub)]">{viewing.kind === 'received' ? '受注者' : '受領者'}</dt>
+              <dd className="col-span-2">{viewing.kind === 'received' ? (viewing.user_display_name ?? '—') : (viewing.recipient_name ?? '—')}</dd>
+              {viewing.customer_name && (<><dt className="text-[var(--color-text-sub)]">顧客</dt><dd className="col-span-2">{viewing.customer_name}</dd></>)}
+              <dt className="text-[var(--color-text-sub)]">カテゴリ</dt>
+              <dd className="col-span-2">{viewing.category ? (CATEGORY_LABELS[viewing.category] ?? viewing.category) : '—'}</dd>
+              <dt className="text-[var(--color-text-sub)]">期間</dt>
+              <dd className="col-span-2">{viewing.period_start ?? '—'} 〜 {viewing.period_end ?? '—'}</dd>
+              <dt className="text-[var(--color-text-sub)]">発注金額（税込）</dt>
+              <dd className="col-span-2 font-mono tabular-nums font-semibold text-amber-600">
+                {viewing.total_amount ? `¥${viewing.total_amount.toLocaleString()}` : '—'}
+              </dd>
+              {viewing.kind === 'received' && (<><dt className="text-[var(--color-text-sub)]">紐付請求書</dt><dd className="col-span-2">{viewing.invoice_submission_count} 件</dd></>)}
+              {viewing.issued_at && (<><dt className="text-[var(--color-text-sub)]">発行日時</dt><dd className="col-span-2">{new Date(viewing.issued_at).toLocaleString('ja-JP')}</dd></>)}
+              {viewing.note && (<><dt className="text-[var(--color-text-sub)]">備考</dt><dd className="col-span-2 whitespace-pre-wrap text-[11px]">{viewing.note}</dd></>)}
+            </dl>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+              <button onClick={() => downloadPdf(viewing)} className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow">📎 PDF DL</button>
+              <button onClick={() => setViewing(null)} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-sm text-[var(--color-text-sub)]">読み込み中…</div>
       ) : items.length === 0 ? (
@@ -478,21 +565,27 @@ export default function PurchaseOrdersPage() {
                   <td className="px-2 py-2 text-center">
                     {po.kind === 'issued' ? (
                       <button onClick={() => downloadPdf(po)} className="text-sky-500 hover:underline">📎 PDF</button>
+                    ) : po.kind === 'issued_template' ? (
+                      <button onClick={() => downloadPdf(po)} className="text-amber-600 hover:underline">📎 PDF</button>
                     ) : po.has_pdf ? (
                       <button onClick={() => downloadPdf(po)} className="text-fuchsia-500 hover:underline">📎 PDF</button>
                     ) : po.file_url ? (
                       <a href={po.file_url} target="_blank" rel="noreferrer" className="text-fuchsia-500 hover:underline">📎 URL</a>
                     ) : '—'}
                   </td>
-                  <td className="px-2 py-2 text-right">
+                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                    <button onClick={() => setViewing(po)} className="text-sky-600 hover:text-sky-500 mr-2 text-[11px]">🔍 詳細</button>
                     {isAdmin && po.kind === 'received' && (
                       <>
-                        <button onClick={() => startEdit(po)} className="text-fuchsia-500 hover:text-fuchsia-400 mr-2">編集</button>
-                        <button onClick={() => remove(po)} className="text-gray-400 hover:text-red-500">🗑</button>
+                        <button onClick={() => startEdit(po)} className="text-fuchsia-500 hover:text-fuchsia-400 mr-2 text-[11px]">✏️ 編集</button>
+                        <button onClick={() => remove(po)} className="text-gray-400 hover:text-red-500 text-[11px]">🗑</button>
                       </>
                     )}
-                    {isAdmin && (po.kind === 'issued' || po.kind === 'issued_template') && (
-                      <span className="text-[10px] text-[var(--color-text-sub)]">勤怠から編集</span>
+                    {isAdmin && po.kind === 'issued_template' && (
+                      <button onClick={() => editTemplate(po)} className="text-fuchsia-500 hover:text-fuchsia-400 text-[11px]">✏️ 勤怠で編集</button>
+                    )}
+                    {isAdmin && po.kind === 'issued' && (
+                      <span className="text-[10px] text-[var(--color-text-sub)]">履歴は変更不可</span>
                     )}
                   </td>
                 </tr>
