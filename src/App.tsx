@@ -7,9 +7,16 @@ import Dashboard from './pages/Dashboard'
 import ProgressPage from './pages/ProgressPage'
 import CalendarPage from './pages/CalendarPage'
 import UsersPage from './pages/UsersPage'
+import SkillSheetsPage from './pages/SkillSheetsPage'
+import BacklogActivitiesPage from './pages/BacklogActivitiesPage'
+import InterviewMindmapPage from './pages/InterviewMindmapPage'
+import VideoStudioPage from './pages/VideoStudioPage'
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage'
 import InvoicesPage from './pages/InvoicesPage'
-import { fetchMe, isAuthed, signOut } from './lib/auth'
+import SettingsModal from './components/SettingsModal'
+import BusinessExpensesPage from './pages/BusinessExpensesPage'
+import { isAuthed, signOut } from './lib/auth'
+import { useMe, clearMeCache } from './lib/useMe'
 import { api } from './lib/api'
 import type { Me } from './lib/api'
 
@@ -20,27 +27,68 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; tabTitle?: string }
+// 各画面の閲覧権限 (admin は常に全部見れる)。値は users.feature_flags のキー。
+export type FeatureKey = 'attendance' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities'
+type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; feature?: FeatureKey; tabTitle?: string }
 const NAV: NavItem[] = [
-  { to: '/', label: 'カレンダー', icon: '📅', tabTitle: 'カレンダー' },
-  { to: '/progress', label: '進捗管理', icon: '📊', tabTitle: '進捗' },
-  { to: '/attendance', label: '勤怠', icon: '🕒', tabTitle: '勤怠' },
-  { to: '/purchase-orders', label: '注文書', icon: '📋', tabTitle: '注文書' },
-  { to: '/invoices', label: '請求書一覧', icon: '📄', tabTitle: '請求書' },
+  { to: '/', label: 'カレンダー', icon: '📅', feature: 'attendance', tabTitle: 'カレンダー' },
+  { to: '/progress', label: '進捗管理', icon: '📊', feature: 'progress', tabTitle: '進捗' },
+  { to: '/attendance', label: '勤怠', icon: '🕒', feature: 'attendance', tabTitle: '勤怠' },
+  { to: '/purchase-orders', label: '注文書', icon: '📋', feature: 'purchase_orders', tabTitle: '注文書' },
+  { to: '/invoices', label: '請求書一覧', icon: '📄', feature: 'invoices', tabTitle: '請求書' },
+  { to: '/skill-sheets', label: 'スキルシート', icon: '📑', feature: 'skill_sheet', tabTitle: 'スキルシート' },
+  { to: '/interview-mindmap', label: 'マインドマップ', icon: '🧠', feature: 'interview_mindmap', tabTitle: 'マインドマップ' },
+  { to: '/backlog-activities', label: '対応ログ', icon: '📈', feature: 'backlog_activities', tabTitle: '対応ログ' },
+  { to: '/keihi', label: '経費（レシート）', icon: '🧾', adminOnly: true, tabTitle: '経費' },
+  { to: '/video-studio', label: '動画スタジオ', icon: '🎬', adminOnly: true, tabTitle: '動画スタジオ' },
   { to: '/users', label: 'ユーザー一覧', icon: '👥', adminOnly: true, tabTitle: 'ユーザー' },
 ]
+
+// NAV 項目の表示可否: adminOnly は admin のみ（常時表示でロックアウト防止）、
+// feature は admin なら明示的に false のときだけ非表示・一般ユーザーは該当フラグ ON のみ
+function navVisible(item: NavItem, me: Me | null): boolean {
+  if (item.adminOnly) return !!me?.admin
+  if (item.feature) {
+    if (me?.admin) return me?.feature_flags?.[item.feature] !== false
+    return !!me?.feature_flags?.[item.feature]
+  }
+  return true
+}
+
+// その人が最初に見れる画面 (スキルシートのみのユーザーは /skill-sheets へ)
+function firstVisiblePath(me: Me | null): string {
+  return NAV.find((n) => navVisible(n, me))?.to ?? '/skill-sheets'
+}
+
+// 画面ごとの権限ガード。権限が無ければ自分が見れる最初の画面へリダイレクト (レイアウトを崩さない)
+function RequireFeature({ feature, adminOnly, children }: { feature?: FeatureKey; adminOnly?: boolean; children: React.ReactNode }) {
+  const { me, loading } = useMe()
+  if (loading) return null
+  if (!me) return <Navigate to="/sign_in" replace />
+  // admin: adminOnly 画面は常に閲覧可、feature 画面は明示的に false のときだけ不可
+  if (me.admin) {
+    if (adminOnly) return <>{children}</>
+    if (!feature || me.feature_flags?.[feature] !== false) return <>{children}</>
+    return <Navigate to={firstVisiblePath(me)} replace />
+  }
+  if (adminOnly) return <Navigate to={firstVisiblePath(me)} replace />
+  if (!feature || me.feature_flags?.[feature]) return <>{children}</>
+  return <Navigate to={firstVisiblePath(me)} replace />
+}
 const BRAND = '進捗管理システム'
 const SEEN_BELL_KEY = 'bellSeenApplicationIds'
 const appKey = (s: SubmissionLite) => `${s.kind}-${s.id}`
 
 function Layout({ children }: { children: React.ReactNode }) {
-  const [me, setMe] = useState<Me | null>(null)
+  const { me } = useMe()
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     const stored = localStorage.getItem('sidebarOpen')
     return stored === null ? true : stored === 'true'
   })
   const [pendingApplications, setPendingApplications] = useState<SubmissionLite[]>([])
   const [bellOpen, setBellOpen] = useState(false)
+  // 全ユーザー共通の設定モーダル（振込先などの請求書設定・アカウント設定）をヘッダーから開く
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 既読にした申請の ID セット（リロードしてもバッジが復活しないよう localStorage に永続化）
   const [seenApplicationIds, setSeenApplicationIds] = useState<Set<string>>(() => {
     try {
@@ -50,10 +98,6 @@ function Layout({ children }: { children: React.ReactNode }) {
   })
   const nav = useNavigate()
   const loc = useLocation()
-
-  useEffect(() => {
-    fetchMe().then(setMe)
-  }, [])
 
   useEffect(() => {
     localStorage.setItem('sidebarOpen', String(sidebarOpen))
@@ -133,7 +177,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">進捗管理システム</div>
         </Link>
         <nav className="flex-1 px-3 py-3 space-y-0.5 min-w-[14rem]">
-          {NAV.filter((n) => !n.adminOnly || !!me?.admin).map((n) => {
+          {NAV.filter((n) => navVisible(n, me)).map((n) => {
             const active = loc.pathname === n.to
             return (
               <Link
@@ -241,8 +285,17 @@ function Layout({ children }: { children: React.ReactNode }) {
             <div className="ml-auto flex items-center gap-4">
               <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
               <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                title="設定（請求書・振込先など）"
+                className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+              >
+                ⚙ 設定
+              </button>
+              <button
                 onClick={async () => {
                   await signOut()
+                  clearMeCache()
                   nav('/sign_in')
                 }}
                 className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
@@ -254,6 +307,14 @@ function Layout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 px-6 py-6">{children}</main>
       </div>
+      <SettingsModal
+        open={settingsOpen}
+        initialTab="account"
+        year={new Date().getFullYear()}
+        month={new Date().getMonth() + 1}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => setSettingsOpen(false)}
+      />
     </div>
   )
 }
@@ -268,9 +329,11 @@ export default function App() {
         path="/"
         element={
           <RequireAuth>
-            <Layout>
-              <CalendarPage />
-            </Layout>
+            <RequireFeature feature="attendance">
+              <Layout>
+                <CalendarPage />
+              </Layout>
+            </RequireFeature>
           </RequireAuth>
         }
       />
@@ -278,9 +341,23 @@ export default function App() {
         path="/attendance"
         element={
           <RequireAuth>
-            <Layout>
-              <Dashboard />
-            </Layout>
+            <RequireFeature feature="attendance">
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/keihi"
+        element={
+          <RequireAuth>
+            <RequireFeature adminOnly>
+              <Layout>
+                <BusinessExpensesPage />
+              </Layout>
+            </RequireFeature>
           </RequireAuth>
         }
       />
@@ -288,9 +365,11 @@ export default function App() {
         path="/progress"
         element={
           <RequireAuth>
-            <Layout>
-              <ProgressPage />
-            </Layout>
+            <RequireFeature feature="progress">
+              <Layout>
+                <ProgressPage />
+              </Layout>
+            </RequireFeature>
           </RequireAuth>
         }
       />
@@ -302,9 +381,59 @@ export default function App() {
         path="/users"
         element={
           <RequireAuth>
-            <Layout>
-              <UsersPage />
-            </Layout>
+            <RequireFeature adminOnly>
+              <Layout>
+                <UsersPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/skill-sheets"
+        element={
+          <RequireAuth>
+            <RequireFeature feature="skill_sheet">
+              <Layout>
+                <SkillSheetsPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/backlog-activities"
+        element={
+          <RequireAuth>
+            <RequireFeature feature="backlog_activities">
+              <Layout>
+                <BacklogActivitiesPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/interview-mindmap"
+        element={
+          <RequireAuth>
+            <RequireFeature feature="interview_mindmap">
+              <Layout>
+                <InterviewMindmapPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/video-studio"
+        element={
+          <RequireAuth>
+            <RequireFeature adminOnly>
+              <Layout>
+                <VideoStudioPage />
+              </Layout>
+            </RequireFeature>
           </RequireAuth>
         }
       />
@@ -312,9 +441,11 @@ export default function App() {
         path="/purchase-orders"
         element={
           <RequireAuth>
-            <Layout>
-              <PurchaseOrdersPage />
-            </Layout>
+            <RequireFeature feature="purchase_orders">
+              <Layout>
+                <PurchaseOrdersPage />
+              </Layout>
+            </RequireFeature>
           </RequireAuth>
         }
       />
@@ -322,9 +453,11 @@ export default function App() {
         path="/invoices"
         element={
           <RequireAuth>
-            <Layout>
-              <InvoicesPage />
-            </Layout>
+            <RequireFeature feature="invoices">
+              <Layout>
+                <InvoicesPage />
+              </Layout>
+            </RequireFeature>
           </RequireAuth>
         }
       />
