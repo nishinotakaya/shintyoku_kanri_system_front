@@ -230,9 +230,9 @@ export default function BusinessExpensesPage() {
     const r = await api.get('/tax_reports/export_csv', { params: { year, kind }, responseType: 'blob' })
     downloadBlob(r.data as Blob, kind === 'details' ? `経費明細_${year}年.csv` : `青色申告集計_${year}年.csv`)
   }
-  const downloadTaxPdf = async () => {
-    const r = await api.get('/tax_reports/export_pdf', { params: { year, deduction }, responseType: 'blob' })
-    downloadBlob(r.data as Blob, `青色申告決算書_${year}年分.pdf`)
+  const downloadTaxPdf = async (doc: 'kessansho' | 'shinkokusho') => {
+    const r = await api.get('/tax_reports/export_pdf', { params: { year, deduction, doc }, responseType: 'blob' })
+    downloadBlob(r.data as Blob, doc === 'shinkokusho' ? `確定申告書第一表_${year}年分.pdf` : `青色申告決算書_${year}年分.pdf`)
   }
 
   const filtered = useMemo(() => (catFilter ? items.filter((it) => it.account_category === catFilter) : items), [items, catFilter])
@@ -335,7 +335,8 @@ export default function BusinessExpensesPage() {
                 <option value={550000}>控除55万</option>
                 <option value={100000}>控除10万</option>
               </select>
-              <button onClick={downloadTaxPdf} className="rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90" title="青色申告決算書(損益計算書)の様式風PDF">📄 決算書PDF</button>
+              <button onClick={() => downloadTaxPdf('kessansho')} className="rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90" title="国税庁の実物様式(FA3001/3026/3051)に集計値を印字した青色申告決算書 3面">📄 決算書（実物様式）</button>
+              <button onClick={() => downloadTaxPdf('shinkokusho')} className="rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90" title="確定申告書 第一表（実物様式・税額計算済み）">📄 申告書 第一表</button>
               <button onClick={() => downloadTaxCsv('summary')} className="rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="青色申告決算書へ転記できる科目別集計CSV">📊 集計CSV</button>
               <button onClick={() => downloadTaxCsv('details')} className="rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="経費明細の一覧CSV">📄 明細CSV</button>
             </div>
