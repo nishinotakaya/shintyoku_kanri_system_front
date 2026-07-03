@@ -83,7 +83,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   const { me } = useMe()
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     const stored = localStorage.getItem('sidebarOpen')
-    return stored === null ? true : stored === 'true'
+    if (stored !== null) return stored === 'true'
+    return window.innerWidth >= 768 // スマホは初期閉じ(コンテンツを潰さない)。☰で開閉可
   })
   const [pendingApplications, setPendingApplications] = useState<SubmissionLite[]>([])
   const [bellOpen, setBellOpen] = useState(false)
@@ -305,7 +306,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="flex-1 px-6 py-6">{children}</main>
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 min-w-0">{children}</main>
       </div>
       <SettingsModal
         open={settingsOpen}
