@@ -11,6 +11,12 @@ const config: CapacitorConfig = {
     url: 'https://react-frontend-beige.vercel.app',
     cleartext: false,
   },
+  android: {
+    // Google OAuth は WebView UA を弾く(disallowed_useragent)ため、
+    // 標準 Chrome の UA に上書きして Google ログインを通す。
+    overrideUserAgent:
+      'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+  },
 }
 
 export default config
