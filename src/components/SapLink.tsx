@@ -20,7 +20,7 @@ async function loadBacklogUrl(): Promise<string | null> {
   }
   subscribers.forEach((fn) => fn(cachedBacklogUrl ?? null))
   subscribers.length = 0
-  return cachedBacklogUrl
+  return cachedBacklogUrl ?? null
 }
 
 function useBacklogUrl(): string | null {

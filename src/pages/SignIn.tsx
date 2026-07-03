@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signIn } from '../lib/auth'
 
@@ -8,6 +8,8 @@ export default function SignIn() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const nav = useNavigate()
+
+  useEffect(() => { document.title = 'ログイン — 進捗管理システム' }, [])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

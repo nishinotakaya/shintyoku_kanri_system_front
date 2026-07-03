@@ -37,11 +37,6 @@ function daysInPeriod(period: Period | null): DayCell[] {
 
 type Row = { content: string; hours: string; transit_section: string; transit_fee: string }
 
-const CATEGORIES = [
-  { key: 'wings', label: 'Wings' },
-  { key: 'living', label: 'リビング勤怠' },
-] as const
-type CategoryKey = (typeof CATEGORIES)[number]['key']
 
 export default function WorkReportTable({
   year,
@@ -70,26 +65,48 @@ export default function WorkReportTable({
   const [savedAt, setSavedAt] = useState<Record<string, number>>({})
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const initialized = useRef(false)
+  const prevDataRef = useRef<Record<string, Row>>({})
+
+  // データ側の変更を検知するハッシュ。既存行の transit_fee 等が更新された時にも再初期化させる。
+  const dataKey = filtered
+    .map((r) => `${r.id}|${r.work_date}|${r.content ?? ''}|${r.hours ?? ''}|${r.transit_section ?? ''}|${r.transit_fee ?? ''}`)
+    .join(',')
 
   useEffect(() => {
-    const next: Record<string, Row> = {}
-    days.forEach((d) => {
-      const r = byDate.get(d.date)
-      next[d.date] = {
-        content: r?.content ?? '',
-        hours: r?.hours != null ? String(r.hours) : '',
-        transit_section: r?.transit_section ?? '',
-        transit_fee: r?.transit_fee != null ? String(r.transit_fee) : '',
-      }
+    setEditing((prev) => {
+      const next: Record<string, Row> = {}
+      days.forEach((d) => {
+        const r = byDate.get(d.date)
+        const fromData: Row = {
+          content: r?.content ?? '',
+          hours: r?.hours != null ? String(r.hours) : '',
+          transit_section: r?.transit_section ?? '',
+          transit_fee: r?.transit_fee != null ? String(r.transit_fee) : '',
+        }
+        const cur = prev[d.date]
+        const prevData = prevDataRef.current[d.date]
+        if (!cur) {
+          next[d.date] = fromData
+        } else {
+          // ユーザー編集中のフィールドは保持、未編集 (前データと一致) のフィールドだけ更新
+          next[d.date] = {
+            content: cur.content === (prevData?.content ?? '') ? fromData.content : cur.content,
+            hours: cur.hours === (prevData?.hours ?? '') ? fromData.hours : cur.hours,
+            transit_section: cur.transit_section === (prevData?.transit_section ?? '') ? fromData.transit_section : cur.transit_section,
+            transit_fee: cur.transit_fee === (prevData?.transit_fee ?? '') ? fromData.transit_fee : cur.transit_fee,
+          }
+        }
+        prevDataRef.current[d.date] = fromData
+      })
+      return next
     })
-    setEditing(next)
     initialized.current = true
     return () => {
       Object.values(timers.current).forEach(clearTimeout)
       timers.current = {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered.length, period?.from, period?.to, category])
+  }, [dataKey, period?.from, period?.to, category])
 
   const save = async (date: string, row: Row) => {
     await api.post('/work_reports', {
@@ -141,7 +158,7 @@ export default function WorkReportTable({
           fetchSpec={async () => {
             const monthParam = `${year}-${String(month).padStart(2, '0')}`
             const fallback = `業務報告書_${year}年_${month}月分.xlsx`
-            const { blob, filename } = await fetchExportBlob('/exports/work_report.xlsx', { month: monthParam, category }, fallback)
+            const { blob, filename } = await fetchExportBlob('/exports/work_report.xlsx', { month: monthParam, category, ...asUserParam }, fallback)
             return { blob, filename, monthFolderName: `${month}月` }
           }}
         />
@@ -154,8 +171,8 @@ export default function WorkReportTable({
               <th className="px-4 py-1.5 w-32">日付</th>
               <th className="px-2 py-1.5">作業内容</th>
               <th className="px-2 py-1.5 w-20 text-right">時間</th>
-              <th className="px-2 py-1.5 w-32">乗車区間</th>
-              <th className="px-2 py-1.5 w-24 text-right">交通費</th>
+              {category !== 'living' && <th className="px-2 py-1.5 w-32">乗車区間</th>}
+              {category !== 'living' && <th className="px-2 py-1.5 w-24 text-right">交通費</th>}
               <th className="px-2 py-1.5 w-10"></th>
             </tr>
           </thead>
@@ -197,22 +214,26 @@ export default function WorkReportTable({
                       className="w-16 rounded-lg bg-transparent px-2 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
                     />
                   </td>
-                  <td className="px-3 py-2">
-                    <input
-                      value={e.transit_section}
-                      onChange={(ev) => set(d.date, 'transit_section', ev.target.value)}
-                      placeholder="—"
-                      className="w-full rounded-lg bg-transparent px-2 py-1 text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <input
-                      value={e.transit_fee}
-                      onChange={(ev) => set(d.date, 'transit_fee', ev.target.value)}
-                      placeholder="—"
-                      className="w-20 rounded-lg bg-transparent px-2 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
-                    />
-                  </td>
+                  {category !== 'living' && (
+                    <td className="px-3 py-2">
+                      <input
+                        value={e.transit_section}
+                        onChange={(ev) => set(d.date, 'transit_section', ev.target.value)}
+                        placeholder="—"
+                        className="w-full rounded-lg bg-transparent px-2 py-1 text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
+                      />
+                    </td>
+                  )}
+                  {category !== 'living' && (
+                    <td className="px-3 py-2 text-right">
+                      <input
+                        value={e.transit_fee}
+                        onChange={(ev) => set(d.date, 'transit_fee', ev.target.value)}
+                        placeholder="—"
+                        className="w-20 rounded-lg bg-transparent px-2 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-right">
                     {justSaved ? (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-600">

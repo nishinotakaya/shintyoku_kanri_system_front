@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { api } from '../lib/api'
 import type { WorkReport, Expense } from '../lib/api'
 import SapLink from './SapLink'
+import Modal from './Modal'
+import BacklogTaskDetailModal from './BacklogTaskDetailModal'
+import TaskMemoEditor from './TaskMemoEditor'
 
 function CommentMarkdown({ children }: { children: string }) {
   return (
@@ -61,6 +64,23 @@ type BacklogTask = {
   memo?: string | null
 }
 
+type NotionTask = {
+  id: number
+  notion_block_id: string
+  wbs_level: string | null
+  title: string
+  parent_task: string | null
+  assignee_name: string | null
+  start_date: string | null
+  end_date: string | null
+  workload: number | null
+  progress_rate: number | null
+  status: string | null
+  priority: string | null
+  note: string | null
+  memo?: string | null
+}
+
 type SapEntry = { key: string; hours: string }
 
 const HOURS_OPTIONS = ['', '0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10']
@@ -74,7 +94,7 @@ const STATUS_BADGE: Record<number, { label: string; class: string }> = {
 
 type TaskComment = { id: number; content: string; created_user_name?: string | null; created?: string | null }
 
-function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings, editable = true, assignee, onMemoChanged }: {
+function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings, editable = true, assignee, onMemoChanged, onOpenDetail, refreshTick = 0 }: {
   task: BacklogTask
   badge?: { label: string; class: string }
   assignee?: string
@@ -83,6 +103,8 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
   onEditWings: () => void
   alreadyInWings: boolean
   onMemoChanged?: (taskId: number, memo: string) => void
+  onOpenDetail?: (task: BacklogTask) => void
+  refreshTick?: number
 }) {
   const [hours, setHours] = useState('1')
   const [adding, setAdding] = useState(false)
@@ -91,29 +113,20 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentsError, setCommentsError] = useState<string | null>(null)
   const [latestComment, setLatestComment] = useState<TaskComment | null>(null)
-  const [memoOpen, setMemoOpen] = useState(false)
   const [latestOpen, setLatestOpen] = useState(false)
-  const [memoDraft, setMemoDraft] = useState<string>(task.memo ?? '')
-  const [memoSaving, setMemoSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const memoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => { setMemoDraft(task.memo ?? '') }, [task.memo])
-  const saveMemo = (value: string) => {
-    if (memoTimer.current) clearTimeout(memoTimer.current)
-    memoTimer.current = setTimeout(async () => {
-      setMemoSaving('saving')
-      try {
-        await api.patch(`/backlog/tasks/${task.id}`, { memo: value })
-        setMemoSaving('saved')
-        onMemoChanged?.(task.id, value)
-        setTimeout(() => setMemoSaving((s) => (s === 'saved' ? 'idle' : s)), 1200)
-      } catch {
-        setMemoSaving('error')
-      }
-    }, 400)
+  const saveMemo = async (value: string) => {
+    await api.patch(`/backlog/tasks/${task.id}`, { memo: value })
+    onMemoChanged?.(task.id, value)
   }
 
   const [unreadCount, setUnreadCount] = useState(0)
+  const [mentionUnreadCount, setMentionUnreadCount] = useState(0)
+  const [myName, setMyName] = useState<string | null>(null)
   const seenKey = `commentsSeen:${task.issue_key}`
+
+  useEffect(() => {
+    api.get<{ display_name?: string }>('/me').then((r) => setMyName(r.data.display_name ?? null)).catch(() => {})
+  }, [])
 
   // 最新1件は自動で取得（メモ代わりに常時表示） + 未読件数を計算
   useEffect(() => {
@@ -125,16 +138,23 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
         setLatestComment(filtered.length > 0 ? filtered[filtered.length - 1] : null)
         const seen = localStorage.getItem(seenKey)
         const seenAt = seen ? new Date(seen).getTime() : 0
-        const unread = filtered.filter((c) => c.created && new Date(c.created).getTime() > seenAt).length
-        setUnreadCount(unread)
+        const unread = filtered.filter((c) => c.created && new Date(c.created).getTime() > seenAt)
+        setUnreadCount(unread.length)
+        if (myName) {
+          // 自分宛メンション (姓だけ、姓+スペース+名 のどちらでもヒット)
+          const lastName = myName.split(/[\s　]/)[0]
+          const m = unread.filter((c) => c.content && (c.content.includes(`@${myName}`) || (lastName && c.content.includes(`@${lastName}`))))
+          setMentionUnreadCount(m.length)
+        }
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [task.issue_key, seenKey])
+  }, [task.issue_key, seenKey, myName, refreshTick])
 
   const markCommentsSeen = () => {
     localStorage.setItem(seenKey, new Date().toISOString())
     setUnreadCount(0)
+    setMentionUnreadCount(0)
   }
 
   const formatUnreadBadge = (n: number): string => {
@@ -181,6 +201,24 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
           {badge && <span className={`rounded px-1 text-[9px] ${badge.class}`}>{badge.label}</span>}
         </a>
         <div className="flex items-center gap-1 shrink-0">
+          {onOpenDetail && (
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenDetail(task); markCommentsSeen() }}
+              className="relative rounded bg-white border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50"
+              title={mentionUnreadCount > 0 ? `自分宛未読メンション ${mentionUnreadCount} 件` : '詳細 (チャット / 投稿 / 編集)'}
+            >
+              📋 詳細
+              {mentionUnreadCount > 0 && (
+                <span
+                  aria-label={`自分宛未読${mentionUnreadCount}件`}
+                  className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[12px] font-bold leading-none flex items-center justify-center shadow ring-2 ring-white"
+                >
+                  {formatUnreadBadge(mentionUnreadCount)}
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={toggleComments}
@@ -232,62 +270,7 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
         </div>
       </div>
       <a href={task.url ?? undefined} target="_blank" rel="noopener noreferrer" draggable={false} className="block text-[var(--color-text)] truncate">{task.summary}</a>
-      <div className="mt-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-[var(--color-text)]">
-        <button
-          type="button"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMemoOpen((v) => !v) }}
-          className="w-full flex items-center justify-between px-2 py-1 hover:bg-amber-100"
-        >
-          <span className="font-semibold text-amber-700">📝 メモ {memoOpen ? '▲' : '▼'}</span>
-          {!memoOpen && (
-            <span className="ml-2 truncate text-[var(--color-text-sub)] flex-1 text-left">
-              {memoDraft.trim().length > 0
-                ? `${memoDraft.replace(/\s+/g, ' ').slice(0, 30)}${memoDraft.length > 30 ? '…' : ''}`
-                : '（未入力）'}
-            </span>
-          )}
-          {memoSaving !== 'idle' && (
-            <span className={`ml-1 text-[9px] font-semibold ${
-              memoSaving === 'saving' ? 'text-gray-500' :
-              memoSaving === 'saved' ? 'text-emerald-600' :
-              'text-red-500'
-            }`}>
-              {memoSaving === 'saving' ? '保存中…' : memoSaving === 'saved' ? '✓保存' : '失敗'}
-            </span>
-          )}
-        </button>
-        {memoOpen && (
-          <div className="px-2 pb-1.5">
-            {editable ? (
-              <textarea
-                value={memoDraft}
-                onChange={(e) => {
-                  setMemoDraft(e.target.value)
-                  saveMemo(e.target.value)
-                  e.target.style.height = 'auto'
-                  e.target.style.height = e.target.scrollHeight + 'px'
-                }}
-                ref={(el) => {
-                  if (el) {
-                    el.style.height = 'auto'
-                    el.style.height = el.scrollHeight + 'px'
-                  }
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                placeholder="メモを入力…"
-                rows={1}
-                draggable={false}
-                onDragStart={(e) => e.preventDefault()}
-                className="w-full resize-none overflow-hidden min-h-[24px] rounded border border-amber-200 bg-white px-2 py-1 text-[11px] text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-amber-400"
-              />
-            ) : (
-              <div className="whitespace-pre-wrap break-words">{memoDraft || '（未入力）'}</div>
-            )}
-          </div>
-        )}
-      </div>
+      <TaskMemoEditor value={task.memo} onSave={saveMemo} editable={editable} />
       {latestComment && (
         <div className="mt-1 rounded bg-sky-50 border border-sky-200 text-[10px] text-[var(--color-text)]">
           <button
@@ -336,8 +319,9 @@ function TaskCard({ task, badge, onAddToWorkReport, onEditWings, alreadyInWings,
 
 function parseSapEntries(content: string): SapEntry[] {
   return (content || '').split('/').map((part) => {
-    const matched = part.trim().match(/^([A-Z]+-\d+)(?:\(([\d.]+)\))?$/)
-    if (matched) return { key: matched[1], hours: matched[2] ?? '' }
+    // 末尾の (時間) を抽出。残りをキーとする。SAP形式以外（日本語タスク名やローカル名）にも対応
+    const matched = part.trim().match(/^(.+?)(?:\(([\d.]+)\))?$/)
+    if (matched) return { key: matched[1].trim(), hours: matched[2] ?? '' }
     return { key: part.trim(), hours: '' }
   }).filter((entry) => entry.key)
 }
@@ -391,6 +375,7 @@ export default function DayDetailModal({
   }
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [commentRefreshTick, setCommentRefreshTick] = useState(0)
   const handleBacklogSync = async () => {
     if (syncing) return
     setSyncing(true); setSyncMsg(null)
@@ -405,13 +390,49 @@ export default function DayDetailModal({
       setTasksByAssignee({ '西野': n.data, '川村': k.data })
       const all = await api.get<BacklogTask[]>('/backlog/tasks')
       setAllTasks(all.data)
+      // 同期完了後、各 TaskCard のコメント再 fetch を発火 (バッジ更新)
+      setCommentRefreshTick((t) => t + 1)
     } catch (e: any) {
       setSyncMsg(`同期失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setSyncing(false) }
   }
   const [tasksByAssignee, setTasksByAssignee] = useState<Record<string, BacklogTask[]>>({})
   const [allTasks, setAllTasks] = useState<BacklogTask[]>([])
+  const [detailTask, setDetailTask] = useState<BacklogTask | null>(null)
+  const [meInfo, setMeInfo] = useState<{ display_name?: string | null; backlog_user_id?: number | null }>({})
+  useEffect(() => {
+    api.get<{ display_name?: string }>('/me').then((r) => setMeInfo((p) => ({ ...p, display_name: r.data.display_name }))).catch(() => {})
+    api.get<{ user_backlog_id?: number }>('/backlog/setting').then((r) => setMeInfo((p) => ({ ...p, backlog_user_id: r.data.user_backlog_id }))).catch(() => {})
+  }, [])
   const [tasksLoading, setTasksLoading] = useState(true)
+  const [newTaskInput, setNewTaskInput] = useState<Record<string, string>>({})
+  const [addingTaskFor, setAddingTaskFor] = useState<string | null>(null)
+  const reloadTasks = async () => {
+    const [n, k] = await Promise.all([
+      api.get<BacklogTask[]>('/backlog/tasks_on_date', { params: { date, assignee: '西野' } }),
+      api.get<BacklogTask[]>('/backlog/tasks_on_date', { params: { date, assignee: '川村' } }),
+    ])
+    setTasksByAssignee({ '西野': n.data, '川村': k.data })
+  }
+  const addLocalTask = async (assignee: string) => {
+    const summary = (newTaskInput[assignee] ?? '').trim()
+    if (!summary) return
+    setAddingTaskFor(assignee)
+    try {
+      await api.post('/backlog/tasks', {
+        summary,
+        assignee_name: assignee,
+        start_date: date,
+        end_date: date,
+      })
+      setNewTaskInput((prev) => ({ ...prev, [assignee]: '' }))
+      await reloadTasks()
+    } catch (e: any) {
+      alert(`タスク追加失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setAddingTaskFor(null)
+    }
+  }
   const [editing, setEditing] = useState<Record<number, { hours: string; content: string; sapEntries: SapEntry[] }>>({})
   const [saving, setSaving] = useState<number | null>(null)
   const [creatingCategory, setCreatingCategory] = useState<'living' | 'wings' | null>(null)
@@ -437,6 +458,58 @@ export default function DayDetailModal({
       .finally(() => setTasksLoading(false))
     api.get<BacklogTask[]>('/backlog/tasks').then((r) => setAllTasks(r.data)).catch(() => setAllTasks([]))
   }, [date])
+
+  // Notion (リビング) タスク
+  const [notionTasksByAssignee, setNotionTasksByAssignee] = useState<Record<string, NotionTask[]>>({ '西野': [], '川村': [] })
+  const [taskTab, setTaskTab] = useState<'tama' | 'living'>('tama')
+  const [notionSyncing, setNotionSyncing] = useState(false)
+  const [notionSyncMsg, setNotionSyncMsg] = useState<string | null>(null)
+  const groupNotion = (tasks: NotionTask[]): Record<string, NotionTask[]> => {
+    const grouped: Record<string, NotionTask[]> = { '西野': [], '川村': [] }
+    tasks.forEach((task) => {
+      if (task.assignee_name?.includes('西野')) grouped['西野'].push(task)
+      else if (task.assignee_name?.includes('川村')) grouped['川村'].push(task)
+    })
+    return grouped
+  }
+  const reloadNotion = async () => {
+    try {
+      const response = await api.get<NotionTask[]>('/notion_tasks')
+      setNotionTasksByAssignee(groupNotion(response.data))
+    } catch {
+      setNotionTasksByAssignee({ '西野': [], '川村': [] })
+    }
+  }
+  useEffect(() => { reloadNotion() }, [date])
+  const handleNotionSync = async () => {
+    if (notionSyncing) return
+    setNotionSyncing(true); setNotionSyncMsg(null)
+    try {
+      const { data } = await api.post('/notion_tasks/sync')
+      setNotionSyncMsg(`${data.synced} 件同期`)
+      await reloadNotion()
+    } catch (e: any) {
+      setNotionSyncMsg(`同期失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setNotionSyncing(false)
+    }
+  }
+  const [notionHoursById, setNotionHoursById] = useState<Record<number, string>>({})
+  const addNotionToWorkReport = async (task: NotionTask, targetAssignee?: string, hoursOverride?: string) => {
+    try {
+      const hours = Number(hoursOverride ?? notionHoursById[task.id] ?? '1')
+      await api.post('/work_reports/append_task', {
+        work_date: date,
+        category: 'living',
+        issue_key: task.title,
+        hours,
+        target_assignee: targetAssignee,
+      })
+      onChanged?.()
+    } catch (e: any) {
+      alert(`リビング追加失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
 
   const dayReports = useMemo(() =>
     workReports
@@ -495,15 +568,34 @@ export default function DayDetailModal({
     }
   }
 
+  // リビング(Notion)タスクの手入力メモを保存し、ローカル state にも反映する（タマの onMemoChanged 相当）。
+  const saveNotionMemo = async (taskId: number, value: string) => {
+    await api.patch(`/notion_tasks/${taskId}`, { memo: value })
+    setNotionTasksByAssignee((prev) => {
+      const next: Record<string, NotionTask[]> = {}
+      for (const [person, tasks] of Object.entries(prev)) {
+        next[person] = tasks.map((task) => (task.id === taskId ? { ...task, memo: value } : task))
+      }
+      return next
+    })
+  }
+
+  // 新規作成側も SAP 明細を変更/追加/削除すると合計 hours を自動再計算する
   const updateNewSapRow = (index: number, patch: Partial<SapEntry>) => {
     setDraftNew((prev) => {
       const next = [...prev.sapEntries]
       next[index] = { ...next[index], ...patch }
-      return { ...prev, sapEntries: next }
+      return { ...prev, sapEntries: next, hours: recalcHours(next) }
     })
   }
-  const addNewSapRow = () => setDraftNew((prev) => ({ ...prev, sapEntries: [...prev.sapEntries, { key: '', hours: '' }] }))
-  const removeNewSapRow = (index: number) => setDraftNew((prev) => ({ ...prev, sapEntries: prev.sapEntries.filter((_, i) => i !== index) }))
+  const addNewSapRow = () => setDraftNew((prev) => {
+    const next = [...prev.sapEntries, { key: '', hours: '' }]
+    return { ...prev, sapEntries: next, hours: recalcHours(next) }
+  })
+  const removeNewSapRow = (index: number) => setDraftNew((prev) => {
+    const next = prev.sapEntries.filter((_, i) => i !== index)
+    return { ...prev, sapEntries: next, hours: recalcHours(next) }
+  })
 
   // タスク選択候補: 未対応/処理中/処理済 + 完了は1ヶ月以内
   const eligibleTasks = useMemo(() => {
@@ -517,6 +609,34 @@ export default function DayDetailModal({
   }, [allTasks])
   const dayExpenses = expenses.filter((e) => e.expense_date === date)
   const dayTeam = teamSchedules.filter((t) => t.date === date)
+
+  // 立替金(電車賃)の追加/削除。どちらも勤怠(work_report)の交通費欄に反映される。
+  const [expenseBusy, setExpenseBusy] = useState(false)
+  const addTransitExpense = async () => {
+    if (expenseBusy) return
+    setExpenseBusy(true)
+    try {
+      await api.post('/expenses/add_transit', { date, category: 'wings', ...asUserParam })
+      onChanged?.()
+    } catch (e: any) {
+      alert(`電車賃の追加に失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setExpenseBusy(false)
+    }
+  }
+  const deleteExpense = async (id: number) => {
+    if (expenseBusy) return
+    if (!confirm('この立替金を削除しますか？')) return
+    setExpenseBusy(true)
+    try {
+      await api.delete(`/expenses/${id}`, { params: asUserParam })
+      onChanged?.()
+    } catch (e: any) {
+      alert(`削除に失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setExpenseBusy(false)
+    }
+  }
 
   const startEdit = (report: WorkReport) => {
     setEditing((prev) => ({
@@ -591,45 +711,46 @@ export default function DayDetailModal({
     const draft = editing[report.id]
     if (!draft) return null
     const isWings = (report.category ?? 'wings') !== 'living'
-    const totalSapHours = draft.sapEntries.reduce((s, e) => s + (Number(e.hours) || 0), 0)
     return (
       <div className="mt-2 space-y-2 rounded-md bg-gray-50 p-2">
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-[var(--color-text-sub)]">合計時間</span>
-          <select
-            value={draft.hours}
-            onChange={(e) => setEditing((prev) => ({ ...prev, [report.id]: { ...prev[report.id], hours: e.target.value } }))}
-            className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
-          >
-            {REPORT_HOURS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option || '—'}{option ? 'h' : ''}</option>
-            ))}
-          </select>
-          {isWings && totalSapHours > 0 && (
-            <span className="text-[10px] text-[var(--color-text-sub)]">明細合計: {totalSapHours}h</span>
+          {isWings ? (
+            // Wings: SAP 明細から自動算出 → 読み取り専用表示
+            <span className="text-xs font-mono tabular-nums text-[var(--color-text)] font-semibold">
+              {draft.hours || '0'}h
+            </span>
+          ) : (
+            // リビング: 手動入力
+            <select
+              value={draft.hours}
+              onChange={(e) => setEditing((prev) => ({ ...prev, [report.id]: { ...prev[report.id], hours: e.target.value } }))}
+              className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+            >
+              {REPORT_HOURS_OPTIONS.map((option) => (
+                <option key={option} value={option}>{option || '—'}{option ? 'h' : ''}</option>
+              ))}
+            </select>
           )}
         </div>
 
         {isWings ? (
           <div className="space-y-1">
-            <div className="text-[10px] text-[var(--color-text-sub)]">タマ（SAP 明細）</div>
+            <div className="text-[10px] text-[var(--color-text-sub)]">タマ（SAP 明細） — 合計は明細から自動反映されます</div>
             {draft.sapEntries.map((entry, idx) => (
               <div key={idx} className="flex items-center gap-1">
-                <select
+                <input
+                  list={`sap-tasks-${report.id}-${idx}`}
                   value={entry.key}
                   onChange={(e) => updateSapRow(report.id, idx, { key: e.target.value })}
+                  placeholder="ISN-XXX 等（候補から選択 or 直接入力）"
                   className="flex-1 rounded border border-[var(--color-border)] px-2 py-1 text-xs"
-                >
-                  <option value="">— 選択 —</option>
+                />
+                <datalist id={`sap-tasks-${report.id}-${idx}`}>
                   {eligibleTasks.map((task) => (
-                    <option key={task.id} value={task.issue_key}>
-                      [{task.status_name}] {task.issue_key} {task.summary?.slice(0, 30)}
-                    </option>
+                    <option key={task.id} value={task.issue_key}>{`[${task.status_name}] ${task.summary?.slice(0, 30) ?? ''}`}</option>
                   ))}
-                  {entry.key && !eligibleTasks.find((task) => task.issue_key === entry.key) && (
-                    <option value={entry.key}>{entry.key}（候補外）</option>
-                  )}
-                </select>
+                </datalist>
                 <select
                   value={entry.hours}
                   onChange={(e) => updateSapRow(report.id, idx, { hours: e.target.value })}
@@ -670,9 +791,24 @@ export default function DayDetailModal({
     )
   }
 
+  // 詳細モードはモーダル全体を BacklogTaskDetailModal に差し替え
+  if (detailTask) {
+    return (
+      <Modal onClose={onClose} size="md" panelClassName="!rounded-2xl !p-5 !shadow-2xl">
+        <BacklogTaskDetailModal
+          issueKey={detailTask.issue_key}
+          summary={detailTask.summary}
+          taskUrl={detailTask.url}
+          onBack={() => setDetailTask(null)}
+          myName={meInfo.display_name}
+          myBacklogUserId={meInfo.backlog_user_id}
+        />
+      </Modal>
+    )
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} size="md" panelClassName="!rounded-2xl !p-5 !shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 gap-2">
           <div className="text-base font-semibold text-[var(--color-text)]">{date} の詳細</div>
           <div className="flex items-center gap-2">
@@ -785,31 +921,40 @@ export default function DayDetailModal({
                 <div className="space-y-2 rounded-md bg-gray-50 p-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[var(--color-text-sub)]">合計時間</span>
-                    <select
-                      value={draftNew.hours}
-                      onChange={(e) => setDraftNew((prev) => ({ ...prev, hours: e.target.value }))}
-                      className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
-                    >
-                      {REPORT_HOURS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>{option || '—'}{option ? 'h' : ''}</option>
-                      ))}
-                    </select>
+                    {creatingCategory === 'wings' ? (
+                      // Wings: SAP 明細から自動算出 → 読み取り専用表示
+                      <span className="text-xs font-mono tabular-nums text-[var(--color-text)] font-semibold">
+                        {draftNew.hours || '0'}h
+                      </span>
+                    ) : (
+                      <select
+                        value={draftNew.hours}
+                        onChange={(e) => setDraftNew((prev) => ({ ...prev, hours: e.target.value }))}
+                        className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                      >
+                        {REPORT_HOURS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option || '—'}{option ? 'h' : ''}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   {creatingCategory === 'wings' ? (
                     <div className="space-y-1">
-                      <div className="text-[10px] text-[var(--color-text-sub)]">タマ（SAP 明細）</div>
+                      <div className="text-[10px] text-[var(--color-text-sub)]">タマ（SAP 明細） — 合計は明細から自動反映されます</div>
                       {draftNew.sapEntries.map((entry, idx) => (
                         <div key={idx} className="flex items-center gap-1">
-                          <select
+                          <input
+                            list={`sap-tasks-new-${idx}`}
                             value={entry.key}
                             onChange={(e) => updateNewSapRow(idx, { key: e.target.value })}
+                            placeholder="ISN-XXX 等（候補から選択 or 直接入力）"
                             className="flex-1 rounded border border-[var(--color-border)] px-2 py-1 text-xs"
-                          >
-                            <option value="">— 選択 —</option>
+                          />
+                          <datalist id={`sap-tasks-new-${idx}`}>
                             {eligibleTasks.map((task) => (
-                              <option key={task.id} value={task.issue_key}>[{task.status_name}] {task.issue_key} {task.summary?.slice(0, 30)}</option>
+                              <option key={task.id} value={task.issue_key}>{`[${task.status_name}] ${task.summary?.slice(0, 30) ?? ''}`}</option>
                             ))}
-                          </select>
+                          </datalist>
                           <select
                             value={entry.hours}
                             onChange={(e) => updateNewSapRow(idx, { hours: e.target.value })}
@@ -853,9 +998,39 @@ export default function DayDetailModal({
                 {!existingCategories.has('living') && (
                   <button
                     onClick={() => startCreate('living')}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.dataTransfer.dropEffect = 'copy'
+                      e.currentTarget.classList.add('ring-4', 'ring-fuchsia-400', 'bg-fuchsia-50', 'border-fuchsia-500')
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('ring-4', 'ring-fuchsia-400', 'bg-fuchsia-50', 'border-fuchsia-500')
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.currentTarget.classList.remove('ring-4', 'ring-fuchsia-400', 'bg-fuchsia-50', 'border-fuchsia-500')
+                      try {
+                        const raw = e.dataTransfer.getData('application/json')
+                        if (!raw) { alert('ドロップデータが空'); return }
+                        const dropped = JSON.parse(raw)
+                        if (dropped?.source !== 'notion' || !dropped?.title) {
+                          alert('リビングへは Notion タスクのみドロップできます')
+                          return
+                        }
+                        await addNotionToWorkReport(
+                          { id: -1, title: dropped.title } as NotionTask,
+                          dropped.assignee,
+                          String(dropped.hours ?? '1'),
+                        )
+                      } catch (err: any) {
+                        alert(`リビング追加失敗: ${err?.message ?? err}`)
+                      }
+                    }}
                     className="flex-1 rounded-lg border-2 border-dashed border-fuchsia-300 px-3 py-1.5 text-xs text-fuchsia-600 hover:bg-fuchsia-50"
                   >
-                    ＋ リビング を追加
+                    ＋ リビング を追加（Notion タスクをドロップで追加）
                   </button>
                 )}
                 {!existingCategories.has('wings') && (
@@ -894,20 +1069,30 @@ export default function DayDetailModal({
           </div>
         </section>
 
-        {/* 立替金 */}
-        {dayExpenses.length > 0 && (
-          <section className="mt-4">
+        {/* 立替金（電車賃の追加/削除 → 勤怠の交通費欄に反映） */}
+        <section className="mt-4">
+          <div className="flex items-center justify-between gap-2">
             <div className="text-[11px] uppercase tracking-widest text-[var(--color-text-sub)]">立替金</div>
-            <div className="mt-1 space-y-1">
-              {dayExpenses.map((e) => (
-                <div key={e.id} className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs flex items-baseline justify-between">
-                  <span>{e.purpose}</span>
-                  <span className="font-mono tabular-nums">¥{e.amount.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+            <button onClick={addTransitExpense} disabled={expenseBusy}
+              className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+              {expenseBusy ? '…' : '＋ 電車賃を追加'}
+            </button>
+          </div>
+          <div className="mt-1 space-y-1">
+            {dayExpenses.length === 0 && (
+              <div className="text-[10px] text-[var(--color-text-sub)]">立替金なし</div>
+            )}
+            {dayExpenses.map((e) => (
+              <div key={e.id} className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs flex items-baseline justify-between gap-2">
+                <span className="flex-1">{e.purpose}{e.from_station && e.to_station ? `（${e.from_station}〜${e.to_station}）` : ''}</span>
+                <span className="font-mono tabular-nums">¥{e.amount.toLocaleString()}</span>
+                <button onClick={() => deleteExpense(e.id)} disabled={expenseBusy}
+                  className="text-rose-500 hover:text-rose-700 disabled:opacity-50" title="削除">🗑</button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-1 text-[10px] text-[var(--color-text-sub)]">電車賃は設定の「デフォルト交通費」を使用。追加/削除は勤怠の交通費欄にも反映されます。</div>
+        </section>
 
         {/* 当日のタスク */}
         <section className="mt-4">
@@ -933,7 +1118,140 @@ export default function DayDetailModal({
               })}
             </div>
           </div>
-          {tasksLoading ? (
+          {/* タマ / リビング タブ + Notion 同期ボタン */}
+          <div className="mt-2 flex items-center gap-1">
+            <button
+              onClick={() => setTaskTab('tama')}
+              className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'tama' ? 'bg-emerald-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
+            >
+              タマ
+            </button>
+            <button
+              onClick={() => setTaskTab('living')}
+              className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'living' ? 'bg-fuchsia-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
+            >
+              リビング
+            </button>
+            {taskTab === 'living' && (
+              <>
+                <button
+                  onClick={handleNotionSync}
+                  disabled={notionSyncing}
+                  className="ml-auto rounded border border-fuchsia-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-fuchsia-600 hover:bg-fuchsia-50 disabled:opacity-50"
+                  title="Notion から最新の WBS タスクを取得"
+                >
+                  {notionSyncing ? '同期中…' : '🔄 Notion 同期'}
+                </button>
+                {notionSyncMsg && <span className="text-[10px] text-[var(--color-text-sub)]">{notionSyncMsg}</span>}
+              </>
+            )}
+          </div>
+          {taskTab === 'living' ? (
+            <div className="mt-1 grid gap-2 md:grid-cols-2">
+              {(['西野', '川村'] as const).map((person) => {
+                const tasks = notionTasksByAssignee[person] ?? []
+                const editable = isAdmin || allowEdit(person)
+                const targetAssignee = isAdmin ? undefined : person
+                return (
+                  <div key={person} className="rounded-lg border border-fuchsia-200 bg-fuchsia-50/30 p-2">
+                    <div className="text-xs font-semibold text-[var(--color-text)] mb-1">
+                      {person} リビング タスク（{tasks.length}）
+                      {!editable && <span className="ml-1 text-[10px] font-normal text-gray-400">閲覧のみ</span>}
+                    </div>
+                    {tasks.length === 0 ? (
+                      <div className="text-[11px] text-[var(--color-text-sub)]">該当なし（Notion 同期 で取得）</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {tasks.map((task) => {
+                          const livingReport = workReports.find((r) => r.work_date === date && r.category === 'living')
+                          const alreadyInLiving = !!livingReport && (livingReport.content ?? '').includes(task.title)
+                          return (
+                          <div
+                            key={task.id}
+                            className="rounded border border-fuchsia-200 bg-white p-1.5 text-[11px]"
+                            draggable={editable}
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = 'copy'
+                              e.dataTransfer.setData('application/json', JSON.stringify({
+                                source: 'notion',
+                                title: task.title,
+                                hours: Number(notionHoursById[task.id] ?? '1'),
+                                assignee: targetAssignee,
+                              }))
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-1">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-mono text-[9px] text-fuchsia-500">{task.wbs_level}</div>
+                                <a
+                                  href={`https://www.notion.so/21e123f261d2802b93bae6e0f9406682?v=21e123f261d280b29c52000c51b8b437&p=${task.notion_block_id.replace(/-/g, '')}&pm=s`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block font-semibold truncate text-fuchsia-700 hover:underline"
+                                  title={task.title}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {task.title} ↗
+                                </a>
+                                <div className="text-[10px] text-[var(--color-text-sub)] flex gap-2 flex-wrap">
+                                  {task.start_date && <span>{task.start_date}〜{task.end_date ?? ''}</span>}
+                                  {task.workload != null && <span>{task.workload}人日</span>}
+                                  {task.status && <span className="rounded bg-gray-100 px-1">{task.status}</span>}
+                                  {task.progress_rate != null && task.progress_rate > 0 && (
+                                    <span>{Math.round(Number(task.progress_rate) * 100)}%</span>
+                                  )}
+                                </div>
+                                {task.note && <div className="text-[10px] text-gray-500 mt-0.5 truncate" title={task.note}>{task.note}</div>}
+                                <TaskMemoEditor
+                                  value={task.memo}
+                                  onSave={(value) => saveNotionMemo(task.id, value)}
+                                  editable={editable}
+                                />
+                              </div>
+                              {editable && (
+                                <div className="flex shrink-0 items-center gap-1">
+                                  {alreadyInLiving && livingReport ? (
+                                    <button
+                                      onClick={() => startEdit(livingReport)}
+                                      className="rounded bg-fuchsia-500 hover:bg-fuchsia-600 px-2 py-0.5 text-[10px] font-semibold text-white"
+                                      title="リビング業務報告を編集"
+                                    >
+                                      編集
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <select
+                                        value={notionHoursById[task.id] ?? '1'}
+                                        onChange={(e) => setNotionHoursById((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="rounded border border-[var(--color-border)] px-1 py-0.5 text-[10px]"
+                                      >
+                                        {['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '6', '7', '8'].map((h) => (
+                                          <option key={h} value={h}>{h}h</option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        onClick={() => addNotionToWorkReport(task, targetAssignee)}
+                                        className="rounded bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white"
+                                        title="リビング業務報告に追加"
+                                      >
+                                        勤怠に追加
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : tasksLoading ? (
             <div className="mt-1 text-xs text-[var(--color-text-sub)]">読み込み中…</div>
           ) : (
             <div className="mt-1 grid gap-2 md:grid-cols-2">
@@ -950,6 +1268,27 @@ export default function DayDetailModal({
                       {!editable && <span className="ml-1 text-[10px] font-normal text-gray-400">閲覧のみ</span>}
                       {isAdmin && person !== '西野' && <span className="ml-1 text-[10px] font-normal text-fuchsia-500">レビュー → 自分の勤怠へ</span>}
                     </div>
+                    {editable && (
+                      <div className="mb-1 flex gap-1">
+                        <input
+                          type="text"
+                          value={newTaskInput[person] ?? ''}
+                          onChange={(e) => setNewTaskInput((prev) => ({ ...prev, [person]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); addLocalTask(person) }
+                          }}
+                          placeholder="＋ 新規タスク (この日に追加)"
+                          className="flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-[11px]"
+                        />
+                        <button
+                          onClick={() => addLocalTask(person)}
+                          disabled={!(newTaskInput[person] ?? '').trim() || addingTaskFor === person}
+                          className="rounded bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+                        >
+                          {addingTaskFor === person ? '…' : '追加'}
+                        </button>
+                      </div>
+                    )}
                     {tasks.length === 0 ? (
                       <div className="text-[11px] text-[var(--color-text-sub)]">該当なし</div>
                     ) : (
@@ -978,6 +1317,8 @@ export default function DayDetailModal({
                                 })
                                 setAllTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, memo } : t))
                               }}
+                              onOpenDetail={(t) => setDetailTask(t)}
+                              refreshTick={commentRefreshTick}
                             />
                           )
                         })}
@@ -989,7 +1330,6 @@ export default function DayDetailModal({
             </div>
           )}
         </section>
-      </div>
-    </div>
+    </Modal>
   )
 }

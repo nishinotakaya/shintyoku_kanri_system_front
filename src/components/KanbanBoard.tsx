@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import type { DropResult } from '@hello-pangea/dnd'
-import { api } from '../lib/api'
 
 type BLTask = {
   id: number
@@ -118,7 +117,6 @@ export default function KanbanBoard({
     return col
   }
 
-  const today = new Date().toISOString().slice(0, 10)
 
   const FlagCheckboxes = ({ t }: { t: BLTask }) => (
     <div

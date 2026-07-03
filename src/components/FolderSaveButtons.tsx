@@ -22,9 +22,11 @@ type Props = {
   fetchDownload?: () => Promise<{ blob: Blob; filename: string }>
   // 保存/DL 成功時に呼ばれる（呼び出し側で「DL済」フラグ管理に使う）
   onDownloaded?: () => void
+  // ボタン群の下に出す注意書き（例: これはファイル保存であり一覧登録ではない、等）
+  hint?: string
 }
 
-export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, fetchDownload, onDownloaded }: Props) {
+export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, fetchDownload, onDownloaded, hint }: Props) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [lastSavedTo, setLastSavedTo] = useState<string | null>(null)
@@ -173,6 +175,9 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
         <button onClick={forget} className="text-[10px] text-[var(--color-text-sub)] hover:text-red-500">
           記憶済み保存先を解除
         </button>
+      )}
+      {hint && (
+        <div className="max-w-[420px] text-right text-[10px] text-amber-600">{hint}</div>
       )}
       {(lastSavedTo || msg) && (
         <div className="max-w-[420px] text-right text-[10px] text-[var(--color-text-sub)] break-all">

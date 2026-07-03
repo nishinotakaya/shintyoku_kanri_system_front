@@ -17,6 +17,7 @@ type InvoiceSetting = {
   tel: string
   email: string
   bank_info: string
+  seal_image?: string | null // 印鑑(ハンコ)画像 data URL。ユーザー単位(全カテゴリ共通)。
   default_items: { label: string; qty: number; unit: string; price: number }[]
 }
 
@@ -29,7 +30,7 @@ export default function SettingsModal({
   onSaved,
 }: {
   open: boolean
-  initialTab?: 'account' | 'invoice' | 'backlog'
+  initialTab?: 'account' | 'invoice' | 'backlog' | 'freee'
   year: number
   month: number
   onClose: () => void
@@ -38,12 +39,48 @@ export default function SettingsModal({
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
   const todayIso = new Date().toISOString().slice(0, 10)
   const [applicationDate, setApplicationDate] = useState<string>(todayIso)
-  const [tab, setTab] = useState<'account' | 'invoice' | 'backlog'>(initialTab)
+  const [tab, setTab] = useState<'account' | 'invoice' | 'backlog' | 'freee' | 'users'>(initialTab)
   useEffect(() => {
     if (open) setTab(initialTab)
   }, [open, initialTab])
+
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // === admin: ユーザー管理 ===
+  type AdminUser = { id: number; email: string; display_name: string | null; admin: boolean; has_google: boolean; created_at: string | null }
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserAdmin, setNewUserAdmin] = useState(false)
+  const [userBusy, setUserBusy] = useState(false)
+  const [userMsg, setUserMsg] = useState<string | null>(null)
+  const loadAdminUsers = async () => {
+    try {
+      const r = await api.get<AdminUser[]>('/admin/users')
+      setAdminUsers(r.data)
+    } catch (e: any) {
+      setUserMsg(`取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+  useEffect(() => { if (open && tab === 'users') loadAdminUsers() }, [open, tab])
+  const createAdminUser = async () => {
+    if (!newUserEmail.trim()) { setUserMsg('email を入力してください'); return }
+    setUserBusy(true); setUserMsg(null)
+    try {
+      const r = await api.post<{ id: number; invite_sent: boolean; invite_error: string | null }>('/admin/users', {
+        email: newUserEmail.trim(), display_name: newUserName.trim(), admin: newUserAdmin, send_invite: true,
+      })
+      setUserMsg(r.data.invite_sent ? `✅ 作成 + 招待メール送信 (id=${r.data.id})` : `⚠ 作成 (id=${r.data.id}) / 招待メール失敗: ${r.data.invite_error}`)
+      setNewUserEmail(''); setNewUserName(''); setNewUserAdmin(false)
+      await loadAdminUsers()
+    } catch (e: any) {
+      setUserMsg(`失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setUserBusy(false) }
+  }
   const [keySet, setKeySet] = useState(false)
   const [apiKey, setApiKey] = useState('')
+  const [heygenKeySet, setHeygenKeySet] = useState(false)
+  const [heygenKey, setHeygenKey] = useState('')
   const [closingDay, setClosingDay] = useState(25)
   const [scheduleUrl, setScheduleUrl] = useState('')
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null)
@@ -58,8 +95,9 @@ export default function SettingsModal({
     api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
   }, [invCat, open])
   const [blSetting, setBlSetting] = useState({ backlog_url: '', backlog_email: '', backlog_password: '', board_id: 0, user_backlog_id: 0, session_cookie: '', has_cookie: false, api_key: '', has_api_key: false, assignee_name_filter: '' })
+  const [freee, setFreee] = useState<{ identity: string; password: string; status: { connected: boolean; identity?: string; company_id?: string; last_connected_at?: string; last_status_code?: number; last_error?: string } | null; busy: boolean; result: string | null }>({ identity: '', password: '', status: null, busy: false, result: null })
   const [blTestResult, setBlTestResult] = useState<{ success: boolean; total?: number; error?: string } | null>(null)
-  const [blSyncResult, setBlSyncResult] = useState<{ synced: number } | null>(null)
+  const [, setBlSyncResult] = useState<{ synced: number } | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -67,8 +105,10 @@ export default function SettingsModal({
     if (!open) return
     setMsg(null)
     setApiKey('')
+    setHeygenKey('')
     api.get('/me').then((r) => {
       setKeySet(!!r.data.openai_api_key_set)
+      setHeygenKeySet(!!r.data.heygen_api_key_set)
       setClosingDay(r.data.closing_day ?? 25)
       setTransit({
         from: r.data.default_transit_from ?? '',
@@ -79,9 +119,11 @@ export default function SettingsModal({
       setRoutes(r.data.transit_routes ?? [])
       setCommuteDays(r.data.commute_days ?? [1, 2, 3, 4, 5])
       setScheduleUrl(r.data.attendance_schedule_url ?? '')
+      setIsAdmin(!!r.data.admin)
     })
     api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
     api.get('/backlog/setting').then((r) => setBlSetting((prev) => ({ ...prev, ...r.data })))
+    api.get('/freee/setting').then((r) => setFreee((prev) => ({ ...prev, status: r.data, identity: r.data.identity ?? '' }))).catch(() => {})
     api.get('/monthly_setting', { params: { month: monthParam } }).then((r) => {
       setApplicationDate(r.data.application_date ?? r.data.default_application_date ?? todayIso)
     })
@@ -104,6 +146,7 @@ export default function SettingsModal({
         attendance_schedule_url: scheduleUrl,
       }
       if (apiKey) payload.openai_api_key = apiKey
+      if (heygenKey) payload.heygen_api_key = heygenKey
       await api.patch('/me', { user: payload })
       await api.patch('/monthly_setting', { application_date: applicationDate || null }, { params: { month: monthParam } })
       // 乗車区間を業務報告 + 立替金に一括反映
@@ -116,6 +159,7 @@ export default function SettingsModal({
         setMsg('保存しました')
       }
       setApiKey('')
+      if (heygenKey) { setHeygenKey(''); setHeygenKeySet(true) }
       setKeySet(true)
       onSaved?.()
     } catch (e: any) {
@@ -130,7 +174,7 @@ export default function SettingsModal({
     setSaving(true)
     setMsg(null)
     try {
-      await api.patch('/invoice_setting', { invoice_setting: inv, category: invCat })
+      await api.patch('/invoice_setting', { invoice_setting: inv, category: invCat, seal_image: inv.seal_image ?? '' })
       setMsg('保存しました')
       onSaved?.()
     } catch (e: any) {
@@ -138,6 +182,28 @@ export default function SettingsModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  // 印鑑画像を選択 → 大きすぎる写真は 500px に縮小して data URL 化（SVG はそのまま）
+  const onSealFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const src = String(reader.result || '')
+      if (file.type === 'image/svg+xml') { setInv((p) => p && { ...p, seal_image: src }); return }
+      const img = new Image()
+      img.onload = () => {
+        const max = 500
+        const scale = Math.min(1, max / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+        setInv((p) => p && { ...p, seal_image: canvas.toDataURL('image/png') })
+      }
+      img.src = src
+    }
+    reader.readAsDataURL(file)
   }
 
   const fld = (label: string, key: keyof InvoiceSetting, type: 'text' | 'number' = 'text', span = 'col-span-2') => (
@@ -170,8 +236,11 @@ export default function SettingsModal({
           </button>
         </div>
 
-        <div className="mt-5 flex gap-2">
-          {(['account', 'invoice', 'backlog'] as const).map((t) => (
+        <div className="mt-5 flex gap-2 flex-wrap">
+          {(isAdmin
+            ? ['account', 'invoice', 'backlog', 'freee', 'users'] as const
+            : ['account', 'invoice', 'backlog', 'freee'] as const
+          ).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -179,7 +248,7 @@ export default function SettingsModal({
                 tab === t ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] hover:text-[var(--color-text)]'
               }`}
             >
-              {t === 'account' ? 'アカウント' : t === 'invoice' ? '請求書' : 'バックログ'}
+              {t === 'account' ? 'アカウント' : t === 'invoice' ? '請求書' : t === 'backlog' ? 'バックログ' : t === 'freee' ? 'freee' : '👥 ユーザー'}
             </button>
           ))}
         </div>
@@ -347,6 +416,25 @@ export default function SettingsModal({
               />
             </div>
 
+            <div>
+              <div className="text-xs text-[var(--color-text-sub)]">HeyGen API キー（喋るインタビュー動画）</div>
+              <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">
+                現在: {heygenKeySet ? <span className="text-emerald-600">設定済み</span> : <span className="text-gray-500">未設定（管理者の共通キーを使用）</span>}
+              </div>
+              <div className="mt-1 text-[11px]">
+                <a href="https://app.heygen.com/developers/api" target="_blank" rel="noreferrer" className="text-[var(--color-primary)] underline">
+                  ↗ HeyGen でAPIキーを取得・クレジットを購入する
+                </a>
+              </div>
+              <input
+                type="password"
+                value={heygenKey}
+                onChange={(e) => setHeygenKey(e.target.value)}
+                placeholder="自分のキーを使う場合のみ入力"
+                className="mt-3 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-mono text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+              />
+            </div>
+
             {msg && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-600">{msg}</div>}
             <button
               onClick={saveAccount}
@@ -411,6 +499,22 @@ export default function SettingsModal({
               {fld('住所', 'address')}
               {fld('Email', 'email')}
               {fld('振込先', 'bank_info')}
+              <div className="col-span-2">
+                <span className="text-[11px] text-[var(--color-text-sub)]">印鑑（ハンコ）画像 — 請求書/立替金PDFの右上に押印されます（全カテゴリ共通）</span>
+                <div className="mt-1 flex items-center gap-3">
+                  {inv.seal_image ? (
+                    <img src={inv.seal_image} alt="印鑑" className="h-16 w-16 rounded border border-[var(--color-border)] object-contain" />
+                  ) : (
+                    <div className="grid h-16 w-16 place-items-center rounded border border-dashed border-[var(--color-border)] text-[10px] text-[var(--color-text-sub)]">未設定</div>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <input type="file" accept="image/*" onChange={onSealFile} className="text-[11px]" />
+                    {inv.seal_image && (
+                      <button type="button" onClick={() => setInv((p) => p && { ...p, seal_image: '' })} className="text-left text-[11px] text-red-500">印鑑を削除</button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="mt-4">
@@ -583,6 +687,155 @@ export default function SettingsModal({
                 {blTestResult.success ? `✅ 接続成功 (${blTestResult.total} 件取得)` : `❌ ${blTestResult.error}`}
               </div>
             )}
+          </div>
+        )}
+
+        {tab === 'freee' && (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+              freee 会計の Web ログイン情報を保存して、請求書の売上計上などを自動で行います。
+              <br />（freee API ではなく Web のセッション API を使用 — 利用規約上グレーのため、本番運用前に公式 API への切替検討推奨）
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-[11px] text-[var(--color-text-sub)]">freee メールアドレス</span>
+                <input
+                  type="email"
+                  value={freee.identity}
+                  onChange={(e) => setFreee({ ...freee, identity: e.target.value })}
+                  placeholder="example@gmail.com"
+                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11px] text-[var(--color-text-sub)]">パスワード</span>
+                <input
+                  type="password"
+                  value={freee.password}
+                  onChange={(e) => setFreee({ ...freee, password: e.target.value })}
+                  placeholder="（保存済みの場合は再入力不要）"
+                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                />
+              </label>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setFreee({ ...freee, busy: true, result: null })
+                  try {
+                    const { data } = await api.post('/freee/connect', {
+                      identity: freee.identity,
+                      password: freee.password,
+                    })
+                    setFreee({ ...freee, busy: false, password: '', status: data, result: data.message ?? '✅ 200 OK 接続完了' })
+                  } catch (e: unknown) {
+                    const err = e as { response?: { data?: { error?: string; status?: number } } }
+                    setFreee({ ...freee, busy: false, result: `❌ ${err?.response?.data?.error ?? '接続失敗'} (status=${err?.response?.data?.status ?? '?'})` })
+                  }
+                }}
+                disabled={freee.busy || !freee.identity || !freee.password}
+                className="flex-1 rounded-xl bg-gradient-to-r from-indigo-500 to-fuchsia-500 px-4 py-3 font-semibold text-white shadow-lg shadow-fuchsia-500/20 disabled:opacity-50"
+              >
+                {freee.busy ? '接続中…' : '接続'}
+              </button>
+              <button
+                onClick={async () => {
+                  setFreee({ ...freee, busy: true, result: null })
+                  try {
+                    const { data } = await api.post('/freee/test')
+                    setFreee({ ...freee, busy: false, status: { ...(freee.status ?? { connected: false }), connected: true, last_status_code: data.status }, result: `✅ 接続テスト OK (status=${data.status})` })
+                  } catch (e: unknown) {
+                    const err = e as { response?: { data?: { error?: string; status?: number } } }
+                    setFreee({ ...freee, busy: false, result: `❌ ${err?.response?.data?.error ?? '失敗'} (status=${err?.response?.data?.status ?? '?'})` })
+                  }
+                }}
+                disabled={freee.busy || !freee.status?.identity}
+                className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+              >
+                接続テスト（200 確認）
+              </button>
+            </div>
+
+            {freee.status && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-[11px] text-[var(--color-text-sub)]">
+                <div>状態: {freee.status.connected ? <span className="text-emerald-600 font-semibold">接続中</span> : <span className="text-red-500">未接続</span>}</div>
+                {freee.status.identity && <div>メール: {freee.status.identity}</div>}
+                {freee.status.company_id && <div>事業所 ID: {freee.status.company_id}</div>}
+                {freee.status.last_connected_at && <div>最終接続: {new Date(freee.status.last_connected_at).toLocaleString('ja-JP')}</div>}
+                {freee.status.last_status_code != null && <div>最終 HTTP ステータス: {freee.status.last_status_code}</div>}
+                {freee.status.last_error && <div className="text-red-500">最終エラー: {freee.status.last_error}</div>}
+              </div>
+            )}
+
+            {freee.result && (
+              <div className={`rounded-lg px-3 py-2 text-xs ${freee.result.startsWith('✅') ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                {freee.result}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'users' && isAdmin && (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
+              admin 権限: 新しいユーザーを作成して招待メール (Google ログイン案内) を送信できます。
+              <br />招待された人がそのメールアドレスで Google ログインすると、自動で本アカウントに紐づきます。
+            </div>
+
+            <div className="rounded-lg border border-[var(--color-border)] p-3 space-y-2">
+              <div className="text-xs font-semibold">＋ 新規ユーザー追加</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <label className="block">
+                  <span className="text-[11px] text-[var(--color-text-sub)]">Email *</span>
+                  <input value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="example@gmail.com"
+                    className="mt-0.5 w-full rounded border border-[var(--color-border)] px-2 py-1 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-[var(--color-text-sub)]">表示名</span>
+                  <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="山田 太郎"
+                    className="mt-0.5 w-full rounded border border-[var(--color-border)] px-2 py-1 text-sm" />
+                </label>
+                <label className="flex items-end gap-1.5 text-xs">
+                  <input type="checkbox" checked={newUserAdmin} onChange={(e) => setNewUserAdmin(e.target.checked)} />
+                  <span>admin 権限</span>
+                </label>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-[11px] ${userMsg?.includes('失敗') || userMsg?.includes('⚠') ? 'text-red-500' : 'text-emerald-600'}`}>{userMsg ?? ''}</span>
+                <button onClick={createAdminUser} disabled={userBusy}
+                  className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+                  {userBusy ? '送信中…' : '📧 作成 + 招待メール送信'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold mb-1">登録済ユーザー ({adminUsers.length}件)</div>
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-[var(--color-text-sub)]">
+                  <tr>
+                    <th className="px-2 py-1 text-left">id</th>
+                    <th className="px-2 py-1 text-left">Email</th>
+                    <th className="px-2 py-1 text-left">表示名</th>
+                    <th className="px-2 py-1 text-center">admin</th>
+                    <th className="px-2 py-1 text-center">Google連携</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminUsers.map((u) => (
+                    <tr key={u.id} className="border-t border-[var(--color-border)]">
+                      <td className="px-2 py-1 font-mono">{u.id}</td>
+                      <td className="px-2 py-1">{u.email}</td>
+                      <td className="px-2 py-1">{u.display_name ?? '—'}</td>
+                      <td className="px-2 py-1 text-center">{u.admin ? '✓' : ''}</td>
+                      <td className="px-2 py-1 text-center">{u.has_google ? '✅' : '⏳ 未ログイン'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
-import type { Me } from '../lib/api'
-import FolderSaveButtons from './FolderSaveButtons'
+import type { Me, PickableUser } from '../lib/api'
 import PurchaseOrderMailModal from './PurchaseOrderMailModal'
+import PurchaseOrderItemsTable from './PurchaseOrderItemsTable'
 
 type Item = { description: string; qty: number; unit: string; unit_price: number; amount: number }
 
@@ -101,7 +101,7 @@ const DEFAULTS: Record<CategoryKey, Config> = {
     issuerRepresentative: '', issuerPostal: '', issuerAddress: '',
     recipientName: '川村 卓也', recipientPostal: '', recipientAddress: '',
     periodStart: '2026-04-01', periodEnd: '2026-05-25', closingDay: 25,
-    hoursPerCycle: 80, ratePerHour: 3750, baseMonthly: 600000, unit: '時間',
+    hoursPerCycle: 160, ratePerHour: 2875, baseMonthly: 460000, unit: '時間',
     priceMode: 'hourly', rangeMin: 140, rangeMax: 180,
     deliveryLocation: '客先指定場所', paymentMethod: '振込',
   },
@@ -111,7 +111,7 @@ const DEFAULTS: Record<CategoryKey, Config> = {
     issuerRepresentative: '', issuerPostal: '', issuerAddress: '',
     recipientName: '', recipientPostal: '', recipientAddress: '',
     periodStart: '2026-04-01', periodEnd: '2026-04-30', closingDay: 25,
-    hoursPerCycle: 40, ratePerHour: 3750, baseMonthly: 300000, unit: '時間',
+    hoursPerCycle: 24, ratePerHour: 3250, baseMonthly: 78000, unit: '時間',
     priceMode: 'hourly', rangeMin: 140, rangeMax: 180,
     deliveryLocation: '客先指定場所', paymentMethod: '振込',
   },
@@ -222,11 +222,15 @@ const buildItems = (cfg: Config): Item[] => {
 const buildRemarks = (cfg: Config): string => {
   const periods = splitByClosingDay(cfg.periodStart, cfg.periodEnd, cfg.closingDay)
   const payDates = periods.map(p => fmtJPDow(paymentDateFor(p.to))).join('／')
+  // 月時間が 8 の倍数かつ 8h×N日 で表現できる場合のみ「8時間×N日」の注釈を付ける
+  const hoursBreakdown = (cfg.hoursPerCycle % 8 === 0 && cfg.hoursPerCycle > 0)
+    ? `［8時間×${cfg.hoursPerCycle / 8}日］`
+    : ''
   const priceBlock = cfg.priceMode === 'settlement_range' ? `・月額${cfg.baseMonthly.toLocaleString()}円を基準額とする
 　（精算幅：月${cfg.rangeMin}〜${cfg.rangeMax}時間）
 ・精算幅の範囲内は月額固定、範囲を超過／下回る場合は ${cfg.ratePerHour.toLocaleString()}円/時で調整精算する
 ・月の想定稼働時間は${cfg.hoursPerCycle}時間とするが、精算幅を超える事が想定される場合には事前に双方話し合いを行う` : `・月額${cfg.baseMonthly.toLocaleString()}円を基準額とする
-　（月${cfg.hoursPerCycle}時間［8時間×10日］稼働した場合）
+　（月${cfg.hoursPerCycle}時間${hoursBreakdown}稼働した場合）
 ・実績稼働時間数 × ${cfg.ratePerHour.toLocaleString()}円 により算定する完全工数精算とする
 ・月の想定稼働時間は${cfg.hoursPerCycle}時間とするが、この時間を超える事が想定される場合には事前に双方話し合いを行う`
   return `契約形態：準委任契約
@@ -255,11 +259,23 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
   const [remarks, setRemarks] = useState<string>(() => buildRemarks(DEFAULTS[category]))
   const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [orderNo, setOrderNo] = useState(genOrderNo())
+  const [users, setUsers] = useState<PickableUser[]>([])
+  // 受注者ユーザー: 登録ユーザーから選択。デフォルトは display_name が cfg.recipientName と一致するユーザー
+  const [recipientUserId, setRecipientUserId] = useState<number | null>(null)
+  useEffect(() => {
+    api.get<PickableUser[]>('/users/pickable').then((r) => setUsers(r.data)).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (recipientUserId != null) return
+    if (!users.length) return
+    const matched = users.find((u) => cfg.recipientName && u.display_name.replace(/\s/g, '') === cfg.recipientName.replace(/\s/g, ''))
+    if (matched) setRecipientUserId(matched.id)
+  }, [users, cfg.recipientName, recipientUserId])
 
-  const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
   const [mailModalOpen, setMailModalOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -309,9 +325,12 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
           setItems(Array.isArray(r.data.items) && r.data.items.length ? r.data.items : buildItems(c))
           setRemarks(typeof r.data.remarks === 'string' && r.data.remarks.length ? r.data.remarks : buildRemarks(c))
         } else {
+          // ★既存データ復元事故防止: exists=false でも DB には書かない。
+          //  既存レコードが（reorder のラグや一時的なフェッチ不整合で）誤って exists=false 扱いになった場合に
+          //  DEFAULTS を自動 PATCH で書き戻すと、ユーザーが保存したデータが消える。
+          //  画面上は DEFAULTS を表示するが、保存はユーザーが💾を押した時のみ実行する。
           const base = DEFAULTS[category]
           setCfg(base); setItems(buildItems(base)); setRemarks(buildRemarks(base))
-          try { await api.patch('/purchase_order_setting', { purchase_order_setting: toServer(base, buildItems(base), buildRemarks(base)) }, { params: { category, position } }) } catch {}
         }
         setLoaded(true)
       })
@@ -322,21 +341,28 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
       })
   }, [category, position])
 
-  // cfg / items / remarks 変更時に即時 DB 保存（abort なし、fire-and-forget）
+  // cfg / items / remarks 変更時に「未保存」フラグを立てる (DB 保存はしない、手動保存ボタンで実行)
   useEffect(() => {
     if (!loaded) return
+    setDirty(true)
+  }, [cfg, items, remarks, loaded])
+
+  // 手動保存
+  const saveTemplate = async () => {
+    if (saving) return
     setSaving(true)
-    api.patch('/purchase_order_setting', { purchase_order_setting: toServer(cfg, items, remarks) }, { params: { category, position } })
-      .then(() => setSavedAt(new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })))
-      .catch(() => {})
-      .finally(() => setSaving(false))
-  }, [category, position, cfg, items, remarks, loaded])
+    try {
+      await api.patch('/purchase_order_setting', { purchase_order_setting: toServer(cfg, items, remarks) }, { params: { category, position } })
+      setSavedAt(new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      setDirty(false)
+    } catch (e: any) {
+      setErr(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const deliveryDeadline = useMemo(() => buildDeliveryDeadline(cfg), [cfg])
-
-  const subtotal = items.reduce((s, it) => s + (it.amount || 0), 0)
-  const tax = Math.round(subtotal * 0.1)
-  const total = subtotal + tax
 
   // 契約終了月警告: 今月が period_end の月以降なら、次月以降の契約確認を促す
   const contractAlert = useMemo(() => {
@@ -353,18 +379,6 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
     }
   }, [cfg.periodEnd, cfg.recipientName])
 
-  const updateItem = (i: number, patchItem: Partial<Item>) => {
-    setItems(prev => prev.map((it, idx) => {
-      if (idx !== i) return it
-      const updated = { ...it, ...patchItem }
-      if ('qty' in patchItem || 'unit_price' in patchItem) {
-        updated.amount = (Number(updated.qty) || 0) * (Number(updated.unit_price) || 0)
-      }
-      return updated
-    }))
-  }
-  const addItem = () => setItems(prev => [...prev, { description: '', qty: 0, unit: '', unit_price: 0, amount: 0 }])
-  const removeItem = (i: number) => setItems(prev => prev.filter((_, idx) => idx !== i))
 
   const buildPayload = () => ({
     order_date: orderDate,
@@ -372,6 +386,8 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
     subject: cfg.subject,
     tax_rate: 10,
     category,
+    period_start: cfg.periodStart,
+    period_end: cfg.periodEnd,
     recipient: { name: cfg.recipientName, postal_code: cfg.recipientPostal, address: cfg.recipientAddress },
     issuer: {
       company_name: cfg.issuerCompany,
@@ -394,14 +410,18 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
     const monthFolderName = `${new Date().getMonth() + 1}月`
     // 発行履歴に DB 保存 (失敗しても DL 自体は止めない)
     try {
-      await api.post('/purchase_order_histories', { category, position, payload })
+      await api.post('/purchase_order_histories', { category, position, payload, recipient_user_id: recipientUserId })
     } catch (e) { /* noop */ }
     return { blob: res.data as Blob, filename, monthFolderName }
   }
 
-  const fmtYen = (n: number) => '¥' + n.toLocaleString()
   const patch = (p: Partial<Config>) => {
-    const next = { ...cfg, ...p }
+    let next = { ...cfg, ...p }
+    // 単価(円/h) or 月間工数 が変わったら 月額基準(円) を自動再計算（明細テーブルの amount=qty*unit_price と同じ思想）
+    // 月額基準を直接編集した時はそのまま使う（auto 上書きしない）
+    if (('ratePerHour' in p || 'hoursPerCycle' in p) && !('baseMonthly' in p)) {
+      next = { ...next, baseMonthly: (next.hoursPerCycle || 0) * (next.ratePerHour || 0) }
+    }
     setCfg(next)
     // 契約関連フィールドが変わったら明細と備考を自動再生成
     const regen: (keyof Config)[] = ['recipientName', 'periodStart', 'periodEnd', 'closingDay', 'hoursPerCycle', 'ratePerHour', 'baseMonthly', 'unit', 'priceMode', 'rangeMin', 'rangeMax']
@@ -422,9 +442,24 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
     const newEnd = new Date(base.getFullYear(), base.getMonth() + months, modalClosingDay || 25)
     setModalEnd(toIso(newEnd))
   }
-  const confirmContract = () => {
-    patch({ periodStart: modalStart, periodEnd: modalEnd, closingDay: modalClosingDay })
+  const confirmContract = async () => {
+    // フォーム上の値を更新（明細・備考も自動再生成される）
+    const nextCfg: Config = { ...cfg, periodStart: modalStart, periodEnd: modalEnd, closingDay: modalClosingDay }
+    const nextItems = buildItems(nextCfg)
+    const nextRemarks = buildRemarks(nextCfg)
+    setCfg(nextCfg); setItems(nextItems); setRemarks(nextRemarks)
     setContractModalOpen(false)
+    // 即DBに保存（modal を閉じる時点で saveTemplate を実行）
+    setSaving(true)
+    try {
+      await api.patch('/purchase_order_setting', { purchase_order_setting: toServer(nextCfg, nextItems, nextRemarks) }, { params: { category, position } })
+      setSavedAt(new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      setDirty(false)
+    } catch (e: any) {
+      setErr(`契約期間の保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const monthsDiff = (() => {
@@ -447,10 +482,18 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
           </div>
           <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
             注文番号 {orderNo} ／ 宛先: {cfg.recipientName || '(未設定)'} ／ 期間 {cfg.periodStart} 〜 {cfg.periodEnd}
-            {saving ? <span className="ml-2 text-amber-500">保存中…</span> : savedAt && <span className="ml-2 text-emerald-600">保存済 {savedAt}</span>}
+            {saving ? <span className="ml-2 text-amber-500">保存中…</span> : dirty ? <span className="ml-2 text-red-500">未保存の変更あり</span> : savedAt && <span className="ml-2 text-emerald-600">保存済 {savedAt}</span>}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={saveTemplate}
+            disabled={saving || !dirty}
+            className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+            title="このテンプレを DB に保存 (注文書一覧の 📝テンプレ 行に反映)"
+          >
+            {saving ? '保存中…' : '💾 保存'}
+          </button>
           <button
             onClick={openPreview}
             disabled={previewLoading}
@@ -494,8 +537,8 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
 
       {/* PDF プレビュー モーダル */}
       {(previewUrl || previewLoading) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closePreview}>
-          <div className="w-full max-w-4xl h-[88vh] rounded-xl bg-white p-3 shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-4xl h-[88vh] rounded-xl bg-white p-3 shadow-xl flex flex-col">
             <div className="flex items-start justify-between mb-2">
               <div>
                 <div className="text-sm font-semibold">🔍 注文書プレビュー</div>
@@ -519,8 +562,8 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
 
       {/* 編集モーダル (clickで開く) */}
       {!expanded ? null : (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3" onClick={() => setExpanded(false)}>
-      <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3">
+      <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
       <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-3">
         <div className="text-sm font-semibold">✏️ 注文書を編集 — {CATEGORY_LABEL[category]}{position > 0 && <span className="ml-2 text-fuchsia-500">#{position + 1}枚目</span>}</div>
         <div className="flex items-center gap-2">
@@ -616,7 +659,22 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
 
         <div className="grid gap-3 md:grid-cols-3">
           <label className="block">
-            <span className="text-xs text-[var(--color-text-sub)]">受注者 氏名</span>
+            <span className="text-xs text-[var(--color-text-sub)]">受注者 ユーザー</span>
+            <select
+              value={recipientUserId ?? ''}
+              onChange={(e) => {
+                const id = e.target.value === '' ? null : Number(e.target.value)
+                setRecipientUserId(id)
+                const u = users.find((x) => x.id === id)
+                if (u) patch({ recipientName: u.display_name })
+              }}
+              className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm">
+              <option value="">（ユーザー未指定）</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs text-[var(--color-text-sub)]">受注者 氏名（PDF 表示用）</span>
             <input value={cfg.recipientName} onChange={(e) => patch({ recipientName: e.target.value })}
               className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm" />
           </label>
@@ -714,77 +772,11 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
         </div>
       </div>
 
-      <div className="mt-5">
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-[var(--color-text-sub)]">
-            明細 — 納品期限: <span className="font-mono">{deliveryDeadline}</span>
-          </div>
-          <div className="flex items-center gap-3 text-xs">
-            <button onClick={addItem} className="text-fuchsia-500 hover:text-fuchsia-400">＋ 行を追加</button>
-          </div>
-        </div>
-        <div className="mt-2 overflow-hidden rounded-xl border border-[var(--color-border)]">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 text-[var(--color-text-sub)]">
-              <tr>
-                <th className="px-3 py-2 text-left">摘要</th>
-                <th className="px-3 py-2 text-right w-20">数量</th>
-                <th className="px-3 py-2 text-left w-20">単位</th>
-                <th className="px-3 py-2 text-right w-28">単価</th>
-                <th className="px-3 py-2 text-right w-32">明細金額</th>
-                <th className="w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, i) => (
-                <tr key={i} className="border-t border-[var(--color-border)]">
-                  <td className="px-2 py-1">
-                    <input value={it.description} onChange={(e) => updateItem(i, { description: e.target.value })}
-                      className="w-full rounded border border-transparent bg-transparent px-2 py-1 focus:border-[var(--color-border)] focus:bg-white" />
-                  </td>
-                  <td className="px-2 py-1">
-                    <input type="number" value={it.qty || ''} onChange={(e) => updateItem(i, { qty: Number(e.target.value) })}
-                      className="w-full rounded border border-transparent bg-transparent px-2 py-1 text-right font-mono tabular-nums focus:border-[var(--color-border)] focus:bg-white" />
-                  </td>
-                  <td className="px-2 py-1">
-                    <input value={it.unit} onChange={(e) => updateItem(i, { unit: e.target.value })}
-                      className="w-full rounded border border-transparent bg-transparent px-2 py-1 focus:border-[var(--color-border)] focus:bg-white" />
-                  </td>
-                  <td className="px-2 py-1">
-                    <input type="number" value={it.unit_price || ''} onChange={(e) => updateItem(i, { unit_price: Number(e.target.value) })}
-                      className="w-full rounded border border-transparent bg-transparent px-2 py-1 text-right font-mono tabular-nums focus:border-[var(--color-border)] focus:bg-white" />
-                  </td>
-                  <td className="px-2 py-1">
-                    <div className="px-2 py-1 text-right font-mono tabular-nums text-[var(--color-text-sub)]">
-                      {it.amount ? it.amount.toLocaleString() : ''}
-                    </div>
-                  </td>
-                  <td className="px-2 py-1 text-center">
-                    <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-500" title="削除">×</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-50 text-[var(--color-text-sub)]">
-              <tr>
-                <td colSpan={4} className="px-3 py-1.5 text-right">小計</td>
-                <td className="px-3 py-1.5 text-right font-mono tabular-nums">{fmtYen(subtotal)}</td>
-                <td></td>
-              </tr>
-              <tr>
-                <td colSpan={4} className="px-3 py-1.5 text-right">10% 消費税</td>
-                <td className="px-3 py-1.5 text-right font-mono tabular-nums">{fmtYen(tax)}</td>
-                <td></td>
-              </tr>
-              <tr>
-                <td colSpan={4} className="px-3 py-1.5 text-right text-amber-600 font-semibold">発注金額</td>
-                <td className="px-3 py-1.5 text-right font-mono tabular-nums text-amber-600 font-semibold">{fmtYen(total)}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
+      <PurchaseOrderItemsTable
+        items={items}
+        onChange={setItems}
+        deliveryDeadline={deliveryDeadline}
+      />
 
       <div className="mt-5">
         <div className="flex items-center justify-between">
@@ -800,8 +792,8 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
       </div>
 
       {contractModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setContractModalOpen(false)}>
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold text-[var(--color-text)]">契約期間を変更</div>
               <button onClick={() => setContractModalOpen(false)} className="text-[var(--color-text-sub)] hover:text-[var(--color-text)]">✕</button>

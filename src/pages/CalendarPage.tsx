@@ -136,10 +136,15 @@ export default function CalendarPage() {
     }
   }
 
+  // team_schedule の status を変えると、バックエンドが
+  // person → user を逆引きして、そのユーザー自身の default_transit_* を使って
+  // 出社日の work_report + expense を upsert する。
+  // 誰がカレンダーを操作したかに依らず、各人のデフォルト乗車区間が入る。
   const updateTeamSchedule = async (id: number, status: string) => {
     try {
       await api.patch(`/team_schedules/${id}`, { status })
       queryClient.invalidateQueries({ queryKey: ['team_schedules_pair'] })
+      invalidateReports()
     } catch (e: any) {
       alert(`更新失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
@@ -149,38 +154,9 @@ export default function CalendarPage() {
     try {
       await api.post('/team_schedules', { date, person, status })
       queryClient.invalidateQueries({ queryKey: ['team_schedules_pair'] })
-    } catch (e: any) {
-      alert(`作成失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-    }
-  }
-
-  // 出社/取消トグル: その日の Wings work_report に default 乗車区間+交通費を upsert / クリア
-  const meAny = me as unknown as { default_transit_from?: string | null; default_transit_to?: string | null; default_transit_fee?: number | null }
-  const defaultTransit = (meAny?.default_transit_from && meAny?.default_transit_to && meAny?.default_transit_fee)
-    ? { from: meAny.default_transit_from!, to: meAny.default_transit_to!, fee: meAny.default_transit_fee! }
-    : null
-  const toggleAttendance = async (date: string, attended: boolean) => {
-    try {
-      const existing = reports.find((r) => r.work_date === date && (r.category ?? 'wings') === 'wings')
-      if (attended) {
-        // 取消: 既存 work_report の transit を null に
-        if (existing) {
-          await api.patch(`/work_reports/${existing.id}`, { transit_section: null, transit_fee: null }, { params: asUserParam })
-        }
-      } else {
-        if (!defaultTransit) { alert('⚙ 設定でデフォルト乗車区間と交通費を登録してください'); return }
-        // 出社: upsert（POST は find_or_initialize_by で既存があれば更新）
-        const transitSection = `${defaultTransit.from}〜${defaultTransit.to}`
-        await api.post('/work_reports', {
-          work_date: date,
-          category: 'wings',
-          transit_section: transitSection,
-          transit_fee: defaultTransit.fee,
-        }, { params: asUserParam })
-      }
       invalidateReports()
     } catch (e: any) {
-      alert(`出社更新失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      alert(`作成失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
   }
 
@@ -258,8 +234,6 @@ export default function CalendarPage() {
         onCreateTeamSchedule={createTeamSchedule}
         canEditPerson={canEditPerson}
         currentSurname={viewingSurname}
-        defaultTransit={defaultTransit}
-        onToggleAttendance={toggleAttendance}
       />
 
       {openDate && (

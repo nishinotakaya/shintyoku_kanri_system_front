@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { fetchExportBlob } from './FolderSaveButtons'
 import LabopMailModal from './LabopMailModal'
+import InvoiceSubmitConfirmModal from './InvoiceSubmitConfirmModal'
+import InvoiceItemsEditor, { applyInvoiceItemPatch, emptyInvoiceItem } from './InvoiceItemsEditor'
 
 type SubmissionKind = 'invoice' | 'expense' | 'work_report'
 
@@ -28,6 +30,7 @@ type Submission = {
   reviewer_id: number | null
   reviewer_display_name: string | null
   note: string | null
+  review_comment: string | null
   total_override: number | null
   item_label_override: string | null
   subject_override: string | null
@@ -87,7 +90,7 @@ type LabopForm = {
   items: ItemRow[]
 }
 
-const emptyItem = (): ItemRow => ({ label: '', qty: 1, unit: '式', unit_price: 0, amount: 0 })
+const emptyItem = (): ItemRow => emptyInvoiceItem()
 
 export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, category, kind, pdfDownloaded = false, invoicePdfDownloaded, expensePdfDownloaded }: Props) {
   const invoiceDl = invoicePdfDownloaded ?? (kind === 'invoice' ? pdfDownloaded : false)
@@ -106,10 +109,15 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const [xlsxHtml, setXlsxHtml] = useState<string | null>(null)
   const [xlsxLoading, setXlsxLoading] = useState(false)
 
-  // 申請時に紐付ける受領注文書 (PO) 一覧
+  // 申請時に紐付ける注文書 (PO) 一覧。
+  // 受領PO (ラボップ→自分) と、発行PO (西野→自分宛) の両方を統合して扱う。
   type ReceivedPO = { id: number; order_no: string; subject: string | null; user_id: number; category: string | null }
-  const [pos, setPos] = useState<ReceivedPO[]>([])
-  const [selectedPoId, setSelectedPoId] = useState<number | ''>('') // 申請に使う PO id
+  type IssuedPOForSelect = { id: number; order_no: string | null; subject: string | null; category: string | null }
+  type PoChoice =
+    | { kind: 'received'; id: number; order_no: string; subject: string | null; category: string | null }
+    | { kind: 'issued'; id: number; order_no: string; subject: string | null; category: string | null }
+  const [pos, setPos] = useState<PoChoice[]>([])
+  const [selectedPoKey, setSelectedPoKey] = useState<string>('') // 'received-<id>' or 'issued-<id>'
 
   // ラボップ宛 一括メール送付モーダル (admin が全承認済みを一挙に送付)
   const [mailModalOpen, setMailModalOpen] = useState(false)
@@ -160,13 +168,20 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   }, [isAdmin, year, month, category, kind])
 
   // PO 一覧を取得（その月・カテゴリにマッチするもの）
+  // 受領PO + 発行PO (recipient=自分) を統合
   useEffect(() => {
-    api.get<ReceivedPO[]>('/received_purchase_orders', { params: { year, month } })
-      .then((r) => {
-        const matched = r.data.filter((po) => !po.category || po.category === category)
-        setPos(matched)
-      })
-      .catch(() => setPos([]))
+    Promise.all([
+      api.get<ReceivedPO[]>('/received_purchase_orders', { params: { year, month } }).then((r) => r.data).catch(() => []),
+      api.get<IssuedPOForSelect[]>('/purchase_order_settings', { params: { category } }).then((r) => r.data).catch(() => []),
+    ]).then(([recv, issued]) => {
+      const receivedChoices: PoChoice[] = recv
+        .filter((po) => !po.category || po.category === category)
+        .map((po) => ({ kind: 'received', id: po.id, order_no: po.order_no, subject: po.subject, category: po.category }))
+      const issuedChoices: PoChoice[] = issued
+        .filter((s) => (!s.category || s.category === category) && (s.order_no ?? '').trim().length > 0)
+        .map((s) => ({ kind: 'issued', id: s.id, order_no: s.order_no!, subject: s.subject, category: s.category }))
+      setPos([...receivedChoices, ...issuedChoices])
+    })
   }, [year, month, category])
 
   // 大隅は申請対象外
@@ -178,12 +193,68 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   const myInvoiceCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === 'invoice')
   const myExpenseCurrent = mine.find((s) => s.year === year && s.month === month && s.category === category && s.kind === 'expense')
 
+  // 申請確認モーダル制御 (bulk / single 兼用)
+  type ConfirmTarget =
+    | { mode: 'bulk' }
+    | { mode: 'single'; category: string; kind: SubmissionKind }
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null)
+
+  // 一括申請: Tama(wings) + リビング(living) × 請求書 + 立替金 を 4 件まとめて
+  //  ★1 リクエストで送信 → admin への通知メールも 1 通に集約される
+  const submitAllBulk = async () => {
+    setBusy(true); setMsg(null)
+    try {
+      const submissions = [
+        { category: 'wings',  kind: 'invoice' },
+        { category: 'wings',  kind: 'expense' },
+        { category: 'living', kind: 'invoice' },
+        { category: 'living', kind: 'expense' },
+      ]
+      const r = await api.post<unknown[]>('/invoice_submissions/bulk_create', { year, month, submissions })
+      setMsg(`✅ ${r.data.length} 件まとめて申請しました (admin 宛通知メールも 1 通)`)
+      await loadAll()
+    } catch (e: any) {
+      setMsg(`一括申請失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 申請取消: pending or approved の申請を DELETE で消す → 未申請状態に戻る
+  const cancelSubmission = async (sub: Submission, label: string) => {
+    if (!confirm(`${label} の申請を取り消して未申請に戻しますか？`)) return
+    setBusy(true); setMsg(null)
+    try {
+      await api.delete(`/invoice_submissions/${sub.id}`)
+      setMsg(`↩ ${label} を取り消しました`)
+      await loadAll()
+    } catch (e: any) {
+      setMsg(`取消失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const submitKind = async (k: SubmissionKind, note?: string) => {
     setBusy(true); setMsg(null)
     try {
       // 請求書 (kind=invoice) のみ PO 紐付け、立替金は不要
-      const poId = k === 'invoice' ? (selectedPoId || null) : null
-      await api.post('/invoice_submissions', { year, month, category, kind: k, note, received_purchase_order_id: poId })
+      let receivedPoId: number | null = null
+      let purchaseOrderNoOverride: string | null = null
+      if (k === 'invoice' && selectedPoKey) {
+        const choice = pos.find((p) => `${p.kind}-${p.id}` === selectedPoKey)
+        if (choice?.kind === 'received') {
+          receivedPoId = choice.id
+        } else if (choice?.kind === 'issued') {
+          // 発行PO は invoice_submissions に直接FKを張らない → order_no を override で保持
+          purchaseOrderNoOverride = choice.order_no
+        }
+      }
+      await api.post('/invoice_submissions', {
+        year, month, category, kind: k, note,
+        received_purchase_order_id: receivedPoId,
+        purchase_order_no_override: purchaseOrderNoOverride,
+      })
       setMsg('申請しました')
       await loadAll()
     } catch (e: any) {
@@ -207,14 +278,31 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
     }
   }
 
-  const reject = async (id: number) => {
-    if (!confirm('却下しますか？')) return
+  // 却下時に理由を入力させる。null だとキャンセル扱いで何もしない。
+  const [rejectingFor, setRejectingFor] = useState<Submission | null>(null)
+  const [rejectComment, setRejectComment] = useState('')
+
+  const openReject = (s: Submission) => {
+    setRejectingFor(s)
+    setRejectComment(s.review_comment ?? '')
+  }
+  const cancelReject = () => {
+    setRejectingFor(null)
+    setRejectComment('')
+  }
+  const confirmReject = async () => {
+    if (!rejectingFor) return
     setBusy(true); setMsg(null)
     try {
-      await api.patch(`/invoice_submissions/${id}`, { status: 'rejected' })
+      await api.patch(`/invoice_submissions/${rejectingFor.id}`, {
+        status: 'rejected',
+        review_comment: rejectComment.trim(),
+      })
       setMsg('却下しました')
+      const closingId = rejectingFor.id
+      cancelReject()
       await loadAll()
-      if (previewFor?.id === id) closePreview()
+      if (previewFor?.id === closingId) closePreview()
     } catch (e: any) {
       setMsg(`却下失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
@@ -381,12 +469,8 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   }
 
   // 明細行操作
-  const updateItem = (i: number, patch: Partial<ItemRow>) => {
-    setLabopForm((prev) => {
-      const items = prev.items.map((it, idx) => idx === i ? { ...it, ...patch } : it)
-      return { ...prev, items }
-    })
-  }
+  const updateItem = (i: number, patch: Partial<ItemRow>) =>
+    setLabopForm((prev) => ({ ...prev, items: applyInvoiceItemPatch(prev.items, i, patch) }))
   const addItemRow = () => setLabopForm((prev) => ({ ...prev, items: [...prev.items, emptyItem()] }))
   const removeItemRow = (i: number) => setLabopForm((prev) => ({ ...prev, items: prev.items.filter((_, idx) => idx !== i) }))
   const itemsTotalAmount = labopForm.items.reduce((s, it) => s + (Number(it.amount) || 0), 0)
@@ -410,15 +494,27 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
           </div>
           {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
         </div>
+        {/* 一括申請ボタン (Tama+リビング × 請求書+立替金 = 4件) */}
+        <button
+          onClick={() => setConfirmTarget({ mode: 'bulk' })}
+          disabled={busy}
+          className="mb-2 w-full rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 via-pink-500 to-rose-500 px-3 py-2 text-xs font-semibold text-white shadow disabled:opacity-50"
+          title="Tama (請求書+立替金) + リビング (請求書+立替金) の4件を一気に申請する"
+        >
+          {busy ? '送信中…' : '🚀 まとめて一括申請（Tama / リビング × 請求書 / 立替金 4件）'}
+        </button>
+
         {/* 請求書を注文書に紐付ける（任意） */}
         <div className="mb-1.5 flex items-center gap-2 text-[11px] bg-amber-50 px-2 py-1 rounded">
           <span className="text-[var(--color-text-sub)] font-semibold">対応する注文書（請求書のみ任意）:</span>
-          <select value={selectedPoId} onChange={(e) => setSelectedPoId(e.target.value === '' ? '' : Number(e.target.value))}
+          <select value={selectedPoKey} onChange={(e) => setSelectedPoKey(e.target.value)}
             className="flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px]">
             <option value="">— 紐付けなし —</option>
-            {pos.map((po) => (
-              <option key={po.id} value={po.id}>{po.order_no}{po.subject ? ` / ${po.subject.slice(0, 30)}` : ''}</option>
-            ))}
+            {pos.map((po) => {
+              const key = `${po.kind}-${po.id}`
+              const label = `${po.kind === 'issued' ? '📤 ' : '📥 '}${po.order_no}${po.subject ? ` / ${po.subject.slice(0, 30)}` : ''}`
+              return <option key={key} value={key}>{label}</option>
+            })}
           </select>
           {pos.length === 0 && (
             <a href="/purchase-orders" className="text-fuchsia-500 hover:underline text-[10px]">＋ 注文書を登録</a>
@@ -430,23 +526,40 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
             const blockedByPdf = !dlOk && !alreadySubmitted
             return (
               <li key={k} className="py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <div className="flex items-baseline gap-2">
-                  <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${k === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{label}</span>
-                  {sub ? (
-                    <span>
-                      {sub.status === 'pending' && <span className="text-amber-600 font-semibold">申請中</span>}
-                      {sub.status === 'approved' && <span className="text-emerald-600 font-semibold">✅ 承認済</span>}
-                      {sub.status === 'rejected' && <span className="text-red-500 font-semibold">却下</span>}
-                      {sub.reviewed_at && <span className="ml-1 text-[10px] text-[var(--color-text-sub)]">（{new Date(sub.reviewed_at).toLocaleString('ja-JP')}）</span>}
-                    </span>
-                  ) : (
-                    <span className="text-[var(--color-text-sub)]">未申請</span>
-                  )}
-                  {blockedByPdf && (
-                    <span className="text-amber-600">先に{label} PDF をダウンロードしてください</span>
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${k === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{label}</span>
+                    {sub ? (
+                      <span>
+                        {sub.status === 'pending' && <span className="text-amber-600 font-semibold">申請中</span>}
+                        {sub.status === 'approved' && <span className="text-emerald-600 font-semibold">✅ 承認済</span>}
+                        {sub.status === 'rejected' && <span className="text-red-500 font-semibold">却下</span>}
+                        {sub.reviewed_at && <span className="ml-1 text-[10px] text-[var(--color-text-sub)]">（{new Date(sub.reviewed_at).toLocaleString('ja-JP')}）</span>}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--color-text-sub)]">未申請</span>
+                    )}
+                    {blockedByPdf && (
+                      <span className="text-amber-600">先に{label} PDF をダウンロードしてください</span>
+                    )}
+                  </div>
+                  {sub?.status === 'rejected' && sub.review_comment && (
+                    <div className="ml-[3rem] rounded bg-red-50 border border-red-200 px-2 py-1 text-[10px] text-red-700 whitespace-pre-wrap">
+                      💬 却下理由: {sub.review_comment}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {alreadySubmitted && sub && (
+                    <button
+                      onClick={() => cancelSubmission(sub, label)}
+                      disabled={busy}
+                      title={`${label} の申請を取り消して未申請に戻す`}
+                      className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      ↩ 取消
+                    </button>
+                  )}
                   {alreadySubmitted ? (
                     <button
                       onClick={() => submitKind(k)}
@@ -458,12 +571,12 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     </button>
                   ) : (
                     <button
-                      onClick={() => submitKind(k)}
+                      onClick={() => setConfirmTarget({ mode: 'single', category, kind: k })}
                       disabled={busy || blockedByPdf}
                       title={blockedByPdf ? `先に${label} PDF をダウンロードしてください` : undefined}
                       className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {busy ? '送信中…' : '📤 申請する'}
+                      {busy ? '送信中…' : '📤 申請する（請求書一覧へ登録）'}
                     </button>
                   )}
                 </div>
@@ -471,6 +584,23 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
             )
           })}
         </ul>
+        {confirmTarget && (
+          <InvoiceSubmitConfirmModal
+            year={year}
+            month={month}
+            mode={confirmTarget.mode}
+            singleCategory={confirmTarget.mode === 'single' ? confirmTarget.category : undefined}
+            singleKind={confirmTarget.mode === 'single' && confirmTarget.kind !== 'work_report' ? confirmTarget.kind : undefined}
+            onConfirm={async () => {
+              if (confirmTarget.mode === 'bulk') {
+                await submitAllBulk()
+              } else {
+                await submitKind(confirmTarget.kind)
+              }
+            }}
+            onClose={() => setConfirmTarget(null)}
+          />
+        )}
       </div>
     )
   }
@@ -541,7 +671,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                             className="rounded-md whitespace-nowrap border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50">🔍 確認</button>
                           <button onClick={() => approve(s.id)} disabled={busy}
                             className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[11px] font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
-                          <button onClick={() => reject(s.id)} disabled={busy}
+                          <button onClick={() => openReject(s)} disabled={busy}
                             className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">却下</button>
                         </div>
                       </li>
@@ -686,7 +816,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                 <button onClick={closePreview} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">閉じる</button>
                 {previewFor.status === 'pending' && (
                   <>
-                    <button onClick={() => reject(previewFor.id)} disabled={busy} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">却下</button>
+                    <button onClick={() => openReject(previewFor)} disabled={busy} className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">却下</button>
                     <button onClick={() => approve(previewFor.id)} disabled={busy} className="rounded-md whitespace-nowrap bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
                   </>
                 )}
@@ -703,6 +833,41 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
           expenses={allApprovedAcrossKinds.filter((s) => s.kind === 'expense') as any}
           onClose={() => setMailModalOpen(false)}
         />
+      )}
+
+      {rejectingFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={cancelReject}>
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-sm font-semibold text-[var(--color-text)]">📨 申請を却下</div>
+                <div className="text-[11px] text-[var(--color-text-sub)] mt-0.5">
+                  {rejectingFor.user_display_name} ／ {rejectingFor.year}年{rejectingFor.month}月 {KIND_LABEL[rejectingFor.kind]}（{CATEGORY_LABELS[rejectingFor.category] ?? rejectingFor.category}）
+                </div>
+              </div>
+              <button onClick={cancelReject} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
+            </div>
+            <label className="block">
+              <div className="text-[11px] font-semibold text-[var(--color-text)] mb-1">却下理由（申請者に表示されます）</div>
+              <textarea
+                value={rejectComment}
+                onChange={(e) => setRejectComment(e.target.value)}
+                rows={4}
+                autoFocus
+                placeholder="例: 立替金の領収書が不足しているため、再添付してください"
+                className="w-full rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-1 border-t border-[var(--color-border)]">
+              <button onClick={cancelReject} disabled={busy}
+                className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
+              <button onClick={confirmReject} disabled={busy}
+                className="rounded-md bg-gradient-to-r from-red-500 to-rose-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+                {busy ? '送信中…' : '却下する'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {labopModalFor && (
@@ -757,85 +922,13 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
             </div>
 
             <div className="mt-3">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] font-semibold text-[var(--color-text)]">明細</div>
-                <button
-                  onClick={addItemRow}
-                  className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50"
-                >+ 行追加</button>
-              </div>
-              <table className="w-full text-[11px] border-collapse">
-                <thead>
-                  <tr className="text-left text-[var(--color-text-sub)]">
-                    <th className="py-1 pr-1 font-semibold">品番・品名</th>
-                    <th className="py-1 px-1 font-semibold w-14">数量</th>
-                    <th className="py-1 px-1 font-semibold w-12">単位</th>
-                    <th className="py-1 px-1 font-semibold w-24">単価</th>
-                    <th className="py-1 px-1 font-semibold w-24">金額</th>
-                    <th className="py-1 pl-1 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {labopForm.items.map((it, i) => (
-                    <tr key={i} className="border-t border-[var(--color-border)]">
-                      <td className="py-1 pr-1">
-                        <input
-                          type="text"
-                          value={it.label}
-                          onChange={(e) => updateItem(i, { label: e.target.value })}
-                          className="w-full rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-sky-300"
-                        />
-                      </td>
-                      <td className="py-1 px-1">
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={it.qty}
-                          onChange={(e) => updateItem(i, { qty: Number(e.target.value) })}
-                          className="w-full rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] text-right font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-sky-300"
-                        />
-                      </td>
-                      <td className="py-1 px-1">
-                        <input
-                          type="text"
-                          value={it.unit}
-                          onChange={(e) => updateItem(i, { unit: e.target.value })}
-                          className="w-full rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-sky-300"
-                        />
-                      </td>
-                      <td className="py-1 px-1">
-                        <input
-                          type="number"
-                          value={it.unit_price}
-                          onChange={(e) => {
-                            const up = Number(e.target.value)
-                            updateItem(i, { unit_price: up, amount: Math.round(up * (Number(it.qty) || 0)) })
-                          }}
-                          className="w-full rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] text-right font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-sky-300"
-                        />
-                      </td>
-                      <td className="py-1 px-1">
-                        <input
-                          type="number"
-                          value={it.amount}
-                          onChange={(e) => updateItem(i, { amount: Number(e.target.value) })}
-                          className="w-full rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] text-right font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-sky-300"
-                        />
-                      </td>
-                      <td className="py-1 pl-1 text-center">
-                        <button onClick={() => removeItemRow(i)} className="text-gray-400 hover:text-red-500" title="削除">🗑</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-[var(--color-border)]">
-                    <td colSpan={4} className="py-1 pr-1 text-right text-[var(--color-text-sub)]">明細合計</td>
-                    <td className="py-1 px-1 text-right font-mono tabular-nums font-semibold">¥{itemsTotalAmount.toLocaleString()}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
+              <InvoiceItemsEditor
+                items={labopForm.items}
+                category={labopModalFor.category}
+                onUpdate={updateItem}
+                onAdd={addItemRow}
+                onRemove={removeItemRow}
+              />
               <div className="mt-1 text-[10px] text-[var(--color-text-sub)]">
                 税込合計が空欄の時は「明細合計」を税込として 10% 内税で逆算。指定があれば「税込合計」を優先、明細はそのまま PDF に表示されます。
               </div>

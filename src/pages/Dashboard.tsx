@@ -76,6 +76,74 @@ export default function Dashboard() {
     queryKey: ['invoice_preview', monthParam, category, asUserId],
     queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category, ...asUserParam } })).data,
   })
+  // 今期サマリ用: Wings + リビング 両方の請求書合計
+  const invoiceWingsQ = useQuery({
+    queryKey: ['invoice_preview', monthParam, 'wings', asUserId],
+    queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: 'wings', ...asUserParam } })).data,
+  })
+  const invoiceLivingQ = useQuery({
+    queryKey: ['invoice_preview', monthParam, 'living', asUserId],
+    queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: 'living', ...asUserParam } })).data,
+  })
+
+  // 紐付け候補: この月/カテゴリの 受領 PO (自分(=admin)以外のユーザーに紐付くもの)
+  type LinkPO = { id: number; order_no: string; subject: string | null; user_id: number; user_display_name?: string | null; customer_name?: string | null; category: string | null; period_start: string | null; period_end: string | null; total_amount: number | null; has_pdf?: boolean }
+  const linkPosQ = useQuery({
+    queryKey: ['link_received_pos', monthParam, category, asUserId],
+    queryFn: async () => (await api.get<LinkPO[]>('/received_purchase_orders', { params: { year, month, ...asUserParam } })).data,
+  })
+  // 紐付け候補: 発注者がラボップ × 受注者が自分(=viewing user) × カテゴリ判定 (案件名 or category)
+  const targetUserId = asUserId ?? me?.id
+  const linkCandidates = useMemo(() => {
+    const all = linkPosQ.data ?? []
+    return all
+      .filter((p) => (p.customer_name ?? '').includes('ラボップ'))
+      .filter((p) => p.user_id === targetUserId)
+      .filter((p) => {
+        const subj = p.subject ?? ''
+        // 案件名 > 保存 category の優先順で判定
+        if (subj.includes('タマリビング')) return category === 'living'
+        if (subj.includes('タマホーム')) return category === 'wings'
+        return p.category === category
+      })
+  }, [linkPosQ.data, category, targetUserId])
+  const [linkPoId, setLinkPoId] = useState<number | ''>('')
+  // カテゴリ/月切替時に未選択なら、当月にかかる PO を自動選択
+  useEffect(() => {
+    if (linkPoId !== '') return
+    if (linkCandidates.length === 0) return
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-31`
+    const inRange = linkCandidates.find((p) => {
+      if (!p.period_start || !p.period_end) return false
+      return p.period_start <= monthEnd && p.period_end >= monthStart
+    }) ?? linkCandidates[0]
+    if (inRange) setLinkPoId(inRange.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkCandidates, year, month])
+  // カテゴリ切替で選択リセット
+  useEffect(() => { setLinkPoId('') }, [category])
+  const [linkPreviewOpen, setLinkPreviewOpen] = useState(false)
+  const [linkPreviewUrl, setLinkPreviewUrl] = useState<string | null>(null)
+  const [linkPreviewBusy, setLinkPreviewBusy] = useState(false)
+  const openLinkedPoPreview = async () => {
+    if (!linkPoId) return
+    setLinkPreviewOpen(true); setLinkPreviewUrl(null); setLinkPreviewBusy(true)
+    try {
+      const res = await api.get(`/received_purchase_orders/${linkPoId}/download`, { params: { disposition: 'inline' }, responseType: 'blob' })
+      const url = URL.createObjectURL(res.data as Blob)
+      setLinkPreviewUrl(url)
+    } catch (e: any) {
+      alert(`PDF プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      setLinkPreviewOpen(false)
+    } finally {
+      setLinkPreviewBusy(false)
+    }
+  }
+  const closeLinkedPoPreview = () => {
+    if (linkPreviewUrl) URL.revokeObjectURL(linkPreviewUrl)
+    setLinkPreviewUrl(null); setLinkPreviewOpen(false); setLinkPreviewBusy(false)
+  }
 
   const totals = useMemo(() => {
     const hours = reports.reduce((s, r) => s + (Number(r.hours) || 0), 0)
@@ -85,7 +153,7 @@ export default function Dashboard() {
   }, [reports, expenses])
 
   useEffect(() => {
-    document.title = `進捗管理システム — ${year}年 ${month}月`
+    document.title = `勤怠 ${year}年${month}月 — 進捗管理システム`
     api.get('/me').then((r) => {
       setMe(r.data as Me)
       if (r.data.default_transit_from && r.data.default_transit_fee) {
@@ -106,12 +174,19 @@ export default function Dashboard() {
     invoiceQ.refetch()
   }
 
-  const surname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
+  // 表示中ユーザー (admin が他ユーザーをフィルタしている場合はそのユーザー)
+  const viewingUser = useMemo(() => {
+    if (asUserId) {
+      return pickableUsers.find((u) => u.id === asUserId) ?? me
+    }
+    return me
+  }, [asUserId, pickableUsers, me])
+  const surname = (viewingUser?.display_name ?? '').split(/[\s　]/)[0] ?? ''
   const invoiceFilename = (surname ? `${surname}_` : '') + `請求書_${year}年_${month}月分.pdf`
   const monthFolderName = `${month}月`
 
   const invoiceFetchSpec = async () => {
-    const { blob, filename } = await fetchExportBlob('/exports/invoice.pdf', { month: monthParam, category }, invoiceFilename)
+    const { blob, filename } = await fetchExportBlob('/exports/invoice.pdf', { month: monthParam, category, ...asUserParam }, invoiceFilename)
     return { blob, filename, monthFolderName }
   }
 
@@ -131,6 +206,40 @@ export default function Dashboard() {
   const markExpenseDownloaded = () => {
     localStorage.setItem(expenseDlKey, '1')
     setExpensePdfDownloaded(true)
+  }
+
+  // 請求書PDFをフォルダ保存したら、同時に請求書一覧(InvoiceSubmission)へ登録する。
+  // create は (user×年月×カテゴリ×kind×発注書) で upsert＝重複なし。admin(西野)は自己承認される。
+  const [invoiceRegMsg, setInvoiceRegMsg] = useState<string | null>(null)
+  const onInvoicePdfSaved = async () => {
+    markInvoiceDownloaded()
+    setInvoiceRegMsg(null)
+    try {
+      await api.post('/invoice_submissions', {
+        year, month, category, kind: 'invoice',
+        received_purchase_order_id: linkPoId || null,
+        target_user_id: asUserId && asUserId !== me?.id ? asUserId : null,
+      })
+      setInvoiceRegMsg('✅ 請求書一覧にも登録しました')
+    } catch (e: any) {
+      setInvoiceRegMsg(`一覧登録に失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+
+  // 立替金 Excel/PDF をフォルダ保存したら、同時に請求書一覧へ kind=expense で登録する（発注書は不要）。
+  const [expenseRegMsg, setExpenseRegMsg] = useState<string | null>(null)
+  const onExpenseFileSaved = async () => {
+    markExpenseDownloaded()
+    setExpenseRegMsg(null)
+    try {
+      await api.post('/invoice_submissions', {
+        year, month, category, kind: 'expense',
+        target_user_id: asUserId && asUserId !== me?.id ? asUserId : null,
+      })
+      setExpenseRegMsg('✅ 立替金を請求書一覧にも登録しました')
+    } catch (e: any) {
+      setExpenseRegMsg(`一覧登録に失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
   }
   const [selfMailOpen, setSelfMailOpen] = useState(false)
 
@@ -221,8 +330,12 @@ export default function Dashboard() {
               </dd>
             </div>
             <div className="flex items-baseline justify-between">
-              <dt className="text-xs text-[var(--color-text-sub)]">交通費</dt>
-              <dd className="font-mono tabular-nums text-[var(--color-text)]">¥{totals.transit.toLocaleString()}</dd>
+              <dt className="text-xs text-[var(--color-text-sub)]">請求書 Wings</dt>
+              <dd className="font-mono tabular-nums text-[var(--color-text)]">{fmtYen(invoiceWingsQ.data?.total)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <dt className="text-xs text-[var(--color-text-sub)]">請求書 リビング</dt>
+              <dd className="font-mono tabular-nums text-[var(--color-text)]">{fmtYen(invoiceLivingQ.data?.total)}</dd>
             </div>
             <div className="flex items-baseline justify-between">
               <dt className="text-xs text-[var(--color-text-sub)]">立替金</dt>
@@ -231,7 +344,7 @@ export default function Dashboard() {
             <div className="border-t border-[var(--color-border)] pt-1.5 flex items-baseline justify-between">
               <dt className="text-xs text-amber-600 font-semibold">合計</dt>
               <dd className="font-mono tabular-nums text-lg text-amber-600">
-                {fmtYen(invoiceQ.data?.total)}
+                ¥{((invoiceWingsQ.data?.total ?? 0) + (invoiceLivingQ.data?.total ?? 0) + totals.expense).toLocaleString()}
               </dd>
             </div>
           </dl>
@@ -246,9 +359,35 @@ export default function Dashboard() {
               {invoiceQ.data?.invoice_no && <>請求番号: {invoiceQ.data.invoice_no} ／ </>}
               発行日 {invoiceQ.data?.issue_date ?? '—'} ／ 支払期限 {invoiceQ.data?.due_date ?? '—'}
             </div>
+            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-[var(--color-text-sub)]">紐付け注文書:</span>
+              <select
+                value={linkPoId}
+                onChange={(e) => setLinkPoId(e.target.value === '' ? '' : Number(e.target.value))}
+                className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs"
+              >
+                <option value="">選択してください ({linkCandidates.length} 件)</option>
+                {linkCandidates.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.order_no} ／ {p.subject ?? '(件名なし)'}{p.user_display_name ? ` ／ ${p.user_display_name}` : ''}{p.total_amount ? ` ／ ¥${p.total_amount.toLocaleString()}` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={openLinkedPoPreview}
+                disabled={!linkPoId}
+                className="rounded border border-sky-400 bg-white px-2 py-1 text-xs text-sky-600 hover:bg-sky-50 disabled:opacity-40"
+              >🔍 確認</button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <FolderSaveButtons label="請求書" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} onDownloaded={markInvoiceDownloaded} />
+            <div className="flex flex-col items-end gap-1">
+              <FolderSaveButtons label="請求書PDF" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} onDownloaded={onInvoicePdfSaved}
+                hint="※PDFをPCのフォルダに保存し、同時に請求書一覧にも登録します。" />
+              {invoiceRegMsg && (
+                <div className={`text-[10px] ${invoiceRegMsg.startsWith('✅') ? 'text-emerald-600' : 'text-red-500'}`}>{invoiceRegMsg}</div>
+              )}
+            </div>
             <button
               onClick={() => setSelfMailOpen(true)}
               className="rounded-lg whitespace-nowrap bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow"
@@ -303,7 +442,10 @@ export default function Dashboard() {
       </div>
 
       <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
-      <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={markExpenseDownloaded} />
+      <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={onExpenseFileSaved} onChanged={refetchAll} asUserId={asUserId} surname={surname} />
+      {expenseRegMsg && (
+        <div className={`text-right text-[10px] ${expenseRegMsg.startsWith('✅') ? 'text-emerald-600' : 'text-red-500'}`}>{expenseRegMsg}</div>
+      )}
 
       {me?.can_issue_orders && <PurchaseOrderList me={me} category={category} />}
 
@@ -319,6 +461,22 @@ export default function Dashboard() {
         onClose={() => setSettingsOpen(false)}
         onSaved={refetchAll}
       />
+
+      {linkPreviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeLinkedPoPreview}>
+          <div className="w-full max-w-5xl h-[85vh] rounded-xl bg-white p-3 shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-2">
+              <div className="text-sm font-semibold">🔍 紐付け候補の注文書 プレビュー</div>
+              <button onClick={closeLinkedPoPreview} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] overflow-hidden">
+              {linkPreviewBusy && <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-sub)]">読込中…</div>}
+              {!linkPreviewBusy && linkPreviewUrl && <iframe src={linkPreviewUrl} className="w-full h-full" title="po-preview" />}
+              {!linkPreviewBusy && !linkPreviewUrl && <div className="h-full flex items-center justify-center text-sm text-red-500">取得できませんでした</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

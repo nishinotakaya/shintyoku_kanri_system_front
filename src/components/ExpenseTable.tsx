@@ -3,11 +3,6 @@ import type { Expense, WorkReport } from '../lib/api'
 import { api } from '../lib/api'
 import FolderSaveButtons, { fetchExportBlob } from './FolderSaveButtons'
 
-const CATEGORIES = [
-  { key: 'wings', label: 'Wings' },
-  { key: 'living', label: 'リビング勤怠' },
-] as const
-type CategoryKey = (typeof CATEGORIES)[number]['key']
 
 export default function ExpenseTable({
   year,
@@ -16,6 +11,9 @@ export default function ExpenseTable({
   reports,
   category = 'wings',
   onPdfDownloaded,
+  onChanged,
+  asUserId,
+  surname,
 }: {
   year: number
   month: number
@@ -23,17 +21,16 @@ export default function ExpenseTable({
   reports: WorkReport[]
   category?: string
   onPdfDownloaded?: () => void
+  onChanged?: () => void
+  asUserId?: number | null
+  surname?: string
 }) {
   const mp = `${year}-${String(month).padStart(2, '0')}`
+  const asUserParam = asUserId ? { as_user_id: asUserId } : {}
+  const filenamePrefix = surname ? `${surname}_` : ''
 
-  // 業務報告の交通費合計（カテゴリ別）
-  const transitTotal = useMemo(() => {
-    return reports
-      .filter((r) => (r.category ?? 'wings') === category)
-      .reduce((s, r) => s + (r.transit_fee ?? 0), 0)
-  }, [reports, category])
-
-  // 立替金の合計
+  // 立替金の合計（expense レコードのみ。work_reports.transit_fee はここでは加算しない＝
+  // apply_transit で Expense にも複製作成済み → 二重計上防止）
   const expenseTotal = useMemo(() => {
     return expenses
       .filter((e) => (e.category ?? 'wings') === category)
@@ -49,15 +46,51 @@ export default function ExpenseTable({
 
   const [showList, setShowList] = useState(false)
   const [updating, setUpdating] = useState<number | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [newExpense, setNewExpense] = useState<{ expense_date: string; purpose: string; amount: string }>(
+    () => ({ expense_date: `${year}-${String(month).padStart(2, '0')}-01`, purpose: '押上シェアラウンジ利用料', amount: '' })
+  )
+  const [creating, setCreating] = useState(false)
 
   const toggleCompanyBurden = async (expense: Expense) => {
     setUpdating(expense.id)
     try {
       await api.patch(`/expenses/${expense.id}`, { company_burden: !(expense.company_burden ?? true) })
-      // ローカル state は親で再フェッチされる想定。expenses を直接書き換えできないので reload を期待
-      window.dispatchEvent(new Event('focus')) // hint to react-query refetch
+      onChanged?.()
     } finally {
       setUpdating(null)
+    }
+  }
+
+  const removeExpense = async (id: number) => {
+    if (!confirm('この立替金を削除しますか？')) return
+    setUpdating(id)
+    try {
+      await api.delete(`/expenses/${id}`)
+      onChanged?.()
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const submitNewExpense = async () => {
+    if (!newExpense.expense_date || !newExpense.amount) { alert('日付と金額は必須です'); return }
+    setCreating(true)
+    try {
+      await api.post('/expenses', {
+        expense_date: newExpense.expense_date,
+        purpose: newExpense.purpose,
+        amount: Number(newExpense.amount),
+        category,
+        billing_month: `${year}-${String(month).padStart(2, '0')}`, // 表示中の月に紐づける（締日跨ぎでもこの月に入る）
+      })
+      setNewExpense({ expense_date: `${year}-${String(month).padStart(2, '0')}-01`, purpose: '押上シェアラウンジ利用料', amount: '' })
+      setAdding(false)
+      onChanged?.()
+    } catch (e: any) {
+      alert(`追加失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -73,17 +106,18 @@ export default function ExpenseTable({
             label="立替金Excel"
             monthFolderName={`${month}月`}
             fetchSpec={async () => {
-              const fallback = `立替金_${year}年_${month}月分.xlsx`
-              const { blob, filename } = await fetchExportBlob('/exports/expense.xlsx', { month: mp, category }, fallback)
+              const fallback = `${filenamePrefix}立替金_${year}年_${month}月分.xlsx`
+              const { blob, filename } = await fetchExportBlob('/exports/expense.xlsx', { month: mp, category, ...asUserParam }, fallback)
               return { blob, filename, monthFolderName: `${month}月` }
             }}
+            onDownloaded={onPdfDownloaded}
           />
           <FolderSaveButtons
             label="立替金PDF"
             monthFolderName={`${month}月`}
             fetchSpec={async () => {
-              const fallback = `立替金_${year}年_${month}月分.pdf`
-              const { blob, filename } = await fetchExportBlob('/exports/expense.pdf', { month: mp, category }, fallback)
+              const fallback = `${filenamePrefix}立替金_${year}年_${month}月分.pdf`
+              const { blob, filename } = await fetchExportBlob('/exports/expense.pdf', { month: mp, category, ...asUserParam }, fallback)
               return { blob, filename, monthFolderName: `${month}月` }
             }}
             onDownloaded={onPdfDownloaded}
@@ -93,9 +127,38 @@ export default function ExpenseTable({
 
       <div className="mt-1.5 flex items-baseline justify-between">
         <span className="text-xs text-[var(--color-text-sub)]">交通費 {transitCount} 日分 ／ 立替金 {filteredExpenses.length} 件</span>
-        <div className="font-mono tabular-nums text-lg text-amber-600">¥{(transitTotal + expenseTotal).toLocaleString()}</div>
+        <div className="font-mono tabular-nums text-lg text-amber-600">¥{expenseTotal.toLocaleString()}</div>
       </div>
 
+      <div className="mt-2 flex items-center gap-2">
+        <button onClick={() => setAdding((v) => !v)}
+          className="text-[11px] rounded border border-emerald-400 bg-white px-2 py-0.5 text-emerald-600 hover:bg-emerald-50">
+          {adding ? '× 追加をキャンセル' : '＋ 立替金を追加（押上シェアラウンジ利用料 等）'}
+        </button>
+      </div>
+      {adding && (
+        <div className="mt-1.5 rounded border border-[var(--color-border)] bg-emerald-50/40 p-2 grid grid-cols-12 gap-1.5 text-[11px]">
+          <label className="col-span-3"><div className="text-[10px] mb-0.5">日付</div>
+            <input type="date" value={newExpense.expense_date}
+              onChange={(e) => setNewExpense({ ...newExpense, expense_date: e.target.value })}
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs" /></label>
+          <label className="col-span-5"><div className="text-[10px] mb-0.5">用途（"押上 シェアラウンジ" を含むと会社負担=ON）</div>
+            <input value={newExpense.purpose}
+              onChange={(e) => setNewExpense({ ...newExpense, purpose: e.target.value })}
+              placeholder="押上シェアラウンジ利用料"
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs" /></label>
+          <label className="col-span-2"><div className="text-[10px] mb-0.5">金額(円)</div>
+            <input type="text" inputMode="numeric" value={newExpense.amount}
+              onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value.replace(/[^\d-]/g, '') })}
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs font-mono" /></label>
+          <div className="col-span-2 flex items-end">
+            <button onClick={submitNewExpense} disabled={creating}
+              className="w-full rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-1 text-xs font-semibold text-white shadow disabled:opacity-50">
+              {creating ? '保存中…' : '＋ 追加'}
+            </button>
+          </div>
+        </div>
+      )}
       {filteredExpenses.length > 0 && (
         <div className="mt-2">
           <button onClick={() => setShowList((v) => !v)}
@@ -112,6 +175,7 @@ export default function ExpenseTable({
                     <th className="px-2 py-1 text-left">区間/路線</th>
                     <th className="px-2 py-1 text-right">金額</th>
                     <th className="px-2 py-1 text-center">会社負担</th>
+                    <th className="px-2 py-1 text-center">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -128,6 +192,10 @@ export default function ExpenseTable({
                         <td className="px-2 py-1 text-center">
                           <input type="checkbox" checked={burden} disabled={updating === e.id}
                             onChange={() => toggleCompanyBurden(e)} className="accent-emerald-500" />
+                        </td>
+                        <td className="px-2 py-1 text-center">
+                          <button onClick={() => removeExpense(e.id)} disabled={updating === e.id}
+                            className="text-rose-500 hover:text-rose-700 disabled:opacity-50">🗑</button>
                         </td>
                       </tr>
                     )

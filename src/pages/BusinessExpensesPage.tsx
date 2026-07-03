@@ -310,9 +310,9 @@ export default function BusinessExpensesPage() {
     } finally { setAdviceLoading(false) }
   }
 
-  const downloadTaxPdf = async (doc: 'kessansho' | 'shinkokusho') => {
+  const downloadTaxPdf = async (doc: 'kessansho' | 'shinkokusho' | 'shohi') => {
     const r = await api.get('/tax_reports/export_pdf', { params: { year, deduction, doc }, responseType: 'blob' })
-    downloadBlob(r.data as Blob, doc === 'shinkokusho' ? `確定申告書第一表_${year}年分.pdf` : `青色申告決算書_${year}年分.pdf`)
+    downloadBlob(r.data as Blob, doc === 'shinkokusho' ? `確定申告書第一表_${year}年分.pdf` : doc === 'shohi' ? `消費税申告書_${year}年分.pdf` : `青色申告決算書_${year}年分.pdf`)
   }
 
   const filtered = useMemo(() => (catFilter ? items.filter((it) => it.account_category === catFilter) : items), [items, catFilter])
@@ -375,7 +375,8 @@ export default function BusinessExpensesPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-1 py-0.5">
               <button onClick={() => shiftMonth(-1)} className="px-2 text-[var(--color-text-sub)]">‹</button>
-              <span className="text-sm font-semibold tabular-nums">{month.replace('-', '年')}月</span>
+              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)}
+                className="bg-transparent text-sm font-semibold tabular-nums outline-none" title="月を直接選択" />
               <button onClick={() => shiftMonth(1)} className="px-2 text-[var(--color-text-sub)]">›</button>
             </div>
             <button onClick={() => csvRef.current?.click()} disabled={importing}
@@ -437,6 +438,7 @@ export default function BusinessExpensesPage() {
               </select>
               <button onClick={() => downloadTaxPdf('kessansho')} className="rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90" title="国税庁の実物様式(FA3001/3026/3051)に集計値を印字した青色申告決算書 3面">📄 決算書（実物様式）</button>
               <button onClick={() => downloadTaxPdf('shinkokusho')} className="rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90" title="確定申告書 第一表（実物様式・税額計算済み）">📄 申告書 第一表</button>
+              <button onClick={() => downloadTaxPdf('shohi')} className="rounded-lg bg-gradient-to-r from-rose-500 to-pink-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90" title="消費税及び地方消費税申告書（2割特例・第一表/第二表/付表6）">📄 消費税申告書</button>
               <button onClick={() => downloadTaxCsv('summary')} className="rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="青色申告決算書へ転記できる科目別集計CSV">📊 集計CSV</button>
               <button onClick={() => downloadTaxCsv('details')} className="rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="経費明細の一覧CSV">📄 明細CSV</button>
             </div>

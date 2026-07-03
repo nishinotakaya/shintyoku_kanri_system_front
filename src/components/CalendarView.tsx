@@ -32,13 +32,10 @@ type Props = {
   onCreateTeamSchedule?: (date: string, person: string, status: string) => void
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
-  // 出社ボタン: 押すとその日の Wings work_report に default 乗車区間+交通費を反映
-  defaultTransit?: { from: string; to: string; fee: number } | null
-  onToggleAttendance?: (date: string, attended: boolean) => void
 }
 
 // 1日のステータス → { living, tama } 予定時間
-function expectedHours(status: string, dow: number): { living: number; tama: number } {
+function expectedHours(status: string, _dow: number): { living: number; tama: number } {
   const s = status || ''
   if (!s || s.includes('休み') || s.includes('定休')) return { living: 0, tama: 0 }
   // 午前/午後 等で分割パターン
@@ -66,7 +63,7 @@ function statusClass(status: string) {
   return 'bg-amber-100 text-amber-700'
 }
 
-export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, defaultTransit, onToggleAttendance }: Props) {
+export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname }: Props) {
   const teamMap = useMemo(() => {
     const map = new Map<string, TeamScheduleEntry[]>()
     teamSchedules.forEach((entry) => {
@@ -98,10 +95,15 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     // person 名は team_schedules では「西野」「川村」「大隅」、currentSurname は display_name の先頭 token
     // ("西野 鷹也" → "西野"、"川村卓也" → "川村卓也") なので互換マッチで判定
     const personMatches = (person: string) =>
-      person === currentSurname || currentSurname.includes(person) || person.includes(currentSurname)
+      !!currentSurname && (person === currentSurname || currentSurname.includes(person) || person.includes(currentSurname))
 
     let plannedLiving = 0
     let plannedTama = 0
+    // 本日までの予定 (今日時点で消化されていなければならない予定時間)
+    let plannedLivingToToday = 0
+    let plannedTamaToToday = 0
+    const today = new Date()
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     if (currentSurname) {
       teamSchedules.forEach((entry) => {
         if (!personMatches(entry.person)) return
@@ -110,10 +112,14 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
         const eh = expectedHours(entry.status, dt.getDay())
         plannedLiving += eh.living
         plannedTama += eh.tama
+        if (entry.date <= todayIso) {
+          plannedLivingToToday += eh.living
+          plannedTamaToToday += eh.tama
+        }
       })
     }
 
-    return { livingHours, tamaHours, plannedLiving, plannedTama, periodStart, periodEnd }
+    return { livingHours, tamaHours, plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday, periodStart, periodEnd }
   }, [reports, year, month, teamSchedules, currentSurname])
 
   // 締日(25日)期間でセルを構築: 前月26日〜当月25日
@@ -218,6 +224,21 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                   <td className="text-right px-2 text-emerald-700 font-semibold">{periodTotals.tamaHours.toFixed(1)}h</td>
                   <td className="text-right pl-2 text-amber-700 font-bold">{(periodTotals.livingHours + periodTotals.tamaHours).toFixed(1)}h</td>
                 </tr>
+                {(() => {
+                  const diffLiving = periodTotals.livingHours - periodTotals.plannedLivingToToday
+                  const diffTama = periodTotals.tamaHours - periodTotals.plannedTamaToToday
+                  const diffTotal = diffLiving + diffTama
+                  const fmt = (n: number) => `${n > 0 ? '+' : n < 0 ? '' : '±'}${n.toFixed(1)}h`
+                  const cls = (n: number) => n > 0 ? 'text-emerald-600 font-semibold' : n < 0 ? 'text-red-500 font-semibold' : 'text-[var(--color-text-sub)]'
+                  return (
+                    <tr title="本日までの予定との差 (+ なら進捗、- なら遅れ)">
+                      <td className="text-left pr-2 text-[var(--color-text-sub)]">差(本日)</td>
+                      <td className={`text-right px-2 ${cls(diffLiving)}`}>{fmt(diffLiving)}</td>
+                      <td className={`text-right px-2 ${cls(diffTama)}`}>{fmt(diffTama)}</td>
+                      <td className={`text-right pl-2 ${cls(diffTotal)}`}>{fmt(diffTotal)}</td>
+                    </tr>
+                  )
+                })()}
               </tbody>
             </table>
           </div>
@@ -298,24 +319,6 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                 </div>
               )}
 
-              {/* 出社/取消ボタン: Wings の work_report に交通費が入っていれば「取消」、なければ「出社」 */}
-              {onToggleAttendance && defaultTransit && (() => {
-                const wingsReport = c.reports.find((r) => (r.category ?? 'wings') === 'wings' && r.transit_fee != null)
-                const attended = !!wingsReport
-                return (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onToggleAttendance(c.date, attended) }}
-                    title={attended ? `取消: ${wingsReport!.transit_section ?? ''} ¥${wingsReport!.transit_fee}` : `出社: ${defaultTransit.from}〜${defaultTransit.to} ¥${defaultTransit.fee.toLocaleString()}`}
-                    className={`mt-auto rounded-md px-2 py-0.5 text-[10px] font-bold shadow-sm transition ${
-                      attended
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600'
-                        : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600'
-                    }`}
-                  >
-                    {attended ? '取消' : '出社'}
-                  </button>
-                )
-              })()}
 
               {/* チーム予定（西野・川村・大隅 を常に 3 行表示） */}
               {(onCreateTeamSchedule || onUpdateTeamSchedule || (teamMap.get(c.date) ?? []).length > 0) && (
@@ -338,6 +341,8 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                       } else if (nextStatus !== '') {
                         onCreateTeamSchedule?.(c.date, person, nextStatus)
                       }
+                      // status="出社" の乗車区間連携はバックエンドが
+                      // team_schedule の person から該当ユーザの default_transit_* で自動 upsert する
                     }
                     return (
                       <div key={person} className="flex items-center gap-1 text-[10px] min-w-0" onClick={(e) => e.stopPropagation()}>

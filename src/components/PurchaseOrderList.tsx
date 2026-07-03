@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import type { DropResult } from '@hello-pangea/dnd'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import PurchaseOrderForm from './PurchaseOrderForm'
@@ -39,6 +41,26 @@ export default function PurchaseOrderList({ me, category }: { me: Me | null; cat
     setPositions(prev => prev.filter(p => p !== pos))
   }
 
+  // 注文書カードをドラッグで並び替え → サーバの position を更新
+  const onDragEnd = async (result: DropResult) => {
+    if (!result.destination) return
+    const from = result.source.index
+    const to = result.destination.index
+    if (from === to) return
+    const next = [...positions]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setPositions(next)  // 楽観更新
+    try {
+      const res = await api.patch('/purchase_order_settings/reorder', { positions: next }, { params: { category } })
+      const arr = Array.isArray(res.data) ? res.data : []
+      if (arr.length > 0) setPositions(arr.map((s: any) => s.position ?? 0).sort((a: number, b: number) => a - b))
+    } catch {
+      // 失敗したら元に戻す
+      setPositions(positions)
+    }
+  }
+
   if (!loaded) return null
 
   const PER_PAGE = 5
@@ -65,17 +87,43 @@ export default function PurchaseOrderList({ me, category }: { me: Me | null; cat
         </button>
       </div>
 
-      <div className="space-y-3">
-        {visible.map(pos => (
-          <PurchaseOrderForm
-            key={`${category}-${pos}`}
-            me={me}
-            category={category}
-            position={pos}
-            onRemove={pos === 0 && positions.length === 1 ? undefined : () => removeSheet(pos)}
-          />
-        ))}
-      </div>
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId={`po-cards-${category}`}>
+          {(dropProvided) => (
+            <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className="space-y-3">
+              {visible.map((pos, idx) => (
+                <Draggable key={`${category}-${pos}`} draggableId={`${category}-${pos}`} index={pageStart + idx}>
+                  {(p, snapshot) => (
+                    <div
+                      ref={p.innerRef}
+                      {...p.draggableProps}
+                      style={p.draggableProps.style}
+                      className={snapshot.isDragging ? 'ring-2 ring-fuchsia-400 rounded-2xl' : ''}
+                    >
+                      <div className="flex items-stretch gap-2">
+                        <div
+                          {...p.dragHandleProps}
+                          className="flex w-6 cursor-grab select-none items-center justify-center rounded-l-2xl bg-gradient-to-b from-fuchsia-100 to-pink-100 text-fuchsia-500 hover:from-fuchsia-200 hover:to-pink-200 active:cursor-grabbing"
+                          title="ドラッグで注文書の並び順を変更"
+                        >⋮⋮</div>
+                        <div className="flex-1 min-w-0">
+                          <PurchaseOrderForm
+                            me={me}
+                            category={category}
+                            position={pos}
+                            onRemove={pos === 0 && positions.length === 1 ? undefined : () => removeSheet(pos)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {dropProvided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
 
       {totalPages > 1 && (
         <div className="mt-3 flex items-center justify-center gap-1">

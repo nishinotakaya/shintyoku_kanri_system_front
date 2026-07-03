@@ -70,17 +70,173 @@ export type Me = {
   company_name: string | null
   closing_day: number
   openai_api_key_set?: boolean
+  heygen_api_key_set?: boolean
+  heygen_available?: boolean
   can_issue_orders?: boolean
   postal_code?: string | null
   address?: string | null
   attendance_schedule_url?: string | null
   local_save_dir?: string | null
   admin?: boolean
+  feature_flags?: Record<string, boolean>
+  can_use_skill_sheet?: boolean
+  can_use_interview_mindmap?: boolean
+  can_use_youtube_mindmap?: boolean
+  can_use_mote_mindmap?: boolean
+  sub_admin?: boolean
 }
+
+// スキルシート
+export type SkillSheetProject = {
+  id?: number
+  position?: number
+  period_from: string | null
+  period_to: string | null
+  title: string | null
+  description: string | null
+  role_scale: string | null
+  languages: string | null
+  db: string | null
+  server_os: string | null
+  tools: string | null
+  phases: Record<string, boolean>
+  source?: string | null
+  wantedly_work_experience_uuid?: string | null
+  anotherworks_resume_id?: string | null
+}
+
+export type SkillSheetReview = {
+  overall?: string
+  sections?: Array<{ target: string; issues?: string[]; suggestion?: string }>
+  typos?: string[]
+}
+
+export type SkillSheetComment = {
+  id: number
+  target: string | null
+  body: string
+  author_name: string | null
+  author_user_id: number | null
+  created_at: string | null
+}
+
+// 添削前(Before)スナップショットの構造
+export type SkillSheetSnapshot = {
+  engineer_name?: string | null
+  age?: string | null
+  gender?: string | null
+  address?: string | null
+  start_date?: string | null
+  nearest_station?: string | null
+  specialties?: string | null
+  skills?: string | null
+  duties?: string | null
+  self_pr?: string | null
+  projects?: SkillSheetProject[]
+}
+
+export type SkillSheetTech = {
+  id: number
+  category: string
+  category_label: string
+  name: string
+  version: string | null
+  months_used: number
+  experience_label: string
+  last_used_on: string | null
+}
+
+export type SkillSheet = {
+  id: number
+  user_id: number
+  spreadsheet_url: string | null
+  spreadsheet_id: string | null
+  gid: string | null
+  engineer_name: string | null
+  age: string | null
+  gender: string | null
+  address: string | null
+  start_date: string | null
+  nearest_station: string | null
+  specialties: string | null
+  skills: string | null
+  duties: string | null
+  self_pr: string | null
+  youtube_self_pr: string | null
+  review_result: SkillSheetReview | null
+  before_snapshot: SkillSheetSnapshot | null
+  reviewed_at: string | null
+  synced_at: string | null
+  projects: SkillSheetProject[]
+  comments: SkillSheetComment[]
+  techs: SkillSheetTech[]
+  review_items: SkillSheetReviewItem[]
+  user?: { id: number; display_name: string | null; email: string }
+}
+
+export type SkillSheetReviewItem = {
+  id: number
+  target: string | null
+  field: string | null
+  issues: string | null
+  suggestion: string | null
+  applied: boolean
+  source: 'ai' | 'manual'
+  position: number
+}
+
+export type SkillSheetTarget = {
+  id: number
+  display_name: string | null
+  email: string
+  has_sheet: boolean
+  can_generate: boolean
+}
+
+export const SKILL_SHEET_PHASES = [
+  '要件定義', '基本設計', '詳細設計', '実装・単体', '結合テスト', '総合テスト', '保守・運用',
+] as const
 
 export type Period = { from: string; to: string }
 export type WorkReportResponse = { period: Period; reports: WorkReport[] }
 export type ExpenseResponse = { period: Period; expenses: Expense[] }
+
+// /users/pickable で返る登録ユーザー一覧
+export type PickableUser = {
+  id: number
+  display_name: string
+  email: string
+  admin: boolean
+}
+
+// 西野 → 川村への発注書（/attendance の編集対象 = /purchase-orders の表示対象）
+// PurchaseOrderSetting + recipient_user 紐付け済み
+export type IssuedPurchaseOrderSetting = {
+  id: number
+  category: string
+  position: number
+  exists?: boolean
+  order_no: string | null
+  subject: string | null
+  recipient_name: string | null
+  recipient_user_id: number | null
+  recipient_user_display_name: string | null
+  issuer_user_id: number | null
+  issuer_user_display_name: string | null
+  period_start: string | null
+  period_end: string | null
+  closing_day?: number | null
+  base_monthly: number | null
+  rate_per_hour: number | null
+  hours_per_cycle: number | null
+  total_amount: number | null
+  remarks?: string | null
+  delivery_location?: string | null
+  payment_method?: string | null
+  issuer_company?: string | null
+  issuer_representative?: string | null
+  items?: Array<{ description: string; qty: number; unit: string; unit_price: number; amount: number }>
+}
 
 export async function downloadXlsx(path: string, filename: string) {
   const res = await api.get(path, { responseType: 'blob' })

@@ -60,8 +60,13 @@ export async function clearDirHandle(key: string): Promise<void> {
 
 // ハンドルの readwrite 権限を確認 / 要求
 export async function ensureRwPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
-  const opts: FileSystemHandlePermissionDescriptor = { mode: 'readwrite' }
-  if ((await handle.queryPermission(opts)) === 'granted') return true
-  if ((await handle.requestPermission(opts)) === 'granted') return true
+  // queryPermission / requestPermission は File System Access API の実験的メソッドで lib.dom.d.ts に未定義
+  const permissionHandle = handle as unknown as {
+    queryPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>
+    requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>
+  }
+  const descriptor = { mode: 'readwrite' as const }
+  if ((await permissionHandle.queryPermission(descriptor)) === 'granted') return true
+  if ((await permissionHandle.requestPermission(descriptor)) === 'granted') return true
   return false
 }
