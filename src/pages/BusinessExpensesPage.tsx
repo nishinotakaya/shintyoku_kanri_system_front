@@ -43,12 +43,22 @@ type TaxSummary = {
   income_total: number
   expense_total: number
   depreciation_total: number
+  subcontract_total: number
   profit: number
   by_category: { category: string; total: number; count: number }[]
   monthly: { month: number; income: number; expense: number }[]
   expense_count: number
   needs_review_count: number
+  consumption_tax: {
+    taxable_sales: number
+    sales_tax: number
+    purchase_tax: number
+    special20_payment: number
+    general_estimate: number
+    recommended: 'special20' | 'general'
+  }
 }
+type TaxAdvice = { advice: { title: string; detail: string }[]; summary_note: string }
 type FixedAsset = {
   id: number
   name: string
@@ -107,6 +117,9 @@ export default function BusinessExpensesPage() {
 
   // 年間(申告)
   const [tax, setTax] = useState<TaxSummary | null>(null)
+  const [advice, setAdvice] = useState<TaxAdvice | null>(null)
+  const [adviceLoading, setAdviceLoading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const [assets, setAssets] = useState<FixedAsset[]>([])
   const [assetForm, setAssetForm] = useState({ name: '', acquired_on: '', cost: '', useful_life_years: '4', business_ratio: 100 })
   const [showAssetForm, setShowAssetForm] = useState(false)
@@ -127,22 +140,77 @@ export default function BusinessExpensesPage() {
   useEffect(() => { void load().catch(() => setMsg('読み込みに失敗しました')) }, [month])
   useEffect(() => { if (view === 'year') void loadTax().catch(() => setMsg('集計の読み込みに失敗しました')) }, [view, year])
 
-  // 📷 レシート撮影 → AI読取 → 確認モーダル
-  const onShot = async (file: File | null) => {
-    if (!file) return
-    setUploading(true); setMsg(null)
+  // 📷 レシート撮影 → AI読取 → 確認モーダル。複数選択時は最大20枚をキューにして
+  // 「n/20」の進行表示つきで1枚ずつ 登録/スキップ を確認しながら進む。
+  const [batchQueue, setBatchQueue] = useState<File[]>([])
+  const [batchIndex, setBatchIndex] = useState(0) // 現在処理中の番号(1始まり)。0=一括モードでない
+  const [batchTotal, setBatchTotal] = useState(0)
+
+  const analyzeOne = async (file: File): Promise<BusinessExpense | null> => {
+    const fd = new FormData()
+    fd.append('file', file)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
       const r = await api.post<BusinessExpense>('/business_expenses', fd)
-      await load()
-      setEditing(r.data)
+      return r.data
     } catch (e: any) {
       setMsg(`読取失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      return null
+    }
+  }
+
+  const onShot = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const list = Array.from(files).slice(0, 20)
+    setMsg(files.length > 20 ? '一度に取り込めるのは20枚までです（先頭20枚を処理します）' : null)
+    setUploading(true)
+    try {
+      if (list.length === 1) {
+        const rec = await analyzeOne(list[0])
+        await load()
+        if (rec) setEditing(rec)
+      } else {
+        // 一括モード開始: 1枚目を解析して確認カードを出す
+        setBatchQueue(list)
+        setBatchTotal(list.length)
+        setBatchIndex(1)
+        const rec = await analyzeOne(list[0])
+        await load()
+        if (rec) setEditing(rec)
+        else await advanceBatch(list, 1, list.length) // 1枚目失敗なら次へ
+      }
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  // 一括モード: 次の1枚を解析して確認カードを出す。終わったら一括モード終了
+  const advanceBatch = async (queue: File[], doneCount: number, total: number) => {
+    if (doneCount >= total) {
+      setBatchQueue([]); setBatchIndex(0); setBatchTotal(0)
+      setMsg(`✅ 一括取込が完了しました（${total}枚）`)
+      await load()
+      return
+    }
+    setBatchIndex(doneCount + 1)
+    setUploading(true)
+    try {
+      const rec = await analyzeOne(queue[doneCount])
+      await load()
+      if (rec) setEditing(rec)
+      else await advanceBatch(queue, doneCount + 1, total) // 失敗はスキップして次へ
+    } finally { setUploading(false) }
+  }
+
+  // 一括モード中の確認カード操作: 登録して次へ / スキップ(破棄)して次へ
+  const batchRegister = async () => {
+    await saveEditing({ keepModal: true })
+    await advanceBatch(batchQueue, batchIndex, batchTotal)
+  }
+  const batchSkip = async () => {
+    if (editing) await api.delete(`/business_expenses/${editing.id}`).catch(() => {})
+    setEditing(null)
+    await advanceBatch(batchQueue, batchIndex, batchTotal)
   }
 
   // 📥 明細CSV → AI仕訳プレビュー
@@ -189,7 +257,7 @@ export default function BusinessExpensesPage() {
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [editing?.id, editing?.has_receipt])
 
-  const saveEditing = async () => {
+  const saveEditing = async (opts: { keepModal?: boolean } = {}) => {
     if (!editing) return
     try {
       await api.patch(`/business_expenses/${editing.id}`, {
@@ -197,7 +265,7 @@ export default function BusinessExpensesPage() {
         tax_rate: editing.tax_rate, account_category: editing.account_category, memo: editing.memo ?? '',
         business_ratio: editing.business_ratio, status: 'confirmed',
       })
-      setEditing(null)
+      if (!opts.keepModal) setEditing(null)
       await load()
     } catch (e: any) {
       setMsg(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
@@ -230,6 +298,16 @@ export default function BusinessExpensesPage() {
     const r = await api.get('/tax_reports/export_csv', { params: { year, kind }, responseType: 'blob' })
     downloadBlob(r.data as Blob, kind === 'details' ? `経費明細_${year}年.csv` : `青色申告集計_${year}年.csv`)
   }
+  const loadAdvice = async () => {
+    setAdviceLoading(true)
+    try {
+      const r = await api.post<TaxAdvice>('/tax_reports/advice', null, { params: { year } })
+      setAdvice(r.data)
+    } catch (e: any) {
+      setMsg(`アドバイス取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setAdviceLoading(false) }
+  }
+
   const downloadTaxPdf = async (doc: 'kessansho' | 'shinkokusho') => {
     const r = await api.get('/tax_reports/export_pdf', { params: { year, deduction, doc }, responseType: 'blob' })
     downloadBlob(r.data as Blob, doc === 'shinkokusho' ? `確定申告書第一表_${year}年分.pdf` : `青色申告決算書_${year}年分.pdf`)
@@ -258,7 +336,18 @@ export default function BusinessExpensesPage() {
   )
 
   return (
-    <div className="mx-auto max-w-2xl pb-24">
+    <div className="mx-auto max-w-2xl pb-24"
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault(); setDragOver(false)
+        const images = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'))
+        if (images.length > 0) {
+          const dt = new DataTransfer()
+          images.forEach((f) => dt.items.add(f))
+          void onShot(dt.files)
+        }
+      }}>
       {/* ヘッダー: タイトル + ピル切替 */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-[var(--color-text)]">🧾 経費（確定申告）</h1>
@@ -268,6 +357,15 @@ export default function BusinessExpensesPage() {
         </div>
       </div>
       {msg && <div className={`mb-2 rounded-lg px-3 py-2 text-xs ${msg.includes('✅') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{msg}</div>}
+      {dragOver && (
+        <div className="pointer-events-none fixed inset-0 z-30 grid place-items-center bg-fuchsia-500/10 backdrop-blur-[1px]">
+          <div className="rounded-2xl border-2 border-dashed border-fuchsia-400 bg-white/95 px-8 py-6 text-center shadow-xl">
+            <div className="text-3xl">🧾</div>
+            <div className="mt-1 text-sm font-bold text-fuchsia-600">レシート画像をドロップで一括取込</div>
+            <div className="text-[11px] text-[var(--color-text-sub)]">最大20枚。AIが1枚ずつ解析します</div>
+          </div>
+        </div>
+      )}
 
       {/* ============ 月次ビュー ============ */}
       {view === 'month' && (
@@ -353,6 +451,52 @@ export default function BusinessExpensesPage() {
                 <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠️ AI読取の確認待ち経費が {tax.needs_review_count} 件あります（月次ビューで確認してください）</div>
               )}
 
+              {/* 消費税シート（2割特例 vs 一般課税） */}
+              <div className="rounded-xl border border-[var(--color-border)] bg-white p-3 space-y-2">
+                <div className="text-xs font-semibold text-[var(--color-text-sub)]">🧮 消費税（インボイス課税事業者）</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-lg bg-gray-50 p-2"><div className="text-[10px] text-[var(--color-text-sub)]">課税売上（税込）</div><div className="font-bold tabular-nums">{yen(tax.consumption_tax.taxable_sales)}</div></div>
+                  <div className="rounded-lg bg-gray-50 p-2"><div className="text-[10px] text-[var(--color-text-sub)]">売上に含まれる消費税</div><div className="font-bold tabular-nums">{yen(tax.consumption_tax.sales_tax)}</div></div>
+                  <div className={`rounded-lg p-2 ${tax.consumption_tax.recommended === 'special20' ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'bg-gray-50'}`}>
+                    <div className="text-[10px] text-[var(--color-text-sub)]">2割特例の納税見込み {tax.consumption_tax.recommended === 'special20' && <span className="rounded bg-emerald-500 px-1 text-[9px] text-white">有利</span>}</div>
+                    <div className="font-bold tabular-nums text-emerald-700">{yen(tax.consumption_tax.special20_payment)}</div>
+                  </div>
+                  <div className={`rounded-lg p-2 ${tax.consumption_tax.recommended === 'general' ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'bg-gray-50'}`}>
+                    <div className="text-[10px] text-[var(--color-text-sub)]">一般課税の概算 {tax.consumption_tax.recommended === 'general' && <span className="rounded bg-emerald-500 px-1 text-[9px] text-white">有利</span>}</div>
+                    <div className="font-bold tabular-nums">{yen(tax.consumption_tax.general_estimate)}</div>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-900">
+                  📌 <b>あなたは適格請求書発行事業者（課税事業者）なので消費税の申告・納税が必要です。</b><br />
+                  ・「<b>2割特例</b>」= 売上の消費税額の2割だけ納める制度（インボイス登録した小規模事業者向け・2026年9月までの課税期間）。事前届出不要で申告時に選べます。<br />
+                  ・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。一般課税ならこの外注費の消費税も仕入税額控除できます（<b>相手のインボイス登録番号の確認が必要</b>。未登録だと控除80%）。
+                </div>
+              </div>
+
+              {/* AI税務アドバイス */}
+              <div className="rounded-xl border border-[var(--color-border)] bg-white p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold text-[var(--color-text-sub)]">🤖 AI税務アドバイス</div>
+                  <button onClick={loadAdvice} disabled={adviceLoading}
+                    className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+                    {adviceLoading ? '分析中…' : advice ? '🔄 再分析' : '✨ アドバイスをもらう'}
+                  </button>
+                </div>
+                {advice ? (
+                  <div className="space-y-1.5">
+                    {advice.summary_note && <div className="rounded-lg bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900">{advice.summary_note}</div>}
+                    {advice.advice.map((a, i) => (
+                      <div key={i} className="rounded-lg border border-gray-100 px-3 py-2">
+                        <div className="text-xs font-bold text-[var(--color-text)]">💡 {a.title}</div>
+                        <div className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-text-sub)]">{a.detail}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-[var(--color-text-sub)]">売上・経費・消費税の集計をAIが分析し、節税や注意点を提案します（請求書と経費のデータに連動）。</div>
+                )}
+              </div>
+
               <div className="rounded-xl border border-[var(--color-border)] bg-white p-3">
                 <div className="mb-2 text-xs font-semibold text-[var(--color-text-sub)]">勘定科目別（家事按分後・年間）</div>
                 {tax.by_category.map((c) => (
@@ -395,13 +539,27 @@ export default function BusinessExpensesPage() {
               </div>
 
               <div className="rounded-xl border border-[var(--color-border)] bg-white p-3">
-                <div className="mb-2 text-xs font-semibold text-[var(--color-text-sub)]">月別推移</div>
+                <div className="mb-2 text-xs font-semibold text-[var(--color-text-sub)]">月別推移（利益 ＝ 売上 − 経費）</div>
                 <table className="w-full text-xs tabular-nums">
-                  <thead><tr className="text-[var(--color-text-sub)]"><th className="text-left font-normal">月</th><th className="text-right font-normal">売上</th><th className="text-right font-normal">経費</th></tr></thead>
+                  <thead><tr className="text-[var(--color-text-sub)]"><th className="text-left font-normal">月</th><th className="text-right font-normal">売上</th><th className="text-right font-normal">経費</th><th className="text-right font-normal">利益</th></tr></thead>
                   <tbody>
-                    {tax.monthly.map((m) => (
-                      <tr key={m.month} className="border-t border-gray-50"><td className="py-1">{m.month}月</td><td className="text-right">{m.income ? yen(m.income) : '—'}</td><td className="text-right">{m.expense ? yen(m.expense) : '—'}</td></tr>
-                    ))}
+                    {tax.monthly.map((m) => {
+                      const monthProfit = m.income - m.expense
+                      return (
+                        <tr key={m.month} className="border-t border-gray-50">
+                          <td className="py-1">{m.month}月</td>
+                          <td className="text-right">{m.income ? yen(m.income) : '—'}</td>
+                          <td className="text-right">{m.expense ? yen(m.expense) : '—'}</td>
+                          <td className={`text-right font-medium ${monthProfit > 0 ? 'text-emerald-700' : monthProfit < 0 ? 'text-red-500' : ''}`}>{m.income || m.expense ? yen(monthProfit) : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                    <tr className="border-t-2 border-gray-200 font-semibold">
+                      <td className="py-1">計</td>
+                      <td className="text-right">{yen(tax.income_total)}</td>
+                      <td className="text-right">{yen(tax.expense_total)}</td>
+                      <td className={`text-right ${tax.profit >= 0 ? 'text-emerald-700' : 'text-red-500'}`}>{yen(tax.profit)}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -412,12 +570,14 @@ export default function BusinessExpensesPage() {
       )}
 
       {/* 隠しファイル入力 + 右下フローティング📷 */}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onShot(e.target.files?.[0] ?? null)} />
+      <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onShot(e.target.files)} />
       <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => onCsv(e.target.files?.[0] ?? null)} />
       <button onClick={() => fileRef.current?.click()} disabled={uploading}
         className="fixed bottom-6 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-r from-fuchsia-500 to-pink-500 text-2xl text-white shadow-xl transition active:scale-95 disabled:opacity-60"
-        title="レシートを撮影">
-        {uploading ? <span className="animate-pulse text-xs">解析中</span> : '📷'}
+        title="レシートを撮影（複数選択で最大20枚まで一括取込）">
+        {uploading
+          ? <span className="animate-pulse text-center text-[10px] leading-tight">{batchTotal > 0 ? `解析中\n${batchIndex}/${batchTotal}`.split('\n').map((t, i) => <span key={i} className="block">{t}</span>) : '解析中'}</span>
+          : '📷'}
       </button>
 
       {/* CSV取込プレビューモーダル */}
@@ -458,11 +618,14 @@ export default function BusinessExpensesPage() {
 
       {/* 経費の確認・編集モーダル */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setEditing(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => { if (batchIndex === 0) setEditing(null) }}>
           <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-bold">🧾 経費の確認{editing.status === 'needs_review' && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">AI読取・要確認{editing.ai_confidence != null ? ` (確信度${editing.ai_confidence}%)` : ''}</span>}</div>
-              <button onClick={() => setEditing(null)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+              <div className="text-sm font-bold">
+                {batchIndex > 0 ? `📸 ${batchIndex}/${batchTotal} 枚目` : '🧾 経費の確認'}
+                {editing.status === 'needs_review' && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">AI読取{editing.ai_confidence != null ? ` (確信度${editing.ai_confidence}%)` : ''}</span>}
+              </div>
+              {batchIndex === 0 && <button onClick={() => setEditing(null)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>}
             </div>
             {receiptUrl && <img src={receiptUrl} alt="レシート" className="mb-3 max-h-56 w-full rounded-lg border border-[var(--color-border)] bg-gray-50 object-contain" />}
             <div className="space-y-2 text-sm">
@@ -491,8 +654,19 @@ export default function BusinessExpensesPage() {
                 <input type="range" min={10} max={100} step={5} value={editing.business_ratio} onChange={(e) => setEditing({ ...editing, business_ratio: Number(e.target.value) })} className="w-full accent-fuchsia-500" /></label>
             </div>
             <div className="mt-4 flex items-center justify-between gap-2">
-              <button onClick={removeEditing} className="rounded-md border border-red-200 px-3 py-2 text-xs text-red-500 hover:bg-red-50">🗑 削除</button>
-              <button onClick={saveEditing} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 確認して保存</button>
+              {batchIndex > 0 ? (
+                <>
+                  <button onClick={batchSkip} disabled={uploading} className="rounded-md border border-gray-300 px-3 py-2 text-xs text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-50">⏭ 登録しない（次へ）</button>
+                  <button onClick={batchRegister} disabled={uploading} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50">
+                    ✓ 登録して次へ（{batchIndex}/{batchTotal}）
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={removeEditing} className="rounded-md border border-red-200 px-3 py-2 text-xs text-red-500 hover:bg-red-50">🗑 削除</button>
+                  <button onClick={() => saveEditing()} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 確認して保存</button>
+                </>
+              )}
             </div>
           </div>
         </div>
