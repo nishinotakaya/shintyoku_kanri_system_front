@@ -57,6 +57,7 @@ type TaxSummary = {
     general_estimate: number
     recommended: 'special20' | 'general'
   }
+  income_items: { month: number; user_name: string | null; category: string; total: number; source: 'own' | 'subcontract'; note: string | null }[]
 }
 type TaxAdvice = { advice: { title: string; detail: string }[]; summary_note: string }
 type FixedAsset = {
@@ -120,6 +121,7 @@ export default function BusinessExpensesPage() {
   const [advice, setAdvice] = useState<TaxAdvice | null>(null)
   const [adviceLoading, setAdviceLoading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [showIncomeDetail, setShowIncomeDetail] = useState(false)
   const [assets, setAssets] = useState<FixedAsset[]>([])
   const [assetForm, setAssetForm] = useState({ name: '', acquired_on: '', cost: '', useful_life_years: '4', business_ratio: 100 })
   const [showAssetForm, setShowAssetForm] = useState(false)
@@ -443,7 +445,10 @@ export default function BusinessExpensesPage() {
           {tax && (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-[var(--color-border)] bg-white p-3"><div className="text-[10px] text-[var(--color-text-sub)]">売上（承認済請求書）</div><div className="mt-0.5 text-base font-bold tabular-nums text-sky-700">{yen(tax.income_total)}</div></div>
+                <button onClick={() => setShowIncomeDetail(true)} className="rounded-xl border border-[var(--color-border)] bg-white p-3 text-left transition hover:border-sky-300 hover:shadow" title="クリックで請求書の内訳を表示">
+                  <div className="text-[10px] text-[var(--color-text-sub)]">売上（承認済請求書）<span className="ml-1 text-sky-500">›</span></div>
+                  <div className="mt-0.5 text-base font-bold tabular-nums text-sky-700">{yen(tax.income_total)}</div>
+                </button>
                 <div className="rounded-xl border border-[var(--color-border)] bg-white p-3"><div className="text-[10px] text-[var(--color-text-sub)]">経費（減価償却込）</div><div className="mt-0.5 text-base font-bold tabular-nums text-rose-600">{yen(tax.expense_total)}</div></div>
                 <div className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-500 p-3 text-white"><div className="text-[10px] opacity-90">差引金額（所得）</div><div className="mt-0.5 text-base font-bold tabular-nums">{yen(tax.profit)}</div></div>
               </div>
@@ -468,8 +473,9 @@ export default function BusinessExpensesPage() {
                 </div>
                 <div className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-900">
                   📌 <b>あなたは適格請求書発行事業者（課税事業者）なので消費税の申告・納税が必要です。</b><br />
-                  ・「<b>2割特例</b>」= 売上の消費税額の2割だけ納める制度（インボイス登録した小規模事業者向け・2026年9月までの課税期間）。事前届出不要で申告時に選べます。<br />
-                  ・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。一般課税ならこの外注費の消費税も仕入税額控除できます（<b>相手のインボイス登録番号の確認が必要</b>。未登録だと控除80%）。
+                  ・「<b>2割特例</b>」= 売上の消費税額の2割だけ納める制度。事前届出不要で申告時に選べます。<b>個人事業主は2026年分（来年3月申告）が最後の適用</b>です。<br />
+                  ・<b>2027年分からは「3割特例」という制度はありません。</b>「簡易課税」（サービス業＝第5種・売上税額の実質50%納付、要届出）か「一般課税」を選ぶことになります。<br />
+                  ・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。<b>パートナーは免税事業者（インボイス未登録）のため、一般課税での外注費の仕入税額控除は80%（経過措置・〜2026/9）で計算しています</b>。2026/10以降は50%に下がるため、一般課税を選ぶ場合は不利になります。
                 </div>
               </div>
 
@@ -612,6 +618,33 @@ export default function BusinessExpensesPage() {
                 {importing ? '取込中…' : '✓ 選択した行を取り込む'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 売上内訳モーダル */}
+      {showIncomeDetail && tax && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={() => setShowIncomeDetail(false)}>
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-sm font-bold">💰 売上の内訳（{year}年・承認済請求書）</div>
+              <button onClick={() => setShowIncomeDetail(false)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--color-border)]">
+              {tax.income_items.map((it, i) => (
+                <div key={i} className="flex items-center gap-2 border-b border-gray-50 px-3 py-2 text-xs last:border-b-0">
+                  <span className="w-10 shrink-0 tabular-nums text-[var(--color-text-sub)]">{it.month}月</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{it.user_name}（{it.category}）</span>
+                    {it.note && <span className="block truncate text-[10px] text-[var(--color-text-sub)]">{it.note}</span>}
+                  </span>
+                  {it.source === 'subcontract' && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700" title="パートナー分の合算。同額を外注工賃で控除済み">外注合算</span>}
+                  <span className="w-24 shrink-0 text-right font-semibold tabular-nums">{yen(it.total)}</span>
+                </div>
+              ))}
+              {tax.income_items.length === 0 && <div className="p-4 text-center text-xs text-[var(--color-text-sub)]">承認済みの請求書がありません</div>}
+            </div>
+            <div className="mt-2 flex justify-between text-sm font-bold"><span>合計</span><span className="tabular-nums text-sky-700">{yen(tax.income_total)}</span></div>
           </div>
         </div>
       )}
