@@ -794,7 +794,7 @@ export default function DayDetailModal({
   // 詳細モードはモーダル全体を BacklogTaskDetailModal に差し替え
   if (detailTask) {
     return (
-      <Modal onClose={onClose} size="md" panelClassName="!rounded-2xl !p-5 !shadow-2xl">
+      <Modal onClose={onClose} size="md" panelClassName="!max-w-2xl !rounded-2xl !p-4 md:!p-5 !shadow-2xl max-md:!max-h-[96vh]">
         <BacklogTaskDetailModal
           issueKey={detailTask.issue_key}
           summary={detailTask.summary}
@@ -808,10 +808,13 @@ export default function DayDetailModal({
   }
 
   return (
-    <Modal onClose={onClose} size="md" panelClassName="!rounded-2xl !p-5 !shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 gap-2">
-          <div className="text-base font-semibold text-[var(--color-text)]">{date} の詳細</div>
-          <div className="flex items-center gap-2">
+    <Modal onClose={onClose} size="md" panelClassName="!max-w-2xl !rounded-2xl !p-4 md:!p-5 !shadow-2xl max-md:!max-h-[96vh]">
+        <div className="border-b border-[var(--color-border)] pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-base font-semibold text-[var(--color-text)]">{date} の詳細</div>
+            <button onClick={onClose} className="shrink-0 px-1 text-lg leading-none text-[var(--color-text-sub)] hover:text-[var(--color-text)]">×</button>
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <button
               onClick={handleBacklogSync}
               disabled={syncing}
@@ -832,7 +835,6 @@ export default function DayDetailModal({
               </button>
             )}
             {exportMsg && <span className="text-[10px] text-emerald-600">{exportMsg}</span>}
-            <button onClick={onClose} className="text-[var(--color-text-sub)] hover:text-[var(--color-text)]">×</button>
           </div>
         </div>
 
@@ -840,7 +842,7 @@ export default function DayDetailModal({
         {dayTeam.length > 0 && (
           <section className="mt-3">
             <div className="text-[11px] uppercase tracking-widest text-[var(--color-text-sub)]">チーム予定</div>
-            <div className="mt-1 grid grid-cols-3 gap-2 text-xs">
+            <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
               {dayTeam.map((entry, i) => (
                 <div key={i} className="rounded-lg border border-[var(--color-border)] px-2 py-1">
                   <div className="font-semibold">{entry.person}</div>

@@ -184,7 +184,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     <div className="glass rounded-2xl shadow-md relative">
       {/* sticky ヘッダ: タイトル + 合計 + 曜日 を一塊で固定 */}
       <div className="sticky top-[56px] z-20 bg-white rounded-t-2xl px-3 pt-3 pb-1 border-b border-[var(--color-border)]">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
           <div>
             <div className="text-xs uppercase tracking-widest text-[var(--color-text-sub)]">
               カレンダー — {year}年 {month}月分
@@ -197,7 +197,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
               })()}
             </div>
           </div>
-          <div className="flex flex-col items-end text-xs leading-tight">
+          <div className="flex flex-col items-start sm:items-end text-xs leading-tight">
             <div className="flex items-baseline gap-1 text-[10px] text-[var(--color-text-sub)]">
               <span className="font-semibold">締日(25日)まで</span>
               <span className="font-mono tabular-nums">{periodTotals.periodStart}〜{periodTotals.periodEnd}</span>
@@ -262,7 +262,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
         {/* セル */}
         {cells.map((c, i) => {
           if (c.day === null) {
-            return <div key={`e${i}`} className="bg-white min-h-[140px]" />
+            return <div key={`e${i}`} className="bg-white min-h-[76px] md:min-h-[140px]" />
           }
           const isWeekend = c.dow === 0 || c.dow === 6
           const isHoliday = !!c.holiday
@@ -271,7 +271,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
             <div
               key={c.date}
               onClick={onDayClick ? () => onDayClick(c.date) : undefined}
-              className={`bg-white min-h-[140px] p-1.5 flex flex-col gap-0.5 ${
+              className={`bg-white min-h-[76px] md:min-h-[140px] p-1 md:p-1.5 flex flex-col gap-0.5 ${
                 isHoliday ? 'bg-red-50/50' : isWeekend ? 'bg-gray-50/50' : ''
               } ${onDayClick ? 'cursor-pointer hover:bg-fuchsia-50/40' : ''}`}
             >
@@ -289,7 +289,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
               </div>
 
               {c.holiday && (
-                <div className="text-[8px] text-red-400 truncate">{c.holiday}</div>
+                <div className="hidden md:block text-[8px] text-red-400 truncate">{c.holiday}</div>
               )}
 
               {/* 工数バー */}
@@ -304,25 +304,42 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
 
               {/* 作業内容（短縮、tooltip でフル表示） */}
               {c.reports.length > 0 && c.reports[0].content && (
-                <div
-                  className="text-[10px] text-[var(--color-text-sub)] leading-tight line-clamp-2"
-                  title={c.reports[0].content}
-                >
-                  {c.reports[0].content}
+                <div className="hidden md:block">
+                  <div
+                    className="text-[10px] text-[var(--color-text-sub)] leading-tight line-clamp-2"
+                    title={c.reports[0].content}
+                  >
+                    {c.reports[0].content}
+                  </div>
                 </div>
               )}
 
               {/* 立替金 */}
               {c.expenses.length > 0 && (
-                <div className="text-[10px] text-amber-500">
+                <div className="text-[9px] md:text-[10px] text-amber-500 truncate">
                   ¥{c.expenses.reduce((s, e) => s + e.amount, 0).toLocaleString()}
                 </div>
               )}
 
 
               {/* チーム予定（西野・川村・大隅 を常に 3 行表示） */}
+              {/* スマホ: 予定チップ (Googleカレンダー風・タップで日別モーダルへ) */}
+              {(teamMap.get(c.date) ?? []).length > 0 && (
+                <div className="md:hidden mt-auto flex flex-col gap-px overflow-hidden">
+                  {PERSONS.map((person) => {
+                    const entry = (teamMap.get(c.date) ?? []).find((target) => target.person === person)
+                    if (!entry?.status) return null
+                    return (
+                      <div key={person} className={`rounded-sm px-0.5 text-[8px] leading-[11px] truncate ${statusClass(entry.status)}`}>
+                        {person.charAt(0)} {entry.status}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               {(onCreateTeamSchedule || onUpdateTeamSchedule || (teamMap.get(c.date) ?? []).length > 0) && (
-                <div className="mt-1 space-y-0.5 border-t border-[var(--color-border)] pt-1">
+                <div className="hidden md:block mt-1 space-y-0.5 border-t border-[var(--color-border)] pt-1">
                   {PERSONS.map((person) => {
                     const entry = (teamMap.get(c.date) ?? []).find((target) => target.person === person)
                     const status = entry?.status ?? ''

@@ -176,7 +176,7 @@ export default function CalendarPage() {
           <span className="text-gray-400">URL の修正は ⚙ 設定 から</span>
         </div>
       )}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button onClick={() => monthShift(-1)} className="rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">←</button>
           <div>
@@ -187,7 +187,7 @@ export default function CalendarPage() {
           </div>
           <button onClick={() => monthShift(1)} className="rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">→</button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isAdmin && pickableUsers.length > 0 && (
             <select
               value={asUserId ?? me?.id ?? 0}
