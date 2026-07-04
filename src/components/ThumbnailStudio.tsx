@@ -40,7 +40,7 @@ export default function ThumbnailStudio({ mindmapId, title }: Props) {
   const [copy, setCopy] = useState<CopyData>({ main_copy: '', highlight_word: '', sub_copy: '' })
   const [mainFont, setMainFont] = useState(72) // 既定を小さめに（自動で幅にも収める）
   const [panelFonts, setPanelFonts] = useState([48, 48, 48]) // 3コマ文字サイズ（左/中/右 別々）
-  const [showArrows, setShowArrows] = useState(true) // コマ間の矢印（左→中→右）
+  const [showArrows, setShowArrows] = useState(false) // コマ間の矢印（左→中→右）。既定OFF（必要なときだけONにする）
   const [subFont, setSubFont] = useState(40)
   const [mainPos, setMainPos] = useState({ x: 56, y: 110 })
   const [mainCentered, setMainCentered] = useState(true) // 背景画像が無い時だけ自動で中央寄せ。ドラッグしたら解除して手動配置
