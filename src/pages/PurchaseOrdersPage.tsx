@@ -692,8 +692,8 @@ export default function PurchaseOrdersPage() {
       ) : filteredItems.length === 0 ? (
         <div className="text-sm text-[var(--color-text-sub)]">{filterYear}年{filterMonth}月分にかかる注文書はありません</div>
       ) : (
-        <div className="glass rounded-xl shadow-md overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="glass overflow-x-auto rounded-xl shadow-md">
+          <table className="w-full min-w-[860px] text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
                 {isAdmin && (

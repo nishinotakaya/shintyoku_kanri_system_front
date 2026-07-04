@@ -380,13 +380,13 @@ export default function KanbanBoard({
         {viewMode === 'board' ? (
           /* ===== ボードモード: 横4列 ===== */
           <div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
               {COLUMNS.map((col) => {
                 const colTasks = sortedTasks(col.id)
                 return (
-                  <div key={col.id} className={`rounded-2xl border-t-4 ${col.color} ${col.bg} p-3 max-h-[80vh] flex flex-col`}>
+                  <div key={col.id} className={`rounded-2xl border-t-4 ${col.color} ${col.bg} p-2 sm:p-3 max-h-[80vh] flex flex-col`}>
                     <div className="flex items-center justify-between mb-3">
-                      <span className={`rounded-lg px-3 py-1 text-sm font-bold ${col.badge}`}>{col.label}</span>
+                      <span className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold sm:px-3 sm:text-sm ${col.badge}`}>{col.label}</span>
                       <span className="text-sm font-semibold text-[var(--color-text-sub)]">{colTasks.length}</span>
                     </div>
                     <Droppable droppableId={String(col.id)}>
@@ -421,7 +421,7 @@ export default function KanbanBoard({
                       <div ref={provided.innerRef} {...provided.droppableProps} className="relative">
                         <button
                           onClick={() => setActiveTab(col.id)}
-                          className={`rounded-t-xl px-6 py-3 text-sm font-bold transition ${
+                          className={`whitespace-nowrap rounded-t-xl px-3 py-2.5 text-xs font-bold transition sm:px-6 sm:py-3 sm:text-sm ${
                             activeTab === col.id ? col.tabActive : `bg-[var(--color-bg)] ${col.tabInactive} hover:bg-gray-100`
                           } ${snapshot.isDraggingOver ? 'ring-2 ring-[var(--color-primary)] scale-105' : ''}`}
                         >

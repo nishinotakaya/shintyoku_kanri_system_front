@@ -109,14 +109,14 @@ export default function ProgressPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="text-2xl font-semibold tracking-tight text-[var(--color-text)]">進捗管理</div>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="whitespace-nowrap text-xl font-semibold tracking-tight text-[var(--color-text)] sm:text-2xl">進捗管理</div>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {syncMsg && <span className="text-sm text-emerald-600">{syncMsg}</span>}
-          <button onClick={() => setShowAddForm(!showAddForm)} className="rounded-xl bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-md">
+          <button onClick={() => setShowAddForm(!showAddForm)} className="whitespace-nowrap rounded-xl bg-[var(--color-primary)] px-3 py-2 text-xs font-semibold text-white shadow-md sm:px-5 sm:py-2.5 sm:text-sm">
             ＋ タスク追加
           </button>
-          <button onClick={sync} disabled={syncing} className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50">
+          <button onClick={sync} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
             {syncing ? '同期中…' : '🔄 バックログ同期'}
           </button>
         </div>

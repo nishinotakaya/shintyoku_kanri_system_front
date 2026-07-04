@@ -1209,8 +1209,8 @@ export default function InvoicesPage() {
         <div className="text-sm text-[var(--color-text-sub)]">該当する申請がありません</div>
       ) : (
         <>
-        <div className="glass rounded-xl shadow-md overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="glass overflow-x-auto rounded-xl shadow-md">
+          <table className="w-full min-w-[900px] text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
                 {me?.admin && <th className="px-1 py-2 text-center w-6"></th>}

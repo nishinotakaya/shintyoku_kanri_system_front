@@ -203,7 +203,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       {/* Main area */}
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="sticky top-0 z-20 bg-white border-b border-[var(--color-border)] shadow-sm">
-          <div className="flex items-center gap-4 px-6 py-3">
+          <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-4 sm:px-6 sm:py-3">
             <button
               type="button"
               onClick={() => setSidebarOpen((o) => !o)}
@@ -283,15 +283,15 @@ function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </div>
             )}
-            <div className="ml-auto flex items-center gap-4">
-              <div className="text-sm text-[var(--color-text-sub)]">{me?.display_name ?? me?.email ?? '—'}</div>
+            <div className="ml-auto flex items-center gap-2 sm:gap-4">
+              <div className="hidden max-w-[140px] truncate whitespace-nowrap text-sm text-[var(--color-text-sub)] sm:block">{me?.display_name ?? me?.email ?? '—'}</div>
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}
                 title="設定（請求書・振込先など）"
-                className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+                className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] sm:px-3"
               >
-                ⚙ 設定
+                ⚙<span className="hidden sm:inline"> 設定</span>
               </button>
               <button
                 onClick={async () => {
@@ -299,7 +299,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                   clearMeCache()
                   nav('/sign_in')
                 }}
-                className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+                className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] sm:px-3"
               >
                 ログアウト
               </button>
