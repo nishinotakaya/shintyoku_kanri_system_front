@@ -18,6 +18,10 @@ type BusinessExpense = {
   status: 'needs_review' | 'confirmed'
   ai_confidence: number | null
   has_receipt: boolean
+  payment_source: string | null
+  payment_method: 'cash' | 'credit_card' | 'bank' | null
+  freee_synced: boolean
+  source: string
 }
 type Summary = {
   total: number
@@ -106,6 +110,45 @@ const downloadBlob = (blob: Blob, filename: string) => {
   a.download = filename
   a.click()
   URL.revokeObjectURL(a.href)
+}
+
+// 支払元バッジ（クレカ/口座/現金を一目で区別）
+const PAY_BADGE: Record<string, { icon: string; cls: string }> = {
+  credit_card: { icon: '💳', cls: 'bg-indigo-50 text-indigo-700 ring-indigo-200' },
+  bank: { icon: '🏦', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  cash: { icon: '💵', cls: 'bg-gray-50 text-gray-500 ring-gray-200' },
+}
+function PaymentBadge({ method, source }: { method: string | null; source: string | null }) {
+  if (!method) return null
+  const b = PAY_BADGE[method] ?? PAY_BADGE.cash
+  const label = method === 'credit_card' ? (source ?? 'カード') : method === 'bank' ? (source ? source.replace(/（.*/, '') : '口座') : '現金'
+  return (
+    <span className={`inline-flex max-w-[9rem] items-center gap-0.5 truncate rounded px-1 py-0.5 text-[9px] font-semibold ring-1 ${b.cls}`} title={source ?? label}>
+      {b.icon}<span className="truncate">{label}</span>
+    </span>
+  )
+}
+
+// レシートのサムネイル（JWT付きblob）。ホバーで拡大表示。
+function ReceiptThumb({ expenseId }: { expenseId: number }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let objectUrl: string | null = null
+    let cancelled = false
+    api.get(`/business_expenses/${expenseId}/receipt`, { responseType: 'blob' })
+      .then((r) => { if (!cancelled) { objectUrl = URL.createObjectURL(r.data as Blob); setUrl(objectUrl) } })
+      .catch(() => {})
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [expenseId])
+  if (!url) return <span className="h-10 w-10 shrink-0 animate-pulse rounded-md bg-gray-100" />
+  return (
+    <span className="group/thumb relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <img src={url} alt="" className="h-10 w-10 rounded-md border border-[var(--color-border)] object-cover" />
+      <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-1 hidden group-hover/thumb:block">
+        <img src={url} alt="" className="max-h-[70vh] w-64 rounded-lg border border-[var(--color-border)] bg-white object-contain shadow-2xl" />
+      </span>
+    </span>
+  )
 }
 
 export default function BusinessExpensesPage() {
@@ -409,10 +452,16 @@ export default function BusinessExpensesPage() {
 
   const Row = ({ it }: { it: BusinessExpense }) => (
     <button onClick={() => setEditing(it)} className="flex w-full items-center gap-3 border-b border-[var(--color-border)] bg-white px-3 py-2.5 text-left last:border-b-0 hover:bg-fuchsia-50/40">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-fuchsia-50 text-lg">{CAT_ICON[it.account_category ?? ''] ?? '🧾'}</span>
+      {it.has_receipt
+        ? <ReceiptThumb expenseId={it.id} />
+        : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-fuchsia-50 text-lg">{CAT_ICON[it.account_category ?? ''] ?? '🧾'}</span>}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-[var(--color-text)]">{it.store_name || '（店名なし）'}</span>
-        <span className="block text-[11px] text-[var(--color-text-sub)]">{it.expense_date ?? '日付なし'} ・ {it.account_category ?? '未分類'}{it.business_ratio < 100 ? ` ・ 按分${it.business_ratio}%` : ''}</span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-[var(--color-text-sub)]">
+          <span>{it.expense_date ?? '日付なし'} ・ {it.account_category ?? '未分類'}{it.business_ratio < 100 ? ` ・ 按分${it.business_ratio}%` : ''}</span>
+          <PaymentBadge method={it.payment_method} source={it.payment_source} />
+          {!it.freee_synced && <span className="rounded bg-fuchsia-50 px-1 py-0.5 text-[9px] font-semibold text-fuchsia-600 ring-1 ring-fuchsia-200" title="このシステムで登録（freee未連携）">🆕 こっち登録</span>}
+        </span>
       </span>
       <span className="text-right">
         <span className="block text-sm font-semibold tabular-nums">{yen(it.amount)}</span>
