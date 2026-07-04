@@ -405,6 +405,18 @@ export default function BusinessExpensesPage() {
 
   useEffect(() => { loadFreee(); loadBankTxns() }, [])
 
+  // 「確認待ち」警告クリック → 最初の needs_review 経費の月へ遷移して確認モーダルを開く
+  const openFirstNeedsReview = async () => {
+    try {
+      const r = await api.get<{ expenses: BusinessExpense[] }>('/business_expenses', { params: { status: 'needs_review' } })
+      const target = r.data.expenses[0]
+      if (!target) return
+      if (target.expense_date) setMonth(target.expense_date.slice(0, 7))
+      setView('month')
+      setEditing(target)
+    } catch { /* noop */ }
+  }
+
   // 編集モーダルのレシート画像 (JWT付きのため blob 経由)
   useEffect(() => {
     if (!editing?.has_receipt) { setReceiptUrl(null); return }
@@ -698,7 +710,10 @@ export default function BusinessExpensesPage() {
                 <div className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-500 p-2.5 sm:p-3 text-white"><div className="truncate text-[10px] opacity-90">所得<span className="hidden sm:inline">（差引金額）</span></div><div className="mt-0.5 whitespace-nowrap text-sm sm:text-base font-bold tabular-nums">{yen(tax.profit)}</div></div>
               </div>
               {tax.needs_review_count > 0 && (
-                <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠️ AI読取の確認待ち経費が {tax.needs_review_count} 件あります（月次ビューで確認してください）</div>
+                <button onClick={openFirstNeedsReview}
+                  className="w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-100">
+                  ⚠️ AI読取の確認待ち経費が {tax.needs_review_count} 件あります <span className="font-semibold underline">クリックで確認 →</span>
+                </button>
               )}
 
               {/* 消費税シート（2割特例 vs 一般課税） */}
