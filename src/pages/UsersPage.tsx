@@ -52,6 +52,8 @@ export default function UsersPage() {
     { key: 'youtube_mindmap', label: 'YouTube動画' },
     { key: 'mote_mindmap', label: 'モテ会話' },
     { key: 'backlog_activities', label: '対応ログ' },
+    { key: 'video_studio', label: '動画スタジオ' },
+    { key: 'keihi', label: '経費計上' },
   ]
 
   // 管理者はデフォルト全チェック（明示的に false のときだけ OFF）。一般ユーザーは true のときだけ ON。

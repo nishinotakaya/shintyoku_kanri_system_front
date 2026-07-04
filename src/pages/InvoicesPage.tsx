@@ -102,8 +102,10 @@ export default function InvoicesPage() {
   const [filterKind, setFilterKind] = useState<'all' | 'invoice' | 'expense'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'pending' | 'approved' | 'rejected'>('all')
   const [filterMonth, setFilterMonth] = useState<string>('') // YYYY-MM
-  // '' = 全申請者 / 'id:<n>' = 個別ユーザー / 'combo:<name1> + <name2>' = 組み合わせ (統合PDF用)
-  const [filterUserKey, setFilterUserKey] = useState<string>('')
+  // 申請者フィルタ（複数選択）。空=全申請者 / 'id:<n>'=個別ユーザー / 'combo:<name1> + <name2>'=組み合わせ(統合PDF用)
+  // 選択キーのいずれかにマッチすれば表示（OR 条件）。
+  const [filterUserKeys, setFilterUserKeys] = useState<string[]>([])
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [filterText, setFilterText] = useState<string>('')
   // デフォルトは「請求月の新しい順」
   const [sortKey, setSortKey] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'submitted_desc' | 'submitted_asc'>('date_desc')
@@ -816,15 +818,17 @@ export default function InvoicesPage() {
         return `${p.year}-${String(p.month).padStart(2, '0')}` === filterMonth
       })
       .filter((p) => {
-        if (!filterUserKey) return true
-        if (filterUserKey.startsWith('id:')) return p.user_id === Number(filterUserKey.substring(3))
-        if (filterUserKey.startsWith('combo:')) {
-          const names = filterUserKey.substring(6).split(' + ')
-          return (p.source_user_names ?? [p.user_display_name]).some((n) => !!n && names.includes(n))
-        }
-        return true
+        if (filterUserKeys.length === 0) return true
+        return filterUserKeys.some((key) => {
+          if (key.startsWith('id:')) return p.user_id === Number(key.substring(3))
+          if (key.startsWith('combo:')) {
+            const names = key.substring(6).split(' + ')
+            return (p.source_user_names ?? [p.user_display_name]).some((n) => !!n && names.includes(n))
+          }
+          return false
+        })
       })
-  }, [issuedPdfs, items, filterKind, filterStatus, filterMonth, filterUserKey])
+  }, [issuedPdfs, items, filterKind, filterStatus, filterMonth, filterUserKeys])
 
   // 統合行も月/種別/ユーザーのフィルターを適用（従来は無条件表示で、月で絞ると申請0件時にテーブルごと消えていた）
   const visibleMerged = useMemo(() => {
@@ -836,14 +840,16 @@ export default function InvoicesPage() {
         return `${m.year}-${String(m.month).padStart(2, '0')}` === filterMonth
       })
       .filter((m) => {
-        if (!filterUserKey || filterUserKey.startsWith('id:')) return true
-        if (filterUserKey.startsWith('combo:')) {
-          const names = filterUserKey.substring(6).split(' + ')
+        if (filterUserKeys.length === 0) return true
+        // id: 単独指定は統合行を絞らない（従来挙動）。combo: のいずれかにマッチすれば表示。
+        const comboKeys = filterUserKeys.filter((k) => k.startsWith('combo:'))
+        if (comboKeys.length === 0) return true
+        return comboKeys.some((key) => {
+          const names = key.substring(6).split(' + ')
           return m.users.some((n) => names.includes(n))
-        }
-        return true
+        })
       })
-  }, [mergedRows, filterKind, filterStatus, filterMonth, filterUserKey])
+  }, [mergedRows, filterKind, filterStatus, filterMonth, filterUserKeys])
 
   // 集約行 (merged_invoice / merged_expense) のチェックを構成する個別 submission の id 集合に展開
   const mergedSubmissionIds = useMemo(() => {
@@ -867,15 +873,15 @@ export default function InvoicesPage() {
         return ym === filterMonth
       })
       .filter((s) => {
-        if (!filterUserKey) return true
-        if (filterUserKey.startsWith('id:')) {
-          return s.user_id === Number(filterUserKey.substring(3))
-        }
-        if (filterUserKey.startsWith('combo:')) {
-          const names = filterUserKey.substring(6).split(' + ')
-          return names.includes(s.user_display_name)
-        }
-        return true
+        if (filterUserKeys.length === 0) return true
+        return filterUserKeys.some((key) => {
+          if (key.startsWith('id:')) return s.user_id === Number(key.substring(3))
+          if (key.startsWith('combo:')) {
+            const names = key.substring(6).split(' + ')
+            return names.includes(s.user_display_name)
+          }
+          return false
+        })
       })
       .filter((s) => {
         if (!text) return true
@@ -913,7 +919,7 @@ export default function InvoicesPage() {
           }
         }
       })
-  }, [items, filterKind, filterStatus, filterMonth, filterUserKey, filterText, sortKey])
+  }, [items, filterKind, filterStatus, filterMonth, filterUserKeys, filterText, sortKey])
 
   const filteredTotal = useMemo(
     () => filtered.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0),
@@ -1136,15 +1142,37 @@ export default function InvoicesPage() {
           className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs" />
         {filterMonth && <button onClick={() => setFilterMonth('')} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
         {me?.admin && (
-          <select value={filterUserKey} onChange={(e) => setFilterUserKey(e.target.value)}
-            className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs">
-            <option value="">全申請者</option>
-            {userOptions.map((u) => (
-              <option key={u.key} value={u.key}>{u.label}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <button type="button" onClick={() => setUserMenuOpen((v) => !v)}
+              className="flex items-center gap-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]">
+              <span>{filterUserKeys.length === 0 ? '全申請者' : `申請者 ${filterUserKeys.length}人`}</span>
+              <span className="text-[9px] text-[var(--color-text-sub)]">▾</span>
+            </button>
+            {userMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-white p-1 shadow-lg">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <span className="text-[10px] font-semibold text-[var(--color-text-sub)]">複数選択できます</span>
+                    {filterUserKeys.length > 0 && <button onClick={() => setFilterUserKeys([])} className="text-[10px] text-fuchsia-600">全解除</button>}
+                  </div>
+                  {userOptions.map((u) => {
+                    const checked = filterUserKeys.includes(u.key)
+                    return (
+                      <label key={u.key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-fuchsia-50">
+                        <input type="checkbox" checked={checked}
+                          onChange={() => setFilterUserKeys((prev) => checked ? prev.filter((k) => k !== u.key) : [...prev, u.key])} />
+                        <span className="truncate">{u.label}</span>
+                      </label>
+                    )
+                  })}
+                  {userOptions.length === 0 && <div className="px-2 py-2 text-[11px] text-[var(--color-text-sub)]">申請者がいません</div>}
+                </div>
+              </>
+            )}
+          </div>
         )}
-        {filterUserKey && <button onClick={() => setFilterUserKey('')} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
+        {filterUserKeys.length > 0 && <button onClick={() => setFilterUserKeys([])} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
         <input
           type="search"
           value={filterText}
@@ -1198,7 +1226,7 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody>
-              {/* 保存済 統合 PDF (issued_invoice_pdfs) を最上部に表示。filterMonth/filterKind/filterUserKey/filterText も適用 */}
+              {/* 保存済 統合 PDF (issued_invoice_pdfs) を最上部に表示。filterMonth/filterKind/filterUserKeys/filterText も適用 */}
               {issuedPdfs
                 .filter((p) => {
                   if (!filterMonth) return true
@@ -1207,16 +1235,16 @@ export default function InvoicesPage() {
                 })
                 .filter((p) => filterKind === 'all' || p.kind === filterKind)
                 .filter((p) => {
-                  if (!filterUserKey) return true
+                  if (filterUserKeys.length === 0) return true
                   const names = (p.source_user_names ?? []).filter(Boolean) as string[]
-                  if (filterUserKey.startsWith('id:')) {
-                    return p.user_id === Number(filterUserKey.substring(3))
-                  }
-                  if (filterUserKey.startsWith('combo:')) {
-                    const target = filterUserKey.substring(6).split(' + ')
-                    return target.every((n) => names.includes(n))
-                  }
-                  return true
+                  return filterUserKeys.some((key) => {
+                    if (key.startsWith('id:')) return p.user_id === Number(key.substring(3))
+                    if (key.startsWith('combo:')) {
+                      const target = key.substring(6).split(' + ')
+                      return target.every((n) => names.includes(n))
+                    }
+                    return false
+                  })
                 })
                 .filter((p) => {
                   if (!filterText) return true

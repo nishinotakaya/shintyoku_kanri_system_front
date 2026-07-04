@@ -28,7 +28,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 // 各画面の閲覧権限 (admin は常に全部見れる)。値は users.feature_flags のキー。
-export type FeatureKey = 'attendance' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities'
+export type FeatureKey = 'attendance' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
 type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; feature?: FeatureKey; tabTitle?: string }
 const NAV: NavItem[] = [
   { to: '/', label: 'カレンダー', icon: '📅', feature: 'attendance', tabTitle: 'カレンダー' },
@@ -39,8 +39,8 @@ const NAV: NavItem[] = [
   { to: '/skill-sheets', label: 'スキルシート', icon: '📑', feature: 'skill_sheet', tabTitle: 'スキルシート' },
   { to: '/interview-mindmap', label: 'マインドマップ', icon: '🧠', feature: 'interview_mindmap', tabTitle: 'マインドマップ' },
   { to: '/backlog-activities', label: '対応ログ', icon: '📈', feature: 'backlog_activities', tabTitle: '対応ログ' },
-  { to: '/keihi', label: '経費（レシート）', icon: '🧾', adminOnly: true, tabTitle: '経費' },
-  { to: '/video-studio', label: '動画スタジオ', icon: '🎬', adminOnly: true, tabTitle: '動画スタジオ' },
+  { to: '/keihi', label: '経費計上', icon: '🧾', feature: 'keihi', tabTitle: '経費計上' },
+  { to: '/video-studio', label: '動画スタジオ', icon: '🎬', feature: 'video_studio', tabTitle: '動画スタジオ' },
   { to: '/users', label: 'ユーザー一覧', icon: '👥', adminOnly: true, tabTitle: 'ユーザー' },
 ]
 
@@ -354,7 +354,7 @@ export default function App() {
         path="/keihi"
         element={
           <RequireAuth>
-            <RequireFeature adminOnly>
+            <RequireFeature feature="keihi">
               <Layout>
                 <BusinessExpensesPage />
               </Layout>
@@ -430,7 +430,7 @@ export default function App() {
         path="/video-studio"
         element={
           <RequireAuth>
-            <RequireFeature adminOnly>
+            <RequireFeature feature="video_studio">
               <Layout>
                 <VideoStudioPage />
               </Layout>
