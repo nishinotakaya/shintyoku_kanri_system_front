@@ -186,6 +186,7 @@ export default function BusinessExpensesPage() {
   const [freeeMsg, setFreeeMsg] = useState<string | null>(null)
   const [walletRows, setWalletRows] = useState<ImportRow[] | null>(null)
   const [bankTxns, setBankTxns] = useState<BankTxn[]>([])
+  const [freeeOpen, setFreeeOpen] = useState(false)
 
   // 年間(申告)
   const [tax, setTax] = useState<TaxSummary | null>(null)
@@ -375,6 +376,16 @@ export default function BusinessExpensesPage() {
       setFreeeMsg(`登録失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setFreeeBusy(null) }
   }
+  // プライベート(私的支出)印 → 未登録一覧から外す（経費にしない）
+  const markPrivateTxn = async (txn: BankTxn) => {
+    setFreeeBusy(`prv:${txn.id}`)
+    try {
+      await api.post(`/bank_transactions/${txn.id}/mark_private`, { private: true })
+      setBankTxns((prev) => prev.filter((t) => t.id !== txn.id))
+    } catch (e: any) {
+      setFreeeMsg(`失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
   // freeeの「自動で経理」: 未処理明細を取得 → 科目を選んで反映
   const loadWalletTxns = async () => {
     setFreeeBusy('txns'); setFreeeMsg(null)
@@ -405,16 +416,22 @@ export default function BusinessExpensesPage() {
 
   useEffect(() => { loadFreee(); loadBankTxns() }, [])
 
-  // 「確認待ち」警告クリック → 最初の needs_review 経費の月へ遷移して確認モーダルを開く
+  // 「確認待ち」警告クリック → 確認モーダルを開く（ページ遷移せずモーダルで順に確認）
   const openFirstNeedsReview = async () => {
     try {
       const r = await api.get<{ expenses: BusinessExpense[] }>('/business_expenses', { params: { status: 'needs_review' } })
-      const target = r.data.expenses[0]
-      if (!target) return
-      if (target.expense_date) setMonth(target.expense_date.slice(0, 7))
-      setView('month')
-      setEditing(target)
+      if (r.data.expenses[0]) setEditing(r.data.expenses[0])
     } catch { /* noop */ }
+  }
+  // 確認して保存 → 次の未確認経費をモーダルに出す（無ければ閉じる）。ページは移動しない。
+  const saveAndAdvanceReview = async () => {
+    const currentId = editing?.id
+    await saveEditing({ keepModal: true })
+    try {
+      const r = await api.get<{ expenses: BusinessExpense[] }>('/business_expenses', { params: { status: 'needs_review' } })
+      const next = r.data.expenses.find((e) => e.id !== currentId)
+      if (next) { setEditing(next) } else { setEditing(null); setMsg('✅ 確認待ちの経費はすべて確認しました'); if (view === 'year') void loadTax() }
+    } catch { setEditing(null) }
   }
 
   // 編集モーダルのレシート画像 (JWT付きのため blob 経由)
@@ -619,19 +636,21 @@ export default function BusinessExpensesPage() {
             </div>
           </div>
 
-          {/* ============ freee 連携パネル ============ */}
+          {/* ============ freee 連携パネル（アコーディオン） ============ */}
           <div className="overflow-hidden rounded-2xl border border-[#2864f0]/25 bg-gradient-to-br from-[#eef4ff] to-white shadow-sm">
-            <div className="flex items-center justify-between gap-2 border-b border-[#2864f0]/15 bg-white/60 px-4 py-2.5">
+            <button onClick={() => setFreeeOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 border-b border-[#2864f0]/15 bg-white/60 px-4 py-2.5 text-left">
               <div className="flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2864f0] text-xs font-black text-white">f</span>
                 <span className="text-sm font-bold text-[#1a3a7a]">freee 連携</span>
                 {freee?.connected
                   ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">● 接続中</span>
                   : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">未接続</span>}
+                {!freeeOpen && bankTxns.length > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">未登録 {bankTxns.length}</span>}
               </div>
-              {freee?.connected && freee.identity && <span className="hidden truncate text-[10px] text-[var(--color-text-sub)] sm:block">{freee.identity}</span>}
-            </div>
+              <span className="text-xs text-[var(--color-text-sub)]">{freeeOpen ? '▲ 閉じる' : '▼ 開く'}</span>
+            </button>
 
+            {freeeOpen && (
             <div className="space-y-3 p-4">
               {!freee?.connected ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -688,8 +707,13 @@ export default function BusinessExpensesPage() {
                         <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{yen(t.amount)}</span>
                         <button onClick={() => registerBankTxn(t)} disabled={!!freeeBusy}
                           className="shrink-0 rounded bg-[#2864f0] px-2 py-0.5 text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                          title={t.suggested_account_item ? `${t.suggested_account_item} として登録` : '登録'}>
-                          {freeeBusy === `reg:${t.id}` ? '…' : '登録'}
+                          title={t.suggested_account_item ? `${t.suggested_account_item} として事業経費で登録` : '事業経費で登録'}>
+                          {freeeBusy === `reg:${t.id}` ? '…' : '事業で登録'}
+                        </button>
+                        <button onClick={() => markPrivateTxn(t)} disabled={!!freeeBusy}
+                          className="shrink-0 rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                          title="プライベート(私的支出)にして一覧から外す">
+                          {freeeBusy === `prv:${t.id}` ? '…' : 'プライベート'}
                         </button>
                       </div>
                     ))}
@@ -697,6 +721,7 @@ export default function BusinessExpensesPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {tax && (
@@ -995,7 +1020,9 @@ export default function BusinessExpensesPage() {
               ) : (
                 <>
                   <button onClick={removeEditing} className="rounded-md border border-red-200 px-3 py-2 text-xs text-red-500 hover:bg-red-50">🗑 削除</button>
-                  <button onClick={() => saveEditing()} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 確認して保存</button>
+                  {editing.status === 'needs_review'
+                    ? <button onClick={saveAndAdvanceReview} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 確認して次へ</button>
+                    : <button onClick={() => saveEditing()} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 保存</button>}
                 </>
               )}
             </div>
