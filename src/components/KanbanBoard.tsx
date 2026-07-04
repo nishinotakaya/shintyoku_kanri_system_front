@@ -342,7 +342,7 @@ export default function KanbanBoard({
       <div className="sticky top-[57px] z-10 bg-[var(--color-bg)] py-3 -mx-1 px-1 mb-1 flex items-center gap-3">
         <button
           onClick={() => setViewMode('board')}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+          className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
             viewMode === 'board' ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)]'
           }`}
         >
@@ -350,7 +350,7 @@ export default function KanbanBoard({
         </button>
         <button
           onClick={() => setViewMode('tab')}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+          className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
             viewMode === 'tab' ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)]'
           }`}
         >
