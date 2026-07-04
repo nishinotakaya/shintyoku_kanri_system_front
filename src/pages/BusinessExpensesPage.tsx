@@ -54,12 +54,22 @@ type TaxSummary = {
     sales_tax: number
     purchase_tax: number
     special20_payment: number
+    special_rate_percent?: number // 20=2割特例(〜2026年分) / 30=3割特例(2027・2028年分)
+    special_label?: string
     general_estimate: number
     recommended: 'special20' | 'general'
   }
   income_items: { month: number; user_name: string | null; category: string; total: number; source: 'own' | 'subcontract'; note: string | null }[]
 }
 type TaxAdvice = { advice: { title: string; detail: string }[]; summary_note: string }
+type FreeeSetting = {
+  connected: boolean
+  identity: string | null
+  company_id: string | null
+  last_connected_at: string | null
+  status: string | null
+  last_error: string | null
+}
 type FixedAsset = {
   id: number
   name: string
@@ -115,6 +125,13 @@ export default function BusinessExpensesPage() {
   // CSV取込
   const [importRows, setImportRows] = useState<ImportRow[] | null>(null)
   const [importing, setImporting] = useState(false)
+
+  // freee連携（接続状態 / 経費取込 / 口座同期 / 自動で経理）
+  const [freee, setFreee] = useState<FreeeSetting | null>(null)
+  const [freeeForm, setFreeeForm] = useState({ identity: '', password: '' })
+  const [freeeBusy, setFreeeBusy] = useState<string | null>(null) // 'connect'|'import'|'sync'|'txns'
+  const [freeeMsg, setFreeeMsg] = useState<string | null>(null)
+  const [walletRows, setWalletRows] = useState<ImportRow[] | null>(null)
 
   // 年間(申告)
   const [tax, setTax] = useState<TaxSummary | null>(null)
@@ -247,6 +264,73 @@ export default function BusinessExpensesPage() {
       setMsg(`取込失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setImporting(false) }
   }
+
+  // ============ freee連携 ============
+  const loadFreee = async () => {
+    try { setFreee((await api.get<FreeeSetting>('/freee/setting')).data) } catch { /* noop */ }
+  }
+  const connectFreee = async () => {
+    if (!freeeForm.identity || !freeeForm.password) { setFreeeMsg('メールとパスワードを入力してください'); return }
+    setFreeeBusy('connect'); setFreeeMsg(null)
+    try {
+      const r = await api.post<{ success: boolean; message?: string; error?: string }>('/freee/connect', freeeForm)
+      setFreeeMsg(r.data.message ?? '接続しました')
+      setFreeeForm({ identity: freeeForm.identity, password: '' })
+      await loadFreee()
+    } catch (e: any) {
+      setFreeeMsg(`接続失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
+  const importFreee = async () => {
+    setFreeeBusy('import'); setFreeeMsg(null)
+    try {
+      const r = await api.post<{ imported: number; skipped_duplicate: number; skipped_non_expense: number; by_month: Record<string, { count: number; amount: number }> }>(
+        '/business_expenses/import_freee', { start_date: `${year - 1}-01-01`, end_date: `${year}-12-31` })
+      setFreeeMsg(`✅ freeeから ${r.data.imported}件を取込（重複${r.data.skipped_duplicate} / 非経費${r.data.skipped_non_expense}件除外）`)
+      await Promise.all([load(), loadTax()])
+    } catch (e: any) {
+      setFreeeMsg(`取込失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
+  const syncFreeeBanks = async () => {
+    setFreeeBusy('sync'); setFreeeMsg(null)
+    try {
+      const r = await api.post<{ results: { name: string; type: string; ok: boolean }[] }>('/business_expenses/sync_freee_banks', {})
+      const ok = r.data.results.filter((x) => x.ok).length
+      setFreeeMsg(`🔄 ${ok}/${r.data.results.length} 口座を同期しました（反映に数分かかります）`)
+    } catch (e: any) {
+      setFreeeMsg(`同期失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
+  // freeeの「自動で経理」: 未処理明細を取得 → 科目を選んで反映
+  const loadWalletTxns = async () => {
+    setFreeeBusy('txns'); setFreeeMsg(null)
+    try {
+      const r = await api.get<{ rows: ImportRow[] }>('/business_expenses/freee_wallet_txns', { params: { start_date: `${year}-01-01`, end_date: `${year}-12-31` } })
+      setWalletRows(r.data.rows.map((row) => ({ ...row, checked: !row.duplicate })))
+      if (r.data.rows.length === 0) setFreeeMsg('未処理の明細はありません（すべて取引登録済み）')
+    } catch (e: any) {
+      setFreeeMsg(`明細取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
+  const commitWalletTxns = async () => {
+    if (!walletRows) return
+    const rows = walletRows.filter((r) => r.checked && !r.duplicate)
+    if (rows.length === 0) { setWalletRows(null); return }
+    setFreeeBusy('txns')
+    try {
+      const r = await api.post<{ imported: number; skipped: number }>('/business_expenses/import_commit', {
+        rows: rows.map((row) => ({ date: row.date, description: row.description, amount: row.amount, account_category: row.account_category, memo: row.memo, import_hash: row.import_hash })),
+      })
+      setWalletRows(null)
+      setFreeeMsg(`✅ ${r.data.imported}件を経費に反映しました`)
+      await Promise.all([load(), loadTax()])
+    } catch (e: any) {
+      setFreeeMsg(`反映失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
+
+  useEffect(() => { loadFreee() }, [])
 
   // 編集モーダルのレシート画像 (JWT付きのため blob 経由)
   useEffect(() => {
@@ -423,13 +507,13 @@ export default function BusinessExpensesPage() {
       {/* ============ 年間（申告）ビュー ============ */}
       {view === 'year' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-1 py-0.5">
               <button onClick={() => setYear((y) => y - 1)} className="px-2 text-[var(--color-text-sub)]">‹</button>
               <span className="text-sm font-semibold tabular-nums">{year}年分</span>
               <button onClick={() => setYear((y) => y + 1)} className="px-2 text-[var(--color-text-sub)]">›</button>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-1 flex-wrap items-center gap-1.5">
               <select value={deduction} onChange={(e) => setDeduction(Number(e.target.value))}
                 className="rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-xs text-[var(--color-text-sub)]" title="青色申告特別控除額">
                 <option value={650000}>控除65万</option>
@@ -444,15 +528,69 @@ export default function BusinessExpensesPage() {
             </div>
           </div>
 
+          {/* ============ freee 連携パネル ============ */}
+          <div className="overflow-hidden rounded-2xl border border-[#2864f0]/25 bg-gradient-to-br from-[#eef4ff] to-white shadow-sm">
+            <div className="flex items-center justify-between gap-2 border-b border-[#2864f0]/15 bg-white/60 px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#2864f0] text-xs font-black text-white">f</span>
+                <span className="text-sm font-bold text-[#1a3a7a]">freee 連携</span>
+                {freee?.connected
+                  ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">● 接続中</span>
+                  : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">未接続</span>}
+              </div>
+              {freee?.connected && freee.identity && <span className="hidden truncate text-[10px] text-[var(--color-text-sub)] sm:block">{freee.identity}</span>}
+            </div>
+
+            <div className="space-y-3 p-4">
+              {!freee?.connected ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-[var(--color-text-sub)]">freeeメールアドレス</label>
+                    <input value={freeeForm.identity} onChange={(e) => setFreeeForm((f) => ({ ...f, identity: e.target.value }))}
+                      className="mt-0.5 w-full rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-xs" placeholder="you@example.com" autoComplete="username" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-[var(--color-text-sub)]">パスワード</label>
+                    <input type="password" value={freeeForm.password} onChange={(e) => setFreeeForm((f) => ({ ...f, password: e.target.value }))}
+                      className="mt-0.5 w-full rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-xs" placeholder="••••••••" autoComplete="current-password" />
+                  </div>
+                  <button onClick={connectFreee} disabled={freeeBusy === 'connect'}
+                    className="rounded-lg bg-[#2864f0] px-4 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50">
+                    {freeeBusy === 'connect' ? '接続中…' : '接続する'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={importFreee} disabled={!!freeeBusy}
+                    className="rounded-lg bg-gradient-to-r from-[#2864f0] to-[#4b7bff] px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50"
+                    title="freeeに登録済みの経費(取引)を勘定科目付きで一括取込">
+                    {freeeBusy === 'import' ? '取込中…' : '📥 freee経費を取込'}
+                  </button>
+                  <button onClick={loadWalletTxns} disabled={!!freeeBusy}
+                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#1a3a7a] shadow-sm ring-1 ring-[#2864f0]/30 hover:bg-[#eef4ff] disabled:opacity-50"
+                    title="銀行・カードの未処理明細に科目を割り当てて反映（freeeの「自動で経理」相当）">
+                    {freeeBusy === 'txns' ? '取得中…' : '🧾 自動で経理（未処理明細）'}
+                  </button>
+                  <button onClick={syncFreeeBanks} disabled={!!freeeBusy}
+                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#1a3a7a] shadow-sm ring-1 ring-[#2864f0]/30 hover:bg-[#eef4ff] disabled:opacity-50"
+                    title="連携済みの全口座(銀行+VISA/カード)を金融機関と同期して最新明細を取り込む">
+                    {freeeBusy === 'sync' ? '同期中…' : '🔄 口座を同期'}
+                  </button>
+                </div>
+              )}
+              {freeeMsg && <div className="rounded-lg bg-white/70 px-3 py-1.5 text-[11px] text-[#1a3a7a]">{freeeMsg}</div>}
+            </div>
+          </div>
+
           {tax && (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <button onClick={() => setShowIncomeDetail(true)} className="rounded-xl border border-[var(--color-border)] bg-white p-3 text-left transition hover:border-sky-300 hover:shadow" title="クリックで請求書の内訳を表示">
-                  <div className="text-[10px] text-[var(--color-text-sub)]">売上（承認済請求書）<span className="ml-1 text-sky-500">›</span></div>
-                  <div className="mt-0.5 text-base font-bold tabular-nums text-sky-700">{yen(tax.income_total)}</div>
+                <button onClick={() => setShowIncomeDetail(true)} className="rounded-xl border border-[var(--color-border)] bg-white p-2.5 sm:p-3 text-left transition hover:border-sky-300 hover:shadow" title="クリックで請求書の内訳を表示">
+                  <div className="truncate text-[10px] text-[var(--color-text-sub)]">売上<span className="hidden sm:inline">（承認済請求書）</span><span className="ml-1 text-sky-500">›</span></div>
+                  <div className="mt-0.5 whitespace-nowrap text-sm sm:text-base font-bold tabular-nums text-sky-700">{yen(tax.income_total)}</div>
                 </button>
-                <div className="rounded-xl border border-[var(--color-border)] bg-white p-3"><div className="text-[10px] text-[var(--color-text-sub)]">経費（減価償却込）</div><div className="mt-0.5 text-base font-bold tabular-nums text-rose-600">{yen(tax.expense_total)}</div></div>
-                <div className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-500 p-3 text-white"><div className="text-[10px] opacity-90">差引金額（所得）</div><div className="mt-0.5 text-base font-bold tabular-nums">{yen(tax.profit)}</div></div>
+                <div className="rounded-xl border border-[var(--color-border)] bg-white p-2.5 sm:p-3"><div className="truncate text-[10px] text-[var(--color-text-sub)]">経費<span className="hidden sm:inline">（減価償却込）</span></div><div className="mt-0.5 whitespace-nowrap text-sm sm:text-base font-bold tabular-nums text-rose-600">{yen(tax.expense_total)}</div></div>
+                <div className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-500 p-2.5 sm:p-3 text-white"><div className="truncate text-[10px] opacity-90">所得<span className="hidden sm:inline">（差引金額）</span></div><div className="mt-0.5 whitespace-nowrap text-sm sm:text-base font-bold tabular-nums">{yen(tax.profit)}</div></div>
               </div>
               {tax.needs_review_count > 0 && (
                 <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠️ AI読取の確認待ち経費が {tax.needs_review_count} 件あります（月次ビューで確認してください）</div>
@@ -465,7 +603,7 @@ export default function BusinessExpensesPage() {
                   <div className="rounded-lg bg-gray-50 p-2"><div className="text-[10px] text-[var(--color-text-sub)]">課税売上（税込）</div><div className="font-bold tabular-nums">{yen(tax.consumption_tax.taxable_sales)}</div></div>
                   <div className="rounded-lg bg-gray-50 p-2"><div className="text-[10px] text-[var(--color-text-sub)]">売上に含まれる消費税</div><div className="font-bold tabular-nums">{yen(tax.consumption_tax.sales_tax)}</div></div>
                   <div className={`rounded-lg p-2 ${tax.consumption_tax.recommended === 'special20' ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'bg-gray-50'}`}>
-                    <div className="text-[10px] text-[var(--color-text-sub)]">2割特例の納税見込み {tax.consumption_tax.recommended === 'special20' && <span className="rounded bg-emerald-500 px-1 text-[9px] text-white">有利</span>}</div>
+                    <div className="text-[10px] text-[var(--color-text-sub)]">{tax.consumption_tax.special_label ?? '2割特例'}の納税見込み {tax.consumption_tax.recommended === 'special20' && <span className="rounded bg-emerald-500 px-1 text-[9px] text-white">有利</span>}</div>
                     <div className="font-bold tabular-nums text-emerald-700">{yen(tax.consumption_tax.special20_payment)}</div>
                   </div>
                   <div className={`rounded-lg p-2 ${tax.consumption_tax.recommended === 'general' ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'bg-gray-50'}`}>
@@ -475,8 +613,8 @@ export default function BusinessExpensesPage() {
                 </div>
                 <div className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] leading-relaxed text-sky-900">
                   📌 <b>あなたは適格請求書発行事業者（課税事業者）なので消費税の申告・納税が必要です。</b><br />
-                  ・「<b>2割特例</b>」= 売上の消費税額の2割だけ納める制度。事前届出不要で申告時に選べます。<b>個人事業主は2026年分（来年3月申告）が最後の適用</b>です。<br />
-                  ・<b>2027年分からは「3割特例」という制度はありません。</b>「簡易課税」（サービス業＝第5種・売上税額の実質50%納付、要届出）か「一般課税」を選ぶことになります。<br />
+                  ・「<b>2割特例</b>」= 売上の消費税額の2割だけ納める制度。事前届出不要で申告時に選べます。<b>2026年分（令和8年分）までの適用</b>です。<br />
+                  ・<b>2027・2028年分（令和9・10年分）は個人事業者限定で「3割特例」に延長</b>（2026年度税制改正）。納付は売上税額の3割になり、事前届出不要なのは同じです。2029年分以降は「簡易課税」（サービス業＝第5種・売上税額の実質50%納付、要届出）か「一般課税」を選ぶことになります。<br />
                   ・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。<b>パートナーは免税事業者（インボイス未登録）のため、一般課税での外注費の仕入税額控除は80%（経過措置・〜2026/9）で計算しています</b>。2026/10以降は50%に下がるため、一般課税を選ぶ場合は不利になります。
                 </div>
               </div>
@@ -507,12 +645,14 @@ export default function BusinessExpensesPage() {
 
               <div className="rounded-xl border border-[var(--color-border)] bg-white p-3">
                 <div className="mb-2 text-xs font-semibold text-[var(--color-text-sub)]">勘定科目別（家事按分後・年間）</div>
-                {tax.by_category.map((c) => (
-                  <div key={c.category} className="flex items-center justify-between border-b border-gray-50 py-1 text-sm last:border-b-0">
-                    <span>{CAT_ICON[c.category] ?? '🧾'} {c.category} <span className="text-[10px] text-[var(--color-text-sub)]">({c.count}件)</span></span>
-                    <span className="tabular-nums font-medium">{yen(c.total)}</span>
-                  </div>
-                ))}
+                <div className="lg:grid lg:grid-cols-2 lg:gap-x-8">
+                  {tax.by_category.map((c) => (
+                    <div key={c.category} className="flex items-center justify-between border-b border-gray-50 py-1 text-sm">
+                      <span>{CAT_ICON[c.category] ?? '🧾'} {c.category} <span className="text-[10px] text-[var(--color-text-sub)]">({c.count}件)</span></span>
+                      <span className="tabular-nums font-medium">{yen(c.total)}</span>
+                    </div>
+                  ))}
+                </div>
                 {tax.by_category.length === 0 && <div className="py-2 text-xs text-[var(--color-text-sub)]">経費データがありません</div>}
               </div>
 
@@ -618,6 +758,42 @@ export default function BusinessExpensesPage() {
               <span className="text-xs text-[var(--color-text-sub)]">選択 {importRows.filter((r) => r.checked && !r.duplicate).length} / {importRows.length} 件</span>
               <button onClick={commitImport} disabled={importing} className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50">
                 {importing ? '取込中…' : '✓ 選択した行を取り込む'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* freee「自動で経理」: 未処理明細モーダル */}
+      {walletRows && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 md:p-3" onClick={() => setWalletRows(null)}>
+          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-2xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center justify-between">
+              <div className="text-sm font-bold text-[#1a3a7a]">🧾 自動で経理（freee 未処理明細）</div>
+              <button onClick={() => setWalletRows(null)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+            </div>
+            <div className="mb-2 text-[11px] text-[var(--color-text-sub)]">銀行・カードの未登録の明細です。freeeの推奨科目が入っています。科目を確認・変更して、チェックした行を経費に反映します。</div>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--color-border)]">
+              {walletRows.map((row, i) => (
+                <div key={row.import_hash} className={`flex items-center gap-2 border-b border-gray-50 px-2 py-1.5 text-xs last:border-b-0 ${row.duplicate ? 'opacity-40' : ''}`}>
+                  <input type="checkbox" checked={!!row.checked && !row.duplicate} disabled={row.duplicate}
+                    onChange={(e) => setWalletRows((prev) => prev!.map((r, idx) => (idx === i ? { ...r, checked: e.target.checked } : r)))} />
+                  <span className="w-16 shrink-0 tabular-nums text-[var(--color-text-sub)]">{row.date?.slice(5)}</span>
+                  <span className="min-w-0 flex-1 truncate" title={row.description}>{row.description}{row.duplicate && <span className="ml-1 rounded bg-gray-200 px-1 text-[9px]">取込済</span>}</span>
+                  <select value={row.account_category ?? ''} disabled={row.duplicate}
+                    onChange={(e) => setWalletRows((prev) => prev!.map((r, idx) => (idx === i ? { ...r, account_category: e.target.value || null } : r)))}
+                    className="w-28 shrink-0 rounded border border-[var(--color-border)] bg-white px-1 py-0.5 text-[11px]">
+                    <option value="">未分類</option>
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <span className="w-20 shrink-0 text-right font-semibold tabular-nums">{yen(row.amount)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-xs text-[var(--color-text-sub)]">選択 {walletRows.filter((r) => r.checked && !r.duplicate).length} / {walletRows.length} 件</span>
+              <button onClick={commitWalletTxns} disabled={freeeBusy === 'txns'} className="rounded-md bg-gradient-to-r from-[#2864f0] to-[#4b7bff] px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50">
+                {freeeBusy === 'txns' ? '反映中…' : '✓ 選択した明細を反映'}
               </button>
             </div>
           </div>
