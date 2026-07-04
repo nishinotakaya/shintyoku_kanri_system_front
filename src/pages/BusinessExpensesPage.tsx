@@ -74,6 +74,16 @@ type FreeeSetting = {
   status: string | null
   last_error: string | null
 }
+type BankTxn = {
+  id: number
+  txn_date: string | null
+  amount: number
+  description: string | null
+  walletable_name: string | null
+  payment_method: 'bank' | 'credit_card' | null
+  suggested_account_item: string | null
+  registered: boolean
+}
 type FixedAsset = {
   id: number
   name: string
@@ -175,6 +185,7 @@ export default function BusinessExpensesPage() {
   const [freeeBusy, setFreeeBusy] = useState<string | null>(null) // 'connect'|'import'|'sync'|'txns'
   const [freeeMsg, setFreeeMsg] = useState<string | null>(null)
   const [walletRows, setWalletRows] = useState<ImportRow[] | null>(null)
+  const [bankTxns, setBankTxns] = useState<BankTxn[]>([])
 
   // 年間(申告)
   const [tax, setTax] = useState<TaxSummary | null>(null)
@@ -338,11 +349,30 @@ export default function BusinessExpensesPage() {
   const syncFreeeBanks = async () => {
     setFreeeBusy('sync'); setFreeeMsg(null)
     try {
-      const r = await api.post<{ results: { name: string; type: string; ok: boolean }[] }>('/business_expenses/sync_freee_banks', {})
-      const ok = r.data.results.filter((x) => x.ok).length
-      setFreeeMsg(`🔄 ${ok}/${r.data.results.length} 口座を同期しました（反映に数分かかります）`)
+      // freeeへ同期(口座→freee) + wallet_txnsをこっちのDBへ取込
+      const r = await api.post<{ accounts: { name: string; ok: boolean }[]; synced: number; unregistered_count: number }>('/bank_transactions/sync', {})
+      const ok = r.data.accounts.filter((x) => x.ok).length
+      setFreeeMsg(`🔄 ${ok}/${r.data.accounts.length} 口座を同期し、明細 ${r.data.synced} 件を取込（未登録 ${r.data.unregistered_count} 件）`)
+      await loadBankTxns()
     } catch (e: any) {
       setFreeeMsg(`同期失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setFreeeBusy(null) }
+  }
+  // 口座明細台帳（未登録を表示）
+  const loadBankTxns = async () => {
+    try {
+      const r = await api.get<{ transactions: BankTxn[]; unregistered_count: number }>('/bank_transactions', { params: { registered: false } })
+      setBankTxns(r.data.transactions)
+    } catch { /* noop */ }
+  }
+  const registerBankTxn = async (txn: BankTxn) => {
+    setFreeeBusy(`reg:${txn.id}`)
+    try {
+      await api.post(`/bank_transactions/${txn.id}/register`, { account_category: txn.suggested_account_item })
+      setBankTxns((prev) => prev.filter((t) => t.id !== txn.id))
+      await Promise.all([load(), loadTax()])
+    } catch (e: any) {
+      setFreeeMsg(`登録失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setFreeeBusy(null) }
   }
   // freeeの「自動で経理」: 未処理明細を取得 → 科目を選んで反映
@@ -373,7 +403,7 @@ export default function BusinessExpensesPage() {
     } finally { setFreeeBusy(null) }
   }
 
-  useEffect(() => { loadFreee() }, [])
+  useEffect(() => { loadFreee(); loadBankTxns() }, [])
 
   // 編集モーダルのレシート画像 (JWT付きのため blob 経由)
   useEffect(() => {
@@ -460,7 +490,7 @@ export default function BusinessExpensesPage() {
         <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-[var(--color-text-sub)]">
           <span>{it.expense_date ?? '日付なし'} ・ {it.account_category ?? '未分類'}{it.business_ratio < 100 ? ` ・ 按分${it.business_ratio}%` : ''}</span>
           <PaymentBadge method={it.payment_method} source={it.payment_source} />
-          {!it.freee_synced && <span className="rounded bg-fuchsia-50 px-1 py-0.5 text-[9px] font-semibold text-fuchsia-600 ring-1 ring-fuchsia-200" title="このシステムで登録（freee未連携）">🆕 こっち登録</span>}
+          {!it.freee_synced && <span className="rounded bg-fuchsia-50 px-1 py-0.5 text-[9px] font-semibold text-fuchsia-600 ring-1 ring-fuchsia-200" title="このアプリだけに登録されている経費（freeeに取引未登録）">freee未連携</span>}
         </span>
       </span>
       <span className="text-right">
@@ -471,7 +501,7 @@ export default function BusinessExpensesPage() {
   )
 
   return (
-    <div className="mx-auto max-w-2xl pb-24"
+    <div className="mx-auto max-w-4xl pb-24"
       onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
@@ -628,6 +658,32 @@ export default function BusinessExpensesPage() {
                 </div>
               )}
               {freeeMsg && <div className="rounded-lg bg-white/70 px-3 py-1.5 text-[11px] text-[#1a3a7a]">{freeeMsg}</div>}
+
+              {/* 口座明細台帳: 未登録の明細（freeeと同じく登録できる） */}
+              {bankTxns.length > 0 && (
+                <div className="rounded-xl border border-[#2864f0]/20 bg-white/70">
+                  <div className="flex items-center justify-between border-b border-[#2864f0]/10 px-3 py-1.5">
+                    <span className="text-xs font-bold text-[#1a3a7a]">🧾 口座・カードの未登録明細 <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">{bankTxns.length}件</span></span>
+                    <span className="text-[10px] text-[var(--color-text-sub)]">「登録」で経費計上します</span>
+                  </div>
+                  <div className="max-h-72 divide-y divide-gray-50 overflow-y-auto">
+                    {bankTxns.map((t) => (
+                      <div key={t.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                        <span className="w-14 shrink-0 tabular-nums text-[var(--color-text-sub)]">{t.txn_date?.slice(5)}</span>
+                        <span className="min-w-0 flex-1 truncate" title={t.description ?? ''}>{t.description || '（摘要なし）'}</span>
+                        <span className="shrink-0 rounded bg-gray-50 px-1 py-0.5 text-[9px] text-gray-500 ring-1 ring-gray-200">{t.payment_method === 'credit_card' ? '💳' : '🏦'} {t.walletable_name?.replace(/（.*/, '').slice(0, 10)}</span>
+                        <span className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-semibold text-amber-600 ring-1 ring-amber-200">未登録</span>
+                        <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{yen(t.amount)}</span>
+                        <button onClick={() => registerBankTxn(t)} disabled={!!freeeBusy}
+                          className="shrink-0 rounded bg-[#2864f0] px-2 py-0.5 text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                          title={t.suggested_account_item ? `${t.suggested_account_item} として登録` : '登録'}>
+                          {freeeBusy === `reg:${t.id}` ? '…' : '登録'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
