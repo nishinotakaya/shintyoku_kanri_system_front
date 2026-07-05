@@ -7,9 +7,9 @@ import type { GraphNode } from './types'
 // 編集中の下書きテキストは NodeEditArea 内で持つ（親は「どのノードが編集中か」だけ管理）。
 
 // 編集欄。編集開始時にマウントされ、その時点のテキストで下書きを初期化する。
-function NodeEditArea({ initialText, boxH, onCommit, onCancel }: {
+// 長文を書きやすいよう広め（最低6行）。Shift+Enter=改行 / Enter=保存 / Esc=キャンセル。
+function NodeEditArea({ initialText, onCommit, onCancel }: {
   initialText: string
-  boxH: number
   onCommit: (text: string) => void
   onCancel: () => void
 }) {
@@ -24,8 +24,8 @@ function NodeEditArea({ initialText, boxH, onCommit, onCancel }: {
         if (event.key === 'Escape') { event.preventDefault(); onCancel() }
       }}
       className="w-full resize-none bg-transparent outline-none"
-      style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 1.35, minHeight: boxH - 12 }}
-      rows={Math.max(1, draft.split('\n').length)} />
+      style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 1.5, minHeight: 130 }}
+      rows={Math.max(6, draft.split('\n').length + 1)} />
   )
 }
 
@@ -63,30 +63,36 @@ export default function GraphNodeBox({
   expandDisabled, expandingThis, showExpandButton,
   onClick, onDoubleClick, onCommitEdit, onCancelEdit, onToggleCollapse, onExpand,
 }: Props) {
-  const full = editing || focused // 全文表示（クリックで拡大 or 編集中）
+  // カーソルを当てるだけで拡大（全文表示＋ズーム）。クリックで固定（スマホ用）、ダブルクリックで編集。
+  const [hovered, setHovered] = useState(false)
+  const full = editing || focused || hovered // 全文表示（ホバー/クリック固定/編集中）
+  const enlarged = !editing && (focused || hovered)
 
   return (
     <div
       data-node
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       title={node.text || undefined}
-      className={`absolute rounded-xl border px-3 shadow-sm cursor-pointer hover:shadow-md ${KIND_STYLE[node.kind] || KIND_STYLE.answer} ${editing ? 'ring-2 ring-fuchsia-400' : focused ? 'ring-2 ring-amber-400 shadow-lg' : ''}`}
+      className={`absolute rounded-xl border px-3 shadow-sm cursor-pointer hover:shadow-md ${KIND_STYLE[node.kind] || KIND_STYLE.answer} ${editing ? 'ring-2 ring-fuchsia-400' : focused ? 'ring-2 ring-amber-400 shadow-lg' : hovered ? 'ring-2 ring-amber-300 shadow-lg' : ''}`}
       style={{
-        left: x, top: y, width: boxW, minHeight: boxH,
+        // 編集中はテキストエリアが広く使えるようにボックス自体を大きくする
+        left: x, top: y, width: editing ? Math.max(boxW * 1.8, 360) : boxW, minHeight: editing ? 150 : boxH,
         display: 'flex', alignItems: 'center',
         fontSize: videoMode ? 16 : 12, lineHeight: 1.35, paddingTop: 6, paddingBottom: 6,
         borderLeftWidth: accent ? 4 : undefined,
         borderLeftColor: accent,
         overflow: full ? 'visible' : 'hidden',
         opacity: visible ? 1 : 0,
-        transform: !visible ? 'translateY(6px)' : (focused ? 'scale(1.35)' : 'none'),
+        transform: !visible ? 'translateY(6px)' : (enlarged ? 'scale(1.35)' : 'none'),
         transformOrigin: 'left center',
         transition: 'opacity .4s, transform .25s',
-        zIndex: editing ? 30 : focused ? 25 : 1,
+        zIndex: editing ? 30 : focused ? 25 : hovered ? 20 : 1,
       }}>
       {editing ? (
-        <NodeEditArea initialText={node.text} boxH={boxH} onCommit={onCommitEdit} onCancel={onCancelEdit} />
+        <NodeEditArea initialText={node.text} onCommit={onCommitEdit} onCancel={onCancelEdit} />
       ) : (
         <span className={`whitespace-pre-wrap break-words ${full ? '' : 'line-clamp-3'}`}>{node.text ? breakBySentence(node.text) : (node.kind === 'root' ? '起点' : '（空）')}</span>
       )}

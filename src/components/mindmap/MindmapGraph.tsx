@@ -158,7 +158,7 @@ export default function MindmapGraph({ nodes, videoMode = false, onEditText, onE
           <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded border border-sky-300 bg-sky-50" />質問</span>
           <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded border border-indigo-300 bg-indigo-50" />深掘り</span>
           <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded border border-[var(--color-border)] bg-white" />回答</span>
-          <span className="hidden sm:inline">クリック=拡大 / ダブルクリック=編集</span>
+          <span className="hidden sm:inline">カーソルで拡大 / ダブルクリック=編集</span>
         </span>
       </div>
       <div className={`relative ${fullscreen ? 'flex-1 min-h-0' : ''}`}>
