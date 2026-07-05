@@ -8,7 +8,7 @@ import type { GraphNode } from './types'
 // 編集中の下書きテキストは NodeEditArea 内で持つ（親は「どのノードが編集中か」だけ管理）。
 
 // 編集欄。編集開始時にマウントされ、その時点のテキストで下書きを初期化する。
-// 内容に合わせて自動で伸びる（折り返しでも切れない）。Shift+Enter=改行 / Enter=保存 / Esc=キャンセル。
+// 内容に合わせて自動で伸びる（折り返しでも切れない）。Shift+Enter=改行 / Enter or 保存=保存 / Esc=キャンセル。
 function NodeEditArea({ initialText, onCommit, onCancel }: {
   initialText: string
   onCommit: (text: string) => void
@@ -16,16 +16,23 @@ function NodeEditArea({ initialText, onCommit, onCancel }: {
 }) {
   const [draft, setDraft] = useState(initialText)
   return (
-    <AutoGrowTextarea autoFocus value={draft} minRows={4}
-      onClick={(event) => event.stopPropagation()}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => onCommit(draft)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onCommit(draft) }
-        if (event.key === 'Escape') { event.preventDefault(); onCancel() }
-      }}
-      className="w-full bg-transparent outline-none"
-      style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 1.5, minHeight: 100 }} />
+    <div className="w-full" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+      <AutoGrowTextarea autoFocus value={draft} minRows={4}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onCommit(draft) }
+          if (event.key === 'Escape') { event.preventDefault(); onCancel() }
+        }}
+        className="w-full bg-transparent outline-none"
+        style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 1.5, minHeight: 100 }} />
+      <div className="mt-1 flex items-center gap-1">
+        <button onClick={() => onCommit(draft)}
+          className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white">保存</button>
+        <button onClick={onCancel}
+          className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px] text-[var(--color-text-sub)]">キャンセル</button>
+        <span className="ml-1 text-[9px] text-[var(--color-text-sub)]">Enter=保存 / Shift+Enter=改行</span>
+      </div>
+    </div>
   )
 }
 
@@ -39,7 +46,6 @@ type Props = {
   /** 枝色（root は undefined = アクセントなし） */
   accent?: string
   editing: boolean
-  focused: boolean
   /** 動画モードの順次表示で表示済みか */
   visible: boolean
   kidsCount: number
@@ -49,7 +55,6 @@ type Props = {
   expandDisabled: boolean
   expandingThis: boolean
   showExpandButton: boolean
-  onClick: () => void
   onDoubleClick: () => void
   onCommitEdit: (text: string) => void
   onCancelEdit: () => void
@@ -59,24 +64,23 @@ type Props = {
 
 export default function GraphNodeBox({
   node, x, y, boxW, boxH, videoMode, accent,
-  editing, focused, visible, kidsCount, descendantTotal, collapsed,
+  editing, visible, kidsCount, descendantTotal, collapsed,
   expandDisabled, expandingThis, showExpandButton,
-  onClick, onDoubleClick, onCommitEdit, onCancelEdit, onToggleCollapse, onExpand,
+  onDoubleClick, onCommitEdit, onCancelEdit, onToggleCollapse, onExpand,
 }: Props) {
-  // カーソルを当てるだけで拡大（全文表示＋ズーム）。クリックで固定（スマホ用）、ダブルクリックで編集。
+  // カーソルを当てている間だけ拡大（全文表示＋ズーム）。外すと必ず元に戻る。ダブルクリックで編集。
   const [hovered, setHovered] = useState(false)
-  const full = editing || focused || hovered // 全文表示（ホバー/クリック固定/編集中）
-  const enlarged = !editing && (focused || hovered)
+  const full = editing || hovered // 全文表示（ホバー中 or 編集中）
+  const enlarged = hovered && !editing
 
   return (
     <div
       data-node
-      onClick={onClick}
       onDoubleClick={onDoubleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       title={node.text || undefined}
-      className={`absolute rounded-xl border px-3 shadow-sm cursor-pointer hover:shadow-md ${KIND_STYLE[node.kind] || KIND_STYLE.answer} ${editing ? 'ring-2 ring-fuchsia-400' : focused ? 'ring-2 ring-amber-400 shadow-lg' : hovered ? 'ring-2 ring-amber-300 shadow-lg' : ''}`}
+      className={`absolute rounded-xl border px-3 shadow-sm cursor-pointer hover:shadow-md ${KIND_STYLE[node.kind] || KIND_STYLE.answer} ${editing ? 'ring-2 ring-fuchsia-400' : hovered ? 'ring-2 ring-amber-300 shadow-lg' : ''}`}
       style={{
         // 編集中はテキストエリアが広く使えるようにボックス自体を大きくする
         left: x, top: y, width: editing ? Math.max(boxW * 1.8, 360) : boxW, minHeight: editing ? 150 : boxH,
@@ -89,7 +93,7 @@ export default function GraphNodeBox({
         transform: !visible ? 'translateY(6px)' : (enlarged ? 'scale(1.35)' : 'none'),
         transformOrigin: 'left center',
         transition: 'opacity .4s, transform .25s',
-        zIndex: editing ? 30 : focused ? 25 : hovered ? 20 : 1,
+        zIndex: editing ? 30 : hovered ? 20 : 1,
       }}>
       {editing ? (
         <NodeEditArea initialText={node.text} onCommit={onCommitEdit} onCancel={onCancelEdit} />

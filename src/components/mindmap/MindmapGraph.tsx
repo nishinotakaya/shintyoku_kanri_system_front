@@ -7,7 +7,7 @@ export type { GraphNode } from './types'
 
 // マインドマップの「線で繋ぐ」グラフ表示（横向きツリー＋曲線コネクタ）の指揮者。
 // 配置計算は useGraphLayout、ノード1個の描画は GraphNodeBox に分離。
-// 操作: クリック=拡大トグル、ダブルクリック=編集、動画モードは1つずつ順に展開。
+// 操作: ホバー中だけ拡大、ダブルクリック=編集(保存/キャンセルボタン付き)、動画モードは1つずつ順に展開。
 
 type Props = {
   nodes: GraphNode[]
@@ -19,7 +19,6 @@ type Props = {
 
 export default function MindmapGraph({ nodes, videoMode = false, onEditText, onExpand }: Props) {
   const [editId, setEditId] = useState<number | null>(null)
-  const [focusId, setFocusId] = useState<number | null>(null) // クリックで拡大＝全文表示・強調するノード
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set()) // 折りたたんだ枝
   const [zoom, setZoom] = useState(1)
   const [fullscreen, setFullscreen] = useState(false) // 全画面表示（オーバーレイ）
@@ -87,12 +86,6 @@ export default function MindmapGraph({ nodes, videoMode = false, onEditText, onE
   const commitEdit = async (node: GraphNode, text: string) => {
     setEditId(null)
     if (onEditText && text !== node.text) await onEditText(node, text)
-  }
-
-  const handleClick = (node: GraphNode) => {
-    if (editId === node.id) return
-    // クリックは拡大トグルのみ（同じノードを再クリックで戻す）。音声は🔊ボタンからだけ再生する。
-    setFocusId((current) => (current === node.id ? null : node.id))
   }
 
   // 動画用: 1クリックごとに1つずつ表示（録画しながら手動で展開）。通常モードは全表示。
@@ -190,7 +183,6 @@ export default function MindmapGraph({ nodes, videoMode = false, onEditText, onE
                     videoMode={videoMode}
                     accent={node.kind === 'root' ? undefined : branchColor(node.id)}
                     editing={editId === node.id}
-                    focused={focusId === node.id}
                     visible={shown(node.id)}
                     kidsCount={kids.length}
                     descendantTotal={descendantCount.get(node.id) ?? kids.length}
@@ -198,7 +190,6 @@ export default function MindmapGraph({ nodes, videoMode = false, onEditText, onE
                     expandDisabled={expandingId != null}
                     expandingThis={expandingId === node.id}
                     showExpandButton={!!onExpand && !videoMode}
-                    onClick={() => handleClick(node)}
                     onDoubleClick={() => { if (onEditText) setEditId(node.id) }}
                     onCommitEdit={(text) => void commitEdit(node, text)}
                     onCancelEdit={() => setEditId(null)}

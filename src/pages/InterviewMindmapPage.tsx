@@ -515,7 +515,7 @@ export default function InterviewMindmapPage() {
               <MindmapGraph nodes={map.nodes} videoMode={graphVideo}
                 onEditText={(n, text) => saveNodeText({ checked: false, expanded: false, ...n }, text)}
                 onExpand={(n) => expand({ checked: false, expanded: false, ...n })} />
-              <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">ノード右上の<b>＋でAI展開</b>（子ノードを生成）、右端の−/＋Nで枝の開閉。<b>ダブルクリックで文言を編集</b>、カーソルを当てると拡大表示（クリックで固定）。⛶で全画面、Ctrl(⌘)+スクロールでズーム。「🎬 動画用」で大きく＆1問ずつ順に展開。</div>
+              <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">ノード右上の<b>＋でAI展開</b>（子ノードを生成）、右端の−/＋Nで枝の開閉。<b>ダブルクリックで文言を編集</b>、カーソルを当てている間だけ拡大表示。⛶で全画面、Ctrl(⌘)+スクロールでズーム。「🎬 動画用」で大きく＆1問ずつ順に展開。</div>
             </>
           )}
           </>}
