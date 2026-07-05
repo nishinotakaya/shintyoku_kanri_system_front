@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AutoGrowTextarea from '../AutoGrowTextarea'
 import { breakBySentence } from '../../lib/sentenceBreak'
 import { KIND_STYLE } from './types'
 import type { GraphNode } from './types'
@@ -7,7 +8,7 @@ import type { GraphNode } from './types'
 // 編集中の下書きテキストは NodeEditArea 内で持つ（親は「どのノードが編集中か」だけ管理）。
 
 // 編集欄。編集開始時にマウントされ、その時点のテキストで下書きを初期化する。
-// 長文を書きやすいよう広め（最低6行）。Shift+Enter=改行 / Enter=保存 / Esc=キャンセル。
+// 内容に合わせて自動で伸びる（折り返しでも切れない）。Shift+Enter=改行 / Enter=保存 / Esc=キャンセル。
 function NodeEditArea({ initialText, onCommit, onCancel }: {
   initialText: string
   onCommit: (text: string) => void
@@ -15,7 +16,7 @@ function NodeEditArea({ initialText, onCommit, onCancel }: {
 }) {
   const [draft, setDraft] = useState(initialText)
   return (
-    <textarea autoFocus value={draft}
+    <AutoGrowTextarea autoFocus value={draft} minRows={4}
       onClick={(event) => event.stopPropagation()}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => onCommit(draft)}
@@ -23,9 +24,8 @@ function NodeEditArea({ initialText, onCommit, onCancel }: {
         if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onCommit(draft) }
         if (event.key === 'Escape') { event.preventDefault(); onCancel() }
       }}
-      className="w-full resize-none bg-transparent outline-none"
-      style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 1.5, minHeight: 130 }}
-      rows={Math.max(6, draft.split('\n').length + 1)} />
+      className="w-full bg-transparent outline-none"
+      style={{ color: 'inherit', fontSize: 'inherit', lineHeight: 1.5, minHeight: 100 }} />
   )
 }
 

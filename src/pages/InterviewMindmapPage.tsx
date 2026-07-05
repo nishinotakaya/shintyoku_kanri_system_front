@@ -4,6 +4,7 @@ import type { Me } from '../lib/api'
 import ThumbnailStudio from '../components/ThumbnailStudio'
 import MindmapGraph from '../components/mindmap/MindmapGraph'
 import ConfirmDialog from '../components/ConfirmDialog'
+import AutoGrowTextarea from '../components/AutoGrowTextarea'
 import { breakBySentence } from '../lib/sentenceBreak'
 
 type MindNode = {
@@ -302,8 +303,9 @@ export default function InterviewMindmapPage() {
               {aiDraftFor === node.id && (
                 <span className="mb-1 block rounded bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700">✨ AIの添削案です。確認・修正して「保存」で反映されます。</span>
               )}
-              <textarea value={draft} autoFocus onChange={(e) => setDraft(e.target.value)} rows={3}
-                className="w-full rounded border border-fuchsia-300 px-2 py-1 text-xs" />
+              {/* 内容に合わせて自動で伸びる(3行固定だと長文が切れるため) */}
+              <AutoGrowTextarea value={draft} autoFocus minRows={3} onChange={(e) => setDraft(e.target.value)}
+                className="w-full rounded border border-fuchsia-300 px-2 py-1 text-xs leading-relaxed" />
               <span className="mt-1 flex gap-1">
                 <button onClick={() => saveText(node)} disabled={!!busy}
                   className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-50">{busy === `save-${node.id}` ? '保存中…' : '保存'}</button>
