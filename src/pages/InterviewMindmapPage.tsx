@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import ThumbnailStudio from '../components/ThumbnailStudio'
-import MindmapGraph from '../components/MindmapGraph'
+import MindmapGraph from '../components/mindmap/MindmapGraph'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { breakBySentence } from '../lib/sentenceBreak'
 
 type MindNode = {
   id: number
@@ -313,7 +315,7 @@ export default function InterviewMindmapPage() {
               className="min-w-[160px] flex-1 cursor-text whitespace-pre-wrap break-words text-xs text-[var(--color-text)]"
               title={node.kind === 'root' && isYoutube ? 'ダブルクリックでタイトルを編集' : 'ダブルクリックで編集'}
               onDoubleClick={() => startEdit(node)}
-            >{node.text}</span>
+            >{breakBySentence(node.text)}</span>
           )}
           <span className="ml-auto flex shrink-0 items-center gap-1">
             {editId !== node.id && (
@@ -509,10 +511,9 @@ export default function InterviewMindmapPage() {
           ) : (
             <>
               <MindmapGraph nodes={map.nodes} videoMode={graphVideo}
-                onSpeak={(n) => speakNode({ checked: false, expanded: false, ...n })}
                 onEditText={(n, text) => saveNodeText({ checked: false, expanded: false, ...n }, text)}
                 onExpand={(n) => expand({ checked: false, expanded: false, ...n })} />
-              <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">ノード右上の<b>＋でAI展開</b>（子ノードを生成）、右端の−/＋Nで枝の開閉。<b>ダブルクリックで文言を編集</b>、1回クリックで読み上げ。⛶で全画面、Ctrl(⌘)+スクロールでズーム。「🎬 動画用」で大きく＆1問ずつ順に展開。</div>
+              <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">ノード右上の<b>＋でAI展開</b>（子ノードを生成）、右端の−/＋Nで枝の開閉。<b>ダブルクリックで文言を編集</b>、1回クリックで拡大表示。⛶で全画面、Ctrl(⌘)+スクロールでズーム。「🎬 動画用」で大きく＆1問ずつ順に展開。</div>
             </>
           )}
           </>}
@@ -532,54 +533,27 @@ export default function InterviewMindmapPage() {
       )}
 
       {showReset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowReset(false)}>
-          <div className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold text-[var(--color-text)]">マインドマップをリセット</div>
-            <div className="text-xs text-[var(--color-text-sub)]">
-              生成・取り込んだ質問と回答がすべて削除され、起点だけの状態に戻ります。<br />この操作は取り消せません。よろしいですか？
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowReset(false)} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
-              <button onClick={resetMap} disabled={!!busy} className="rounded-md bg-red-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
-                {busy === 'reset' ? 'リセット中…' : 'リセットする'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="マインドマップをリセット"
+          message={<>生成・取り込んだ質問と回答がすべて削除され、起点だけの状態に戻ります。<br />この操作は取り消せません。よろしいですか？</>}
+          confirmLabel="リセットする" busyLabel="リセット中…" busy={busy === 'reset'} disabled={!!busy}
+          onConfirm={resetMap} onClose={() => setShowReset(false)} />
       )}
 
       {showDeleteMap && map && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowDeleteMap(false)}>
-          <div className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold text-[var(--color-text)]">マインドマップを削除</div>
-            <div className="text-xs text-[var(--color-text-sub)]">
-              「{map.title}」を質問・回答ごと削除します。<br />この操作は取り消せません。よろしいですか？
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowDeleteMap(false)} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
-              <button onClick={deleteMap} disabled={!!busy} className="rounded-md bg-red-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
-                {busy === 'deleteMap' ? '削除中…' : '削除する'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="マインドマップを削除"
+          message={<>「{map.title}」を質問・回答ごと削除します。<br />この操作は取り消せません。よろしいですか？</>}
+          confirmLabel="削除する" busyLabel="削除中…" busy={busy === 'deleteMap'} disabled={!!busy}
+          onConfirm={deleteMap} onClose={() => setShowDeleteMap(false)} />
       )}
 
       {showBankReset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowBankReset(false)}>
-          <div className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold text-[var(--color-text)]">質問バンクのみリセット</div>
-            <div className="text-xs text-[var(--color-text-sub)]">
-              「📋 質問バンク取込」で取り込んだ質問と回答だけを削除します。<br />AIで展開した質問・手入力で追加した質問は残ります。よろしいですか？
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowBankReset(false)} className="rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">キャンセル</button>
-              <button onClick={resetBank} disabled={!!busy} className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
-                {busy === 'resetBank' ? '削除中…' : '質問バンクを削除'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="質問バンクのみリセット"
+          message={<>「📋 質問バンク取込」で取り込んだ質問と回答だけを削除します。<br />AIで展開した質問・手入力で追加した質問は残ります。よろしいですか？</>}
+          confirmLabel="質問バンクを削除" busyLabel="削除中…" busy={busy === 'resetBank'} disabled={!!busy} tone="warning"
+          onConfirm={resetBank} onClose={() => setShowBankReset(false)} />
       )}
     </div>
   )
