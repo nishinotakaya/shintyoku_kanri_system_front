@@ -88,7 +88,7 @@ export default function GraphNodeBox({
       {editing ? (
         <NodeEditArea initialText={node.text} boxH={boxH} onCommit={onCommitEdit} onCancel={onCancelEdit} />
       ) : (
-        <span className={`whitespace-pre-line break-words ${full ? '' : 'line-clamp-3'}`}>{node.text ? breakBySentence(node.text) : (node.kind === 'root' ? '起点' : '（空）')}</span>
+        <span className={`whitespace-pre-wrap break-words ${full ? '' : 'line-clamp-3'}`}>{node.text ? breakBySentence(node.text) : (node.kind === 'root' ? '起点' : '（空）')}</span>
       )}
       {/* 折りたたみバッジ（子持ちノードのみ）。クリックで枝の開閉、ノードクリックには反応させない */}
       {kidsCount > 0 && !editing && !videoMode && (
