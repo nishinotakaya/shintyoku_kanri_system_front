@@ -138,6 +138,23 @@ export default function ThumbnailStudio({ mindmapId, title }: Props) {
     } finally { setBusy(null) }
   }
 
+  // ---- 3コマの文字「だけ」AI生成（メイン/強調/サブの文言は触らない） ----
+  async function genPanelsOnly() {
+    setBusy('panels'); setErr(null)
+    try {
+      const r = await api.post('/thumbnails/copy', { mindmap_id: mindmapId, style: styleKey })
+      const panels = r.data?.copy?.panels as string[] | undefined
+      if (panels && panels.some((panelText) => (panelText ?? '').trim() !== '')) {
+        setPanelTexts([panels[0] ?? '', panels[1] ?? '', panels[2] ?? ''])
+        setUsePanels(true)
+      } else {
+        setErr('3コマ文言が生成されませんでした。もう一度お試しください')
+      }
+    } catch (e: any) {
+      setErr(e?.response?.data?.error || '3コマ文言の生成に失敗しました')
+    } finally { setBusy(null) }
+  }
+
   // ---- AI添削（現在の文言の誤字脱字・表記ゆれだけを直す。文言・意図・長さは変えない） ----
   async function proofreadCopy() {
     setBusy('proof'); setErr(null)
@@ -704,10 +721,17 @@ export default function ThumbnailStudio({ mindmapId, title }: Props) {
 
       {/* 3コマ毎の文字（左/中/右） */}
       <div className="rounded-lg bg-[var(--color-bg-sub,#f7f7f8)] p-2 text-xs space-y-1">
-        <label className="flex items-center gap-1 font-semibold">
-          <input type="checkbox" checked={usePanels} onChange={(e) => setUsePanels(e.target.checked)} />
-          3コマ毎に文字を入れる（各コマ中央上に配置・改行可）
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1 font-semibold">
+            <input type="checkbox" checked={usePanels} onChange={(e) => setUsePanels(e.target.checked)} />
+            3コマ毎に文字を入れる（各コマ中央上に配置・改行可）
+          </label>
+          <button onClick={genPanelsOnly} disabled={!!busy}
+            title="タイトル/要点から3コマ文言（左=ビフォー/中=転機/右=アフター）だけをAI生成。メイン/強調/サブの文言は変えません"
+            className="rounded-lg border border-fuchsia-300 bg-fuchsia-50 px-2 py-1 text-[11px] font-semibold text-fuchsia-600 disabled:opacity-50">
+            {busy === 'panels' ? '生成中…' : '🪄 3コマ文字だけAI生成'}
+          </button>
+        </div>
         {usePanels && (
           <>
             <div className="flex flex-wrap items-center gap-3">
