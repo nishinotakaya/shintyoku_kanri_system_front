@@ -9,6 +9,7 @@ import CalendarPage from './pages/CalendarPage'
 import UsersPage from './pages/UsersPage'
 import SkillSheetsPage from './pages/SkillSheetsPage'
 import BacklogActivitiesPage from './pages/BacklogActivitiesPage'
+import GitPage from './pages/GitPage'
 import InterviewMindmapPage from './pages/InterviewMindmapPage'
 import VideoStudioPage from './pages/VideoStudioPage'
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage'
@@ -33,6 +34,7 @@ type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; f
 const NAV: NavItem[] = [
   { to: '/', label: 'カレンダー', icon: '📅', feature: 'attendance', tabTitle: 'カレンダー' },
   { to: '/progress', label: '進捗管理', icon: '📊', feature: 'progress', tabTitle: '進捗' },
+  { to: '/git', label: 'Git', icon: '🌿', feature: 'backlog_activities', tabTitle: 'Git' },
   { to: '/attendance', label: '勤怠', icon: '🕒', feature: 'attendance', tabTitle: '勤怠' },
   { to: '/purchase-orders', label: '注文書', icon: '📋', feature: 'purchase_orders', tabTitle: '注文書' },
   { to: '/invoices', label: '請求書一覧', icon: '📄', feature: 'invoices', tabTitle: '請求書' },
@@ -420,6 +422,18 @@ export default function App() {
             <RequireFeature feature="backlog_activities">
               <Layout>
                 <BacklogActivitiesPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/git"
+        element={
+          <RequireAuth>
+            <RequireFeature feature="backlog_activities">
+              <Layout>
+                <GitPage />
               </Layout>
             </RequireFeature>
           </RequireAuth>
