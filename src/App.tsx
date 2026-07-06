@@ -60,6 +60,12 @@ function firstVisiblePath(me: Me | null): string {
   return NAV.find((n) => navVisible(n, me))?.to ?? '/skill-sheets'
 }
 
+// iOS/Android のネイティブアプリ(Capacitor)またはホーム画面PWAとして起動しているか。
+// この場合はトップ画面を経費計上(/keihi)にする。
+const isMobileAppShell = () =>
+  !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.() ||
+  window.matchMedia('(display-mode: standalone)').matches
+
 // 画面ごとの権限ガード。権限が無ければ自分が見れる最初の画面へリダイレクト (レイアウトを崩さない)
 function RequireFeature({ feature, adminOnly, children }: { feature?: FeatureKey; adminOnly?: boolean; children: React.ReactNode }) {
   const { me, loading } = useMe()
@@ -330,11 +336,16 @@ export default function App() {
         path="/"
         element={
           <RequireAuth>
-            <RequireFeature feature="attendance">
-              <Layout>
-                <CalendarPage />
-              </Layout>
-            </RequireFeature>
+            {isMobileAppShell() ? (
+              // iOS/Android アプリはトップ=経費計上
+              <Navigate to="/keihi" replace />
+            ) : (
+              <RequireFeature feature="attendance">
+                <Layout>
+                  <CalendarPage />
+                </Layout>
+              </RequireFeature>
+            )}
           </RequireAuth>
         }
       />

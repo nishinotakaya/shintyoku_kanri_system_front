@@ -173,6 +173,7 @@ export default function BusinessExpensesPage() {
   const [uploading, setUploading] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const albumRef = useRef<HTMLInputElement | null>(null)
   const csvRef = useRef<HTMLInputElement | null>(null)
 
   // CSV取込
@@ -255,6 +256,7 @@ export default function BusinessExpensesPage() {
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+      if (albumRef.current) albumRef.current.value = ''
     }
   }
 
@@ -862,12 +864,18 @@ export default function BusinessExpensesPage() {
         </div>
       )}
 
-      {/* 隠しファイル入力 + 右下フローティング📷 */}
-      <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onShot(e.target.files)} />
+      {/* 隠しファイル入力 + 右下フローティング📷(カメラ直接起動) / 🖼(アルバム複数選択) */}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onShot(e.target.files)} />
+      <input ref={albumRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onShot(e.target.files)} />
       <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => onCsv(e.target.files?.[0] ?? null)} />
+      <button onClick={() => albumRef.current?.click()} disabled={uploading}
+        className="fixed bottom-[5.75rem] right-6 z-40 grid h-11 w-11 place-items-center rounded-full border border-fuchsia-300 bg-white text-lg shadow-lg transition active:scale-95 disabled:opacity-60"
+        title="アルバムから選択（複数選択で最大20枚まで一括取込）">
+        🖼
+      </button>
       <button onClick={() => fileRef.current?.click()} disabled={uploading}
         className="fixed bottom-6 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-r from-fuchsia-500 to-pink-500 text-2xl text-white shadow-xl transition active:scale-95 disabled:opacity-60"
-        title="レシートを撮影（複数選択で最大20枚まで一括取込）">
+        title="レシートを撮影（カメラが直接起動）">
         {uploading
           ? <span className="animate-pulse text-center text-[10px] leading-tight">{batchTotal > 0 ? `解析中\n${batchIndex}/${batchTotal}`.split('\n').map((t, i) => <span key={i} className="block">{t}</span>) : '解析中'}</span>
           : '📷'}
