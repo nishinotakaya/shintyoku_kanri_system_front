@@ -79,7 +79,6 @@ export default function GraphNodeBox({
       onDoubleClick={onDoubleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      title={node.text || undefined}
       className={`absolute rounded-xl border px-3 shadow-sm cursor-pointer hover:shadow-md ${KIND_STYLE[node.kind] || KIND_STYLE.answer} ${editing ? 'ring-2 ring-fuchsia-400' : hovered ? 'ring-2 ring-amber-300 shadow-lg' : ''}`}
       style={{
         // 編集中はテキストエリアが広く使えるようにボックス自体を大きくする
