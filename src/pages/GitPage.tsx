@@ -54,17 +54,26 @@ export default function GitPage() {
     } finally { setBusy(null) }
   }
 
-  // 初回: リポジトリ一覧
+  // 初回: リポジトリ一覧（前回選んだプロジェクト/リポジトリを復元）
   useEffect(() => {
     run('repos', async () => {
       const r = await api.get<RepoGroup[]>('/backlog_git/repositories')
       setGroups(r.data)
-      if (r.data.length) {
-        setProjectKey(r.data[0].project_key)
-        if (r.data[0].repositories.length) setRepoName(r.data[0].repositories[0].name)
-      }
+      if (!r.data.length) return
+      const savedProject = localStorage.getItem('gitProjectKey')
+      const savedRepo = localStorage.getItem('gitRepoName')
+      const initialGroup = r.data.find((g) => g.project_key === savedProject) ?? r.data[0]
+      setProjectKey(initialGroup.project_key)
+      const initialRepo = initialGroup.repositories.find((repo) => repo.name === savedRepo) ?? initialGroup.repositories[0]
+      if (initialRepo) setRepoName(initialRepo.name)
     })
   }, [])
+
+  // 選択を記憶（次回開いたとき同じプロジェクト/リポジトリから）
+  useEffect(() => {
+    if (projectKey) localStorage.setItem('gitProjectKey', projectKey)
+    if (repoName) localStorage.setItem('gitRepoName', repoName)
+  }, [projectKey, repoName])
 
   const loadPulls = async () => {
     const prs = await api.get<PullRequest[]>('/backlog_git/pull_requests', { params: { project: projectKey, repo: repoName } })
