@@ -65,7 +65,7 @@ type TaxSummary = {
   }
   income_items: { month: number; user_name: string | null; category: string; total: number; source: 'own' | 'subcontract'; note: string | null }[]
 }
-type TaxAdvice = { advice: { title: string; detail: string }[]; summary_note: string }
+type TaxAdvice = { advice?: { title: string; detail: string }[]; summary_note?: string; answer?: string; question?: string }
 type FreeeSetting = {
   connected: boolean
   identity: string | null
@@ -484,14 +484,16 @@ export default function BusinessExpensesPage() {
     await loadTax()
   }
   const [deduction, setDeduction] = useState(650000)
+  const [adviceQuestion, setAdviceQuestion] = useState('') // 経理についての自由質問(空なら全体分析)
   const downloadTaxCsv = async (kind: 'summary' | 'details') => {
     const r = await api.get('/tax_reports/export_csv', { params: { year, kind }, responseType: 'blob' })
     downloadBlob(r.data as Blob, kind === 'details' ? `経費明細_${year}年.csv` : `青色申告集計_${year}年.csv`)
   }
+  // 質問テキストがあればその質問への回答、空なら今の経費データ全体へのアドバイス
   const loadAdvice = async () => {
     setAdviceLoading(true)
     try {
-      const r = await api.post<TaxAdvice>('/tax_reports/advice', null, { params: { year } })
+      const r = await api.post<TaxAdvice>('/tax_reports/advice', { question: adviceQuestion.trim() || undefined }, { params: { year } })
       setAdvice(r.data)
     } catch (e: any) {
       setMsg(`アドバイス取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
@@ -766,28 +768,39 @@ export default function BusinessExpensesPage() {
                 </div>
               </div>
 
-              {/* AI税務アドバイス */}
+              {/* AI税務アドバイス: 質問欄あり=その質問に回答 / 空=今の経費全体を分析 */}
               <div className="rounded-xl border border-[var(--color-border)] bg-white p-3">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-1 flex items-center justify-between">
                   <div className="text-xs font-semibold text-[var(--color-text-sub)]">🤖 AI税務アドバイス</div>
                   <button onClick={loadAdvice} disabled={adviceLoading}
                     className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
-                    {adviceLoading ? '分析中…' : advice ? '🔄 再分析' : '✨ アドバイスをもらう'}
+                    {adviceLoading ? '分析中…' : adviceQuestion.trim() ? '💬 質問する' : advice ? '🔄 再分析' : '✨ アドバイスをもらう'}
                   </button>
                 </div>
+                <div className="mb-2 text-[11px] text-[var(--color-text-sub)]">
+                  下に質問を書くと<b>その質問に回答</b>。空のままなら<b>今の経費・売上データ全体を分析</b>します。
+                </div>
+                <textarea value={adviceQuestion} onChange={(e) => setAdviceQuestion(e.target.value)} rows={2}
+                  placeholder="聞きたいこと（例: この経費は接待交際費でいい？ / 家事按分の割合はどう決める？）"
+                  className="mb-2 w-full rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-xs" />
                 {advice ? (
-                  <div className="space-y-1.5">
-                    {advice.summary_note && <div className="rounded-lg bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900">{advice.summary_note}</div>}
-                    {advice.advice.map((a, i) => (
-                      <div key={i} className="rounded-lg border border-gray-100 px-3 py-2">
-                        <div className="text-xs font-bold text-[var(--color-text)]">💡 {a.title}</div>
-                        <div className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-text-sub)]">{a.detail}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-[var(--color-text-sub)]">売上・経費・消費税の集計をAIが分析し、節税や注意点を提案します（請求書と経費のデータに連動）。</div>
-                )}
+                  advice.answer != null ? (
+                    <div className="space-y-1.5">
+                      {advice.question && <div className="rounded-lg bg-gray-50 px-3 py-2 text-[11px] text-[var(--color-text-sub)]">Q. {advice.question}</div>}
+                      <div className="whitespace-pre-wrap rounded-lg bg-violet-50 px-3 py-2 text-xs leading-relaxed text-violet-900">{advice.answer}</div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {advice.summary_note && <div className="rounded-lg bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900">{advice.summary_note}</div>}
+                      {(advice.advice ?? []).map((a, i) => (
+                        <div key={i} className="rounded-lg border border-gray-100 px-3 py-2">
+                          <div className="text-xs font-bold text-[var(--color-text)]">💡 {a.title}</div>
+                          <div className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-text-sub)]">{a.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-[var(--color-border)] bg-white p-3">
