@@ -32,7 +32,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export type FeatureKey = 'attendance' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
 type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; feature?: FeatureKey; tabTitle?: string }
 const NAV: NavItem[] = [
-  { to: '/', label: 'カレンダー', icon: '📅', feature: 'attendance', tabTitle: 'カレンダー' },
+  { to: '/calendar', label: 'カレンダー', icon: '📅', feature: 'attendance', tabTitle: 'カレンダー' },
   { to: '/progress', label: '進捗管理', icon: '📊', feature: 'progress', tabTitle: '進捗' },
   { to: '/git', label: 'Git', icon: '🌿', feature: 'backlog_activities', tabTitle: 'Git' },
   { to: '/attendance', label: '勤怠', icon: '🕒', feature: 'attendance', tabTitle: '勤怠' },
@@ -339,14 +339,10 @@ export default function App() {
         element={
           <RequireAuth>
             {isMobileAppShell() ? (
-              // iOS/Android アプリはトップ=経費計上
+              // iOS/Android アプリはトップ=経費計上（カレンダーはサイドバーの /calendar から見れる）
               <Navigate to="/keihi" replace />
             ) : (
-              <RequireFeature feature="attendance">
-                <Layout>
-                  <CalendarPage />
-                </Layout>
-              </RequireFeature>
+              <Navigate to="/calendar" replace />
             )}
           </RequireAuth>
         }
@@ -389,7 +385,15 @@ export default function App() {
       />
       <Route
         path="/calendar"
-        element={<Navigate to="/" replace />}
+        element={
+          <RequireAuth>
+            <RequireFeature feature="attendance">
+              <Layout>
+                <CalendarPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
       />
       <Route
         path="/users"
