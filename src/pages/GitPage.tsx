@@ -20,6 +20,7 @@ type DiffFile = { path: string; deleted: boolean; lines: DiffLine[] }
 type PrComment = { id: number; user: string; content: string; created: string }
 type PrDetail = PullRequest & { status?: string; comments: PrComment[]; files: DiffFile[]; diff_error?: string | null }
 type DraftComment = { path: string; line: number; code: string; body: string }
+type SystemNote = { id: number; user: string; mine: boolean; content: string; created: string }
 
 const LINE_BG: Record<DiffLine['type'], string> = {
   add: 'bg-emerald-50',
@@ -39,6 +40,9 @@ export default function GitPage() {
   const [pulls, setPulls] = useState<PullRequest[]>([])
   const [prDetail, setPrDetail] = useState<PrDetail | null>(null)
   const [prComment, setPrComment] = useState('')
+  const [commentTab, setCommentTab] = useState<'backlog' | 'system'>('backlog')
+  const [systemNotes, setSystemNotes] = useState<SystemNote[]>([])
+  const [systemNoteDraft, setSystemNoteDraft] = useState('')
   const [showDescription, setShowDescription] = useState(true)
   const [filePath, setFilePath] = useState('')
   const [content, setContent] = useState('')
@@ -96,10 +100,16 @@ export default function GitPage() {
     await loadPulls()
   })
 
+  const loadSystemNotes = async (number: number) => {
+    const r = await api.get<SystemNote[]>('/backlog_git/notes', { params: { project: projectKey, repo: repoName, number } })
+    setSystemNotes(r.data)
+  }
+
   const openPr = (number: number) => run(`pr-${number}`, async () => {
     const r = await api.get<PrDetail>('/backlog_git/pr_detail', { params: { project: projectKey, repo: repoName, number } })
     setPrDetail(r.data)
     setShowDescription(true)
+    await loadSystemNotes(number).catch(() => setSystemNotes([]))
   })
 
   // リポジトリ切替: 状態をリセットして PR 一覧を取得（ファイルツリーはファイルタブで必要になったら）
@@ -157,6 +167,20 @@ export default function GitPage() {
     setDrafts([])
     void openPr(reviewTarget)
     setTimeout(() => setPosted(null), 5000)
+  })
+
+  // システム内のみのメモ（Backlog には送らない）
+  const submitSystemNote = () => run('sysnote', async () => {
+    if (!prDetail || !systemNoteDraft.trim()) return
+    await api.post('/backlog_git/notes', { project: projectKey, repo: repoName, number: prDetail.number, content: systemNoteDraft.trim() })
+    setSystemNoteDraft('')
+    await loadSystemNotes(prDetail.number)
+  })
+
+  const deleteSystemNote = (id: number) => run(`delnote-${id}`, async () => {
+    if (!prDetail) return
+    await api.delete(`/backlog_git/notes/${id}`)
+    await loadSystemNotes(prDetail.number)
   })
 
   const submitComment = () => run('comment', async () => {
@@ -312,29 +336,74 @@ export default function GitPage() {
                   </div>
                 </div>
 
-                {/* 既存コメント */}
+                {/* コメント: Backlog(相手に見える) / システム内のみ(Backlogに送らない) をタブで分離 */}
                 <div>
-                  <div className="mb-1 text-xs font-semibold text-[var(--color-text)]">💬 コメント {prDetail.comments.length}件</div>
-                  <div className="space-y-2">
-                    {prDetail.comments.map((comment) => (
-                      <div key={comment.id} className="rounded-lg border border-[var(--color-border)] bg-white p-2">
-                        <div className="mb-1 text-[10px] text-[var(--color-text-sub)]">{comment.user} ・ {new Date(comment.created).toLocaleString('ja-JP')}</div>
-                        <div className="prose prose-sm max-w-none text-xs"><ReactMarkdown remarkPlugins={MD_PLUGINS}>{comment.content}</ReactMarkdown></div>
+                  <div className="mb-2 flex items-center gap-1">
+                    <button onClick={() => setCommentTab('backlog')}
+                      className={`rounded px-2 py-1 text-xs font-semibold ${commentTab === 'backlog' ? 'bg-sky-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+                      💬 Backlogコメント {prDetail.comments.length}
+                    </button>
+                    <button onClick={() => setCommentTab('system')}
+                      className={`rounded px-2 py-1 text-xs font-semibold ${commentTab === 'system' ? 'bg-violet-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+                      🔒 システム内 {systemNotes.length}
+                    </button>
+                    <span className="ml-1 text-[10px] text-[var(--color-text-sub)]">
+                      {commentTab === 'backlog' ? 'BacklogのPRに投稿されます（相手に見える）' : 'このシステム内だけ。Backlogには送られません'}
+                    </span>
+                  </div>
+
+                  {commentTab === 'backlog' ? (
+                    <>
+                      <div className="space-y-2">
+                        {prDetail.comments.map((comment) => (
+                          <div key={comment.id} className="rounded-lg border border-[var(--color-border)] bg-white p-2">
+                            <div className="mb-1 text-[10px] text-[var(--color-text-sub)]">{comment.user} ・ {new Date(comment.created).toLocaleString('ja-JP')}</div>
+                            <div className="prose prose-sm max-w-none text-xs"><ReactMarkdown remarkPlugins={MD_PLUGINS}>{comment.content}</ReactMarkdown></div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  {/* コメント投稿 */}
-                  <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-white p-2">
-                    <textarea value={prComment} onChange={(e) => setPrComment(e.target.value)} rows={3}
-                      placeholder="PRにコメントする（markdown可）"
-                      className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs" />
-                    <div className="mt-1 flex justify-end">
-                      <button onClick={submitComment} disabled={!!busy || !prComment.trim()}
-                        className="rounded-lg bg-gradient-to-r from-sky-500 to-blue-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50">
-                        {busy === 'comment' ? '送信中…' : '💬 コメント送信'}
-                      </button>
-                    </div>
-                  </div>
+                      <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-white p-2">
+                        <textarea value={prComment} onChange={(e) => setPrComment(e.target.value)} rows={3}
+                          placeholder="PRにコメントする（markdown可・Backlogに投稿されます）"
+                          className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs" />
+                        <div className="mt-1 flex justify-end">
+                          <button onClick={submitComment} disabled={!!busy || !prComment.trim()}
+                            className="rounded-lg bg-gradient-to-r from-sky-500 to-blue-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50">
+                            {busy === 'comment' ? '送信中…' : '💬 Backlogへ送信'}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        {systemNotes.map((note) => (
+                          <div key={note.id} className="rounded-lg border border-violet-200 bg-violet-50/40 p-2">
+                            <div className="mb-1 flex items-center text-[10px] text-[var(--color-text-sub)]">
+                              <span>{note.user} ・ {new Date(note.created).toLocaleString('ja-JP')}</span>
+                              {note.mine && (
+                                <button onClick={() => deleteSystemNote(note.id)} title="削除"
+                                  className="ml-auto text-gray-400 hover:text-red-500">🗑</button>
+                              )}
+                            </div>
+                            <div className="prose prose-sm max-w-none text-xs"><ReactMarkdown remarkPlugins={MD_PLUGINS}>{note.content}</ReactMarkdown></div>
+                          </div>
+                        ))}
+                        {systemNotes.length === 0 && <div className="text-xs text-[var(--color-text-sub)]">まだメモはありません</div>}
+                      </div>
+                      <div className="mt-2 rounded-lg border border-violet-200 bg-white p-2">
+                        <textarea value={systemNoteDraft} onChange={(e) => setSystemNoteDraft(e.target.value)} rows={3}
+                          placeholder="システム内メモ（markdown可・Backlogには送られません）"
+                          className="w-full rounded border border-violet-200 px-2 py-1 text-xs" />
+                        <div className="mt-1 flex justify-end">
+                          <button onClick={submitSystemNote} disabled={!!busy || !systemNoteDraft.trim()}
+                            className="rounded-lg bg-gradient-to-r from-violet-500 to-purple-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-50">
+                            {busy === 'sysnote' ? '保存中…' : '🔒 システム内に保存'}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
