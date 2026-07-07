@@ -85,6 +85,7 @@ export default function BacklogActivitiesPage() {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncingNotion, setSyncingNotion] = useState(false)
+  const [importingDocs, setImportingDocs] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [exportingNotion, setExportingNotion] = useState(false)
@@ -151,6 +152,24 @@ export default function BacklogActivitiesPage() {
       setNotice({ kind: 'err', text: e?.response?.data?.error ?? 'Notion 同期に失敗しました' })
     } finally {
       setSyncingNotion(false)
+    }
+  }
+
+  // Notion ドキュメントハブの資料URLを備考「資料:カテゴリ」行へまとめて取り込む
+  const importDocHub = async () => {
+    if (selectedUserId == null) return
+    setImportingDocs(true)
+    setNotice(null)
+    try {
+      const r = await api.post<Payload & { doc_hub: { category: string; links: number }[] }>(
+        '/backlog_activities/import_doc_hub', null, { params: { user_id: selectedUserId } })
+      setData(r.data)
+      const total = (r.data.doc_hub ?? []).reduce((sum, group) => sum + group.links, 0)
+      setNotice({ kind: 'ok', text: `資料リンクを備考に取り込みました（${(r.data.doc_hub ?? []).length}カテゴリ / ${total}リンク）` })
+    } catch (e: any) {
+      setNotice({ kind: 'err', text: e?.response?.data?.error ?? '資料リンクの取込に失敗しました' })
+    } finally {
+      setImportingDocs(false)
     }
   }
 
@@ -320,6 +339,11 @@ export default function BacklogActivitiesPage() {
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
             title="Notion から最新の WBS タスクをアプリに取り込む">
             {syncingNotion ? '同期中…' : '🔄 Notion を同期'}
+          </button>
+          <button onClick={importDocHub} disabled={importingDocs || selectedUserId == null}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+            title="Notion ドキュメントハブの資料URL(ファイル&メディア)を備考「資料:カテゴリ」行にまとめて保存">
+            {importingDocs ? '取込中…' : '📁 資料リンク取込'}
           </button>
 
           <span className="mx-1 h-6 w-px bg-slate-300" />
@@ -1009,19 +1033,44 @@ function NotionPanel({ task }: { task?: NotionTaskOption }) {
 }
 
 // 備考の自前ドラフトを持ち、フォーカスを外した時に変更があれば保存する。
+const NOTE_URL_RE = /(https?:\/\/[^\s）」"']+)/g
+
+// URL をクリック可能なリンクに変換して表示する
+function linkifyNote(text: string) {
+  return text.split(NOTE_URL_RE).map((part, index) =>
+    /^https?:\/\//.test(part) ? (
+      <a key={index} href={part} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+        className="break-all text-sky-600 underline hover:text-sky-800">{part}</a>
+    ) : (
+      <span key={index}>{part}</span>
+    ),
+  )
+}
+
 function NoteCell({ value, saving, onSave }: { value: string; saving: boolean; onSave: (v: string) => void }) {
   const [draft, setDraft] = useState(value)
+  const [editing, setEditing] = useState(false)
   useEffect(() => { setDraft(value) }, [value])
+  if (!editing) {
+    // 表示モード: URL はクリックで遷移できるリンクに。クリック(リンク以外)で編集モードへ。
+    return (
+      <div className="relative min-h-[4.5rem] cursor-text whitespace-pre-wrap break-words px-1.5 py-1 text-sm leading-relaxed"
+        title="クリックで編集" onClick={() => setEditing(true)}>
+        {value ? linkifyNote(value) : <span className="text-slate-300">入力…</span>}
+        {saving && <span className="absolute right-1 top-1 text-[10px] text-emerald-500">保存中…</span>}
+      </div>
+    )
+  }
   return (
     <div className="relative">
       <textarea
         value={draft}
+        autoFocus
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { if (draft !== value) onSave(draft) }}
+        onBlur={() => { setEditing(false); if (draft !== value) onSave(draft) }}
         rows={Math.max(3, draft.split('\n').length)}
         placeholder="入力…"
-        // 枠・リサイズハンドル(縦線に見える)を消してプレーン表示。フォーカス時だけ薄い背景+リングで示す。
-        className="block w-full min-h-[4.5rem] resize-none border-0 bg-transparent px-1.5 py-1 text-sm leading-relaxed rounded focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-300"
+        className="block w-full min-h-[4.5rem] resize-none border-0 bg-white px-1.5 py-1 text-sm leading-relaxed rounded outline-none ring-1 ring-emerald-300"
       />
       {saving && <span className="absolute right-1 top-1 text-[10px] text-emerald-500">保存中…</span>}
     </div>

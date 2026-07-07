@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+
+// 改行をそのまま反映(breaks)＋表・リンク等のGFM対応でmarkdownを描画
+const MD_PLUGINS = [remarkGfm, remarkBreaks]
 import { api } from '../lib/api'
 
 // Backlog Git を GitHub 風に閲覧・レビューするページ。
@@ -174,7 +179,7 @@ export default function GitPage() {
       </div>
       {preview ? (
         <div className="prose prose-sm max-w-none rounded border border-[var(--color-border)] bg-white p-2 text-xs">
-          <ReactMarkdown>{draftBody || '(空)'}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={MD_PLUGINS}>{draftBody || '(空)'}</ReactMarkdown>
         </div>
       ) : (
         <textarea value={draftBody} autoFocus rows={3}
@@ -264,7 +269,7 @@ export default function GitPage() {
                     </button>
                     {showDescription && (
                       <div className="prose prose-sm max-w-none border-t border-[var(--color-border)] p-2 text-xs">
-                        <ReactMarkdown>{prDetail.description}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={MD_PLUGINS}>{prDetail.description}</ReactMarkdown>
                       </div>
                     )}
                   </div>
@@ -314,7 +319,7 @@ export default function GitPage() {
                     {prDetail.comments.map((comment) => (
                       <div key={comment.id} className="rounded-lg border border-[var(--color-border)] bg-white p-2">
                         <div className="mb-1 text-[10px] text-[var(--color-text-sub)]">{comment.user} ・ {new Date(comment.created).toLocaleString('ja-JP')}</div>
-                        <div className="prose prose-sm max-w-none text-xs"><ReactMarkdown>{comment.content}</ReactMarkdown></div>
+                        <div className="prose prose-sm max-w-none text-xs"><ReactMarkdown remarkPlugins={MD_PLUGINS}>{comment.content}</ReactMarkdown></div>
                       </div>
                     ))}
                   </div>
