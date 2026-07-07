@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import ThumbnailStudio from '../components/ThumbnailStudio'
 import MindmapGraph from '../components/mindmap/MindmapGraph'
+import KanpeCueSheet from '../components/mindmap/KanpeCueSheet'
 import ConfirmDialog from '../components/ConfirmDialog'
 import AutoGrowTextarea from '../components/AutoGrowTextarea'
 import { breakBySentence } from '../lib/sentenceBreak'
@@ -17,7 +18,7 @@ type MindNode = {
   expanded: boolean
 }
 type MindMode = 'interview' | 'youtube' | 'mote'
-type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; user?: { id: number; display_name: string } }
+type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; user?: { id: number; display_name: string } }
 type Target = { id: number; display_name: string; email: string }
 
 // マインドマップの表示サイズ(%)。選択は localStorage に保存して次回も維持する
@@ -53,7 +54,7 @@ export default function InterviewMindmapPage() {
   // 一番上のコントロール部のアコーディオン。スマホは初期折りたたみでマップをすぐ見られるように
   const [showControls, setShowControls] = useState(() => window.innerWidth >= 640)
   const [showMap, setShowMap] = useState(true)       // マインドマップ表示カードの開閉
-  const [mapView, setMapView] = useState<'list' | 'graph'>('list') // 現在の表示(list) / 線で繋ぐグラフ(graph)
+  const [mapView, setMapView] = useState<'list' | 'graph' | 'kanpe'>('list') // 現在の表示(list) / 線で繋ぐグラフ(graph) / カンペ(kanpe)
   const [graphVideo, setGraphVideo] = useState(false) // グラフの動画用モード(大きめ＋順に展開)
   const [showThumb, setShowThumb] = useState(true)   // サムネ生成スタジオの開閉
   const [busy, setBusy] = useState<string | null>(null)
@@ -78,6 +79,11 @@ export default function InterviewMindmapPage() {
   const useTts = mode !== 'interview' // YouTube/モテ は高品質音声で読み上げ
 
   useEffect(() => { setSheetUrl(map?.spreadsheet_url ?? '') }, [map?.id, map?.spreadsheet_url])
+
+  // カンペは YouTube モード専用。モードを離れたらカンペビューのままにしない
+  useEffect(() => {
+    if (!isYoutube) setMapView((currentView) => (currentView === 'kanpe' ? 'list' : currentView))
+  }, [isYoutube])
 
   const changeZoom = (percent: number) => {
     setZoomPercent(percent)
@@ -482,6 +488,11 @@ export default function InterviewMindmapPage() {
                     className={`rounded px-2 py-0.5 text-[10px] font-semibold ${mapView === 'list' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>📋 リスト</button>
                   <button onClick={() => setMapView('graph')}
                     className={`rounded px-2 py-0.5 text-[10px] font-semibold ${mapView === 'graph' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🕸 マインドマップ</button>
+                  {/* カンペは西野式YouTubeセールステンプレ専用なので YouTube モードだけに出す */}
+                  {isYoutube && (
+                    <button onClick={() => setMapView('kanpe')}
+                      className={`rounded px-2 py-0.5 text-[10px] font-semibold ${mapView === 'kanpe' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>📝 カンペ</button>
+                  )}
                   {mapView === 'graph' && (
                     <button onClick={() => setGraphVideo((v) => !v)} title="文字を大きく・1問ずつ順に展開"
                       className={`rounded px-2 py-0.5 text-[10px] font-semibold ${graphVideo ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🎬 動画用</button>
@@ -502,7 +513,7 @@ export default function InterviewMindmapPage() {
             )}
           </div>
           {showMap && <>
-          {roots.length === 0 && <div className="text-xs text-[var(--color-text-sub)]">ノードがありません</div>}
+          {mapView !== 'kanpe' && roots.length === 0 && <div className="text-xs text-[var(--color-text-sub)]">ノードがありません</div>}
           {mapView === 'list' ? (
             <>
               <div style={{ zoom: zoomPercent / 100 }}>
@@ -510,13 +521,19 @@ export default function InterviewMindmapPage() {
               </div>
               <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">「起点」の「＋展開」でAIが想定質問を生成。「📋 質問バンク取込」で用意した質問と模範回答も取り込めます。各質問を展開すると端的回答・深掘り質問が出ます。</div>
             </>
-          ) : (
+          ) : mapView === 'graph' ? (
             <>
               <MindmapGraph nodes={map.nodes} videoMode={graphVideo}
                 onEditText={(n, text) => saveNodeText({ checked: false, expanded: false, ...n }, text)}
                 onExpand={(n) => expand({ checked: false, expanded: false, ...n })} />
               <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">ノード右上の<b>＋でAI展開</b>（子ノードを生成）、右端の−/＋Nで枝の開閉。<b>ダブルクリックで文言を編集</b>、カーソルを当てている間だけ拡大表示。⛶で全画面、Ctrl(⌘)+スクロールでズーム。「🎬 動画用」で大きく＆1問ずつ順に展開。</div>
             </>
+          ) : (
+            <KanpeCueSheet mindmapId={map.id} kanpeScript={map.kanpe_script ?? null}
+              onSaved={(kanpeScript) => {
+                setMap((current) => current ? { ...current, kanpe_script: kanpeScript } : current)
+                setMaps((prev) => prev.map((m) => m.id === map.id ? { ...m, kanpe_script: kanpeScript } : m))
+              }} />
           )}
           </>}
         </div>
