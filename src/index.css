@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* markdown表示(proseクラス)の整形: Gitページのコメント/PR説明などで使用 */
+@plugin "@tailwindcss/typography";
 
 @theme {
   --font-sans: system-ui, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Roboto, sans-serif;

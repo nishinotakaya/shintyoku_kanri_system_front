@@ -30,6 +30,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.4.1",
     "@eslint/js": "^9.39.4",
+    "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
