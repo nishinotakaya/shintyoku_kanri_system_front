@@ -2,11 +2,20 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signIn } from '../lib/auth'
 
+// アプリ内ブラウザ(WebView)判定。Google は WebView 内の OAuth を
+// 403 (disallowed_useragent) で拒否するため、Google ログインボタンの代わりに案内を出す。
+// LINE / Facebook / Instagram / Messenger のアプリ内ブラウザ、Android WebView、Capacitor ネイティブアプリが対象。
+const isInAppBrowser = () => {
+  const capacitorNative = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+  return capacitorNative || /Line\/|FBAN|FBAV|FB_IAB|Instagram|Messenger|; wv\)/i.test(navigator.userAgent)
+}
+
 export default function SignIn() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [inAppBrowser] = useState(isInAppBrowser)
   const nav = useNavigate()
 
   useEffect(() => { document.title = 'ログイン — 進捗管理システム' }, [])
@@ -71,6 +80,16 @@ export default function SignIn() {
           <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-[var(--color-text-sub)]">または</span></div>
         </div>
 
+        {inAppBrowser && (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+            <div className="font-semibold">⚠️ このブラウザでは Google ログインが使えません</div>
+            <div className="mt-1">
+              LINE などのアプリ内ブラウザは Google の仕様でブロックされます（403エラー）。<br />
+              上の<b>メール＋パスワード</b>でログインするか、右上のメニューから<b>「他のアプリで開く」→ Chrome / Safari</b> で開いてください。
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => {
@@ -82,7 +101,8 @@ export default function SignIn() {
             document.body.appendChild(form)
             form.submit()
           }}
-          className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-[var(--color-border)] bg-white px-4 py-3 font-semibold text-[var(--color-text)] shadow-sm hover:bg-[var(--color-bg)] transition cursor-pointer"
+          disabled={inAppBrowser}
+          className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-[var(--color-border)] bg-white px-4 py-3 font-semibold text-[var(--color-text)] shadow-sm hover:bg-[var(--color-bg)] transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
