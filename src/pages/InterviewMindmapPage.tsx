@@ -22,7 +22,7 @@ type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; sp
 type Target = { id: number; display_name: string; email: string }
 
 // マインドマップの表示サイズ(%)。選択は localStorage に保存して次回も維持する
-const ZOOM_LEVELS = [70, 80, 90, 100, 120, 150]
+const ZOOM_LEVELS = [70, 80, 90, 100, 120, 150, 200]
 const ZOOM_STORAGE_KEY = 'mindmapZoomPercent'
 
 const KIND_STYLE: Record<string, { label: string; cls: string }> = {
@@ -498,7 +498,7 @@ export default function InterviewMindmapPage() {
                       className={`rounded px-2 py-0.5 text-[10px] font-semibold ${graphVideo ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🎬 動画用</button>
                   )}
                 </div>
-                {mapView === 'list' && (
+                {(mapView === 'list' || mapView === 'kanpe') && (
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-[var(--color-text-sub)]">🔍 表示サイズ</span>
                     {ZOOM_LEVELS.map((percent) => (
@@ -529,11 +529,13 @@ export default function InterviewMindmapPage() {
               <div className="mt-2 text-[10px] text-[var(--color-text-sub)]">ノード右上の<b>＋でAI展開</b>（子ノードを生成）、右端の−/＋Nで枝の開閉。<b>ダブルクリックで文言を編集</b>、カーソルを当てている間だけ拡大表示。⛶で全画面、Ctrl(⌘)+スクロールでズーム。「🎬 動画用」で大きく＆1問ずつ順に展開。</div>
             </>
           ) : (
-            <KanpeCueSheet mindmapId={map.id} kanpeScript={map.kanpe_script ?? null}
-              onSaved={(kanpeScript) => {
-                setMap((current) => current ? { ...current, kanpe_script: kanpeScript } : current)
-                setMaps((prev) => prev.map((m) => m.id === map.id ? { ...m, kanpe_script: kanpeScript } : m))
-              }} />
+            <div style={{ zoom: zoomPercent / 100 }}>
+              <KanpeCueSheet mindmapId={map.id} kanpeScript={map.kanpe_script ?? null}
+                onSaved={(kanpeScript) => {
+                  setMap((current) => current ? { ...current, kanpe_script: kanpeScript } : current)
+                  setMaps((prev) => prev.map((m) => m.id === map.id ? { ...m, kanpe_script: kanpeScript } : m))
+                }} />
+            </div>
           )}
           </>}
         </div>
