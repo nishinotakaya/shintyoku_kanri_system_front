@@ -6,6 +6,7 @@ import remarkBreaks from 'remark-breaks'
 // 改行をそのまま反映(breaks)＋表・リンク等のGFM対応でmarkdownを描画
 const MD_PLUGINS = [remarkGfm, remarkBreaks]
 import { api } from '../lib/api'
+import GithubPanel from '../components/git/GithubPanel'
 
 // Backlog Git を GitHub 風に閲覧・レビューするページ。
 // 🔀 プルリク: PR一覧 → 詳細（説明・既存コメント・変更ファイルdiff）。diff行の＋でレビュー下書き。
@@ -30,6 +31,10 @@ const LINE_BG: Record<DiffLine['type'], string> = {
 }
 
 export default function GitPage() {
+  // 表示ソース（Backlog Git / GitHub）の切替。次回開いたときも同じソースで開く
+  const [source, setSource] = useState<'backlog' | 'github'>(() => (localStorage.getItem('gitSource') === 'github' ? 'github' : 'backlog'))
+  useEffect(() => { localStorage.setItem('gitSource', source) }, [source])
+
   const [view, setView] = useState<'prs' | 'files'>('prs')
   const [groups, setGroups] = useState<RepoGroup[]>([])
   const [projectKey, setProjectKey] = useState('')
@@ -220,6 +225,24 @@ export default function GitPage() {
 
   return (
     <div className="space-y-3">
+      {/* Backlog / GitHub のソース切替 */}
+      <div className="glass rounded-2xl p-3 shadow-md">
+        <div className="flex items-center gap-1">
+          <button onClick={() => setSource('backlog')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold ${source === 'backlog' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+            🌿 Backlog
+          </button>
+          <button onClick={() => setSource('github')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold ${source === 'github' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+            🐙 GitHub
+          </button>
+        </div>
+      </div>
+
+      {source === 'github' ? (
+        <GithubPanel />
+      ) : (
+      <>
       <div className="glass rounded-2xl p-4 shadow-md space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-[var(--color-text)]">🌿 Git（Backlog）</span>
@@ -486,6 +509,8 @@ export default function GitPage() {
             ))}
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

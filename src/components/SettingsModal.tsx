@@ -30,7 +30,7 @@ export default function SettingsModal({
   onSaved,
 }: {
   open: boolean
-  initialTab?: 'account' | 'invoice' | 'backlog' | 'freee'
+  initialTab?: 'account' | 'invoice' | 'backlog' | 'github' | 'freee'
   year: number
   month: number
   onClose: () => void
@@ -39,7 +39,7 @@ export default function SettingsModal({
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
   const todayIso = new Date().toISOString().slice(0, 10)
   const [applicationDate, setApplicationDate] = useState<string>(todayIso)
-  const [tab, setTab] = useState<'account' | 'invoice' | 'backlog' | 'freee' | 'users'>(initialTab)
+  const [tab, setTab] = useState<'account' | 'invoice' | 'backlog' | 'github' | 'freee' | 'users'>(initialTab)
   useEffect(() => {
     if (open) setTab(initialTab)
   }, [open, initialTab])
@@ -95,11 +95,15 @@ export default function SettingsModal({
     api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
   }, [invCat, open])
   const [blSetting, setBlSetting] = useState({ backlog_url: '', backlog_email: '', backlog_password: '', board_id: 0, user_backlog_id: 0, session_cookie: '', has_cookie: false, api_key: '', has_api_key: false, assignee_name_filter: '' })
+  const [gh, setGh] = useState({ personal_access_token: '', default_repos: '', has_token: false })
+  const [ghTestResult, setGhTestResult] = useState<{ success: boolean; login?: string; name?: string; error?: string } | null>(null)
   const [freee, setFreee] = useState<{ identity: string; password: string; status: { connected: boolean; identity?: string; company_id?: string; last_connected_at?: string; last_status_code?: number; last_error?: string } | null; busy: boolean; result: string | null }>({ identity: '', password: '', status: null, busy: false, result: null })
   const [blTestResult, setBlTestResult] = useState<{ success: boolean; total?: number; error?: string } | null>(null)
   const [, setBlSyncResult] = useState<{ synced: number } | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // 確定申告・消費税申告書の宛先（所轄税務署・納税地）
+  const [taxInfo, setTaxInfo] = useState({ tax_office: '', address: '' })
 
   useEffect(() => {
     if (!open) return
@@ -119,10 +123,12 @@ export default function SettingsModal({
       setRoutes(r.data.transit_routes ?? [])
       setCommuteDays(r.data.commute_days ?? [1, 2, 3, 4, 5])
       setScheduleUrl(r.data.attendance_schedule_url ?? '')
+      setTaxInfo({ tax_office: r.data.tax_office ?? '', address: r.data.address ?? '' })
       setIsAdmin(!!r.data.admin)
     })
     api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
     api.get('/backlog/setting').then((r) => setBlSetting((prev) => ({ ...prev, ...r.data })))
+    api.get('/github/setting').then((r) => setGh((prev) => ({ ...prev, has_token: !!r.data.has_token, default_repos: r.data.default_repos ?? '' }))).catch(() => {})
     api.get('/freee/setting').then((r) => setFreee((prev) => ({ ...prev, status: r.data, identity: r.data.identity ?? '' }))).catch(() => {})
     api.get('/monthly_setting', { params: { month: monthParam } }).then((r) => {
       setApplicationDate(r.data.application_date ?? r.data.default_application_date ?? todayIso)
@@ -144,6 +150,8 @@ export default function SettingsModal({
         transit_routes: routes,
         commute_days: commuteDays,
         attendance_schedule_url: scheduleUrl,
+        tax_office: taxInfo.tax_office,
+        address: taxInfo.address,
       }
       if (apiKey) payload.openai_api_key = apiKey
       if (heygenKey) payload.heygen_api_key = heygenKey
@@ -238,8 +246,8 @@ export default function SettingsModal({
 
         <div className="mt-5 flex gap-2 flex-wrap">
           {(isAdmin
-            ? ['account', 'invoice', 'backlog', 'freee', 'users'] as const
-            : ['account', 'invoice', 'backlog', 'freee'] as const
+            ? ['account', 'invoice', 'backlog', 'github', 'freee', 'users'] as const
+            : ['account', 'invoice', 'backlog', 'github', 'freee'] as const
           ).map((t) => (
             <button
               key={t}
@@ -248,7 +256,7 @@ export default function SettingsModal({
                 tab === t ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] hover:text-[var(--color-text)]'
               }`}
             >
-              {t === 'account' ? 'アカウント' : t === 'invoice' ? '請求書' : t === 'backlog' ? 'バックログ' : t === 'freee' ? 'freee' : '👥 ユーザー'}
+              {t === 'account' ? 'アカウント' : t === 'invoice' ? '請求書' : t === 'backlog' ? 'バックログ' : t === 'github' ? 'GitHub' : t === 'freee' ? 'freee' : '👥 ユーザー'}
             </button>
           ))}
         </div>
@@ -399,6 +407,28 @@ export default function SettingsModal({
                   {importing ? '取込中…' : '📅 当月の休みを取込'}
                 </button>
                 {scheduleMsg && <span className="text-xs text-emerald-600">{scheduleMsg}</span>}
+              </div>
+            </div>
+
+            {/* 確定申告・消費税申告書の宛先 */}
+            <div>
+              <div className="text-xs text-[var(--color-text-sub)]">確定申告書・消費税申告書の宛先</div>
+              <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">
+                申告書PDFの「◯◯税務署長」と納税地に印字されます（例: 税務署=松戸）
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={taxInfo.tax_office}
+                  onChange={(e) => setTaxInfo({ ...taxInfo, tax_office: e.target.value })}
+                  placeholder="所轄税務署 (例: 松戸)"
+                  className="w-40 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
+                />
+                <input
+                  value={taxInfo.address}
+                  onChange={(e) => setTaxInfo({ ...taxInfo, address: e.target.value })}
+                  placeholder="納税地の住所 (未入力なら請求書設定の住所を使用)"
+                  className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
+                />
               </div>
             </div>
 
@@ -685,6 +715,76 @@ export default function SettingsModal({
             {blTestResult && (
               <div className={`rounded-lg px-3 py-2 text-xs ${blTestResult.success ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
                 {blTestResult.success ? `✅ 接続成功 (${blTestResult.total} 件取得)` : `❌ ${blTestResult.error}`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'github' && (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+              GitHub の Personal Access Token を登録すると、Git ページで GitHub のリポジトリ・PR・コメントを閲覧できます。
+              <br />発行手順: GitHub → Settings → Developer settings → Personal access tokens で発行（repo スコープが必要）
+            </div>
+
+            <label className="block">
+              <span className="text-[11px] text-[var(--color-text-sub)]">Personal Access Token</span>
+              <input type="password" value={gh.personal_access_token} onChange={(e) => setGh({ ...gh, personal_access_token: e.target.value })}
+                placeholder={gh.has_token ? '登録済み（変更する場合のみ入力）' : 'ghp_...'}
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] font-mono" />
+              <div className="mt-1 text-[10px] text-[var(--color-text-sub)]">
+                現在: {gh.has_token ? <span className="text-emerald-600">設定済み</span> : <span className="text-red-500">未設定</span>}
+                　<a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-[var(--color-primary)] underline">Personal Access Token を発行</a>
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="text-[11px] text-[var(--color-text-sub)]">表示リポジトリ</span>
+              <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">owner/repo を改行区切り。ここに書いたものが先頭に表示されます</div>
+              <textarea value={gh.default_repos} onChange={(e) => setGh({ ...gh, default_repos: e.target.value })} rows={4}
+                placeholder={'tech-put/example-repo\nowner/another-repo'}
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] font-mono" />
+            </label>
+
+            {msg && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-600">{msg}</div>}
+
+            <button
+              onClick={async () => {
+                setSaving(true); setMsg(null)
+                try {
+                  const payload: Record<string, unknown> = { default_repos: gh.default_repos }
+                  if (gh.personal_access_token) payload.personal_access_token = gh.personal_access_token
+                  const { data } = await api.patch('/github/setting', payload)
+                  setGh({ personal_access_token: '', default_repos: data.default_repos ?? '', has_token: !!data.has_token })
+                  setMsg('保存しました')
+                  onSaved?.()
+                } catch (e: any) { setMsg(e?.response?.data?.error?.toString() ?? '保存に失敗') }
+                finally { setSaving(false) }
+              }}
+              disabled={saving}
+              className="w-full rounded-xl bg-gradient-to-r from-indigo-500 to-fuchsia-500 px-4 py-3 font-semibold text-white shadow-lg shadow-fuchsia-500/20 disabled:opacity-50"
+            >
+              {saving ? '保存中…' : '設定を保存'}
+            </button>
+
+            <button
+              onClick={async () => {
+                setGhTestResult(null)
+                try {
+                  const { data } = await api.post('/github/test')
+                  setGhTestResult(data)
+                } catch (e: any) {
+                  setGhTestResult({ success: false, error: e?.response?.data?.error ?? '接続に失敗しました' })
+                }
+              }}
+              className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-semibold text-[var(--color-text)] hover:bg-gray-50"
+            >
+              接続テスト
+            </button>
+
+            {ghTestResult && (
+              <div className={`rounded-lg px-3 py-2 text-xs ${ghTestResult.success ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                {ghTestResult.success ? `✅ 接続OK: ${ghTestResult.login ?? ''}${ghTestResult.name ? `（${ghTestResult.name}）` : ''}` : `❌ ${ghTestResult.error}`}
               </div>
             )}
           </div>
