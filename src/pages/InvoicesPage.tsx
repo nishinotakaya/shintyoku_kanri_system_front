@@ -1001,6 +1001,29 @@ export default function InvoicesPage() {
       alert(`申請失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setSubmitBusy(false) }
   }
+  // 承認 / 却下（admin が申請中の請求書/立替金を一覧から直接処理する）
+  const [approveBusyId, setApproveBusyId] = useState<number | null>(null)
+  const approveOne = async (s: Submission) => {
+    if (!confirm(`${s.user_display_name} の ${s.year}年${s.month}月 ${CATEGORY_LABELS[s.category] ?? s.category}（${KIND_LABELS[s.kind]}）を承認しますか？`)) return
+    setApproveBusyId(s.id)
+    try {
+      await api.patch(`/invoice_submissions/${s.id}`, { status: 'approved' })
+      await load()
+    } catch (e: any) {
+      alert(`承認失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setApproveBusyId(null) }
+  }
+  const rejectOne = async (s: Submission) => {
+    const comment = prompt('却下理由（任意・申請者に共有されます）', '')
+    if (comment === null) return
+    setApproveBusyId(s.id)
+    try {
+      await api.patch(`/invoice_submissions/${s.id}`, { status: 'rejected', review_comment: comment.trim() })
+      await load()
+    } catch (e: any) {
+      alert(`却下失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setApproveBusyId(null) }
+  }
   const openPaymentNotice = () => {
     setPaymentMsg(null)
     setPaymentSubject('')
@@ -1532,6 +1555,16 @@ export default function InvoicesPage() {
                         <button onClick={() => submitOne(s)}
                           className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-1 text-[10px] font-semibold text-white shadow"
                           title="この下書きを申請（承認フローへ）">📤 申請</button>
+                      )}
+                      {s.status === 'pending' && me?.admin && (
+                        <>
+                          <button onClick={() => approveOne(s)} disabled={approveBusyId === s.id}
+                            className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-1 text-[10px] font-semibold text-white shadow disabled:opacity-50"
+                            title="この申請を承認">✅ 承認</button>
+                          <button onClick={() => rejectOne(s)} disabled={approveBusyId === s.id}
+                            className="rounded border border-red-300 px-2 py-1 text-[10px] font-semibold text-red-500 hover:bg-red-50 disabled:opacity-50"
+                            title="この申請を却下">却下</button>
+                        </>
                       )}
                       <RowActions
                         onView={() => openPreview(s)}
