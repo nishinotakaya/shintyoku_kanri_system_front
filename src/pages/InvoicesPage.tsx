@@ -940,11 +940,12 @@ export default function InvoicesPage() {
   }, [filtered, me])
 
   // 振込通知メール（支払通知書）
-  const [paymentNoticeOpen, setPaymentNoticeOpen] = useState(false)
-  const [paymentDate, setPaymentDate] = useState<string>(() => {
+  const todayStr = () => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  })
+  }
+  const [paymentNoticeOpen, setPaymentNoticeOpen] = useState(false)
+  const [paymentDate, setPaymentDate] = useState<string>(todayStr)
   const [paymentTo, setPaymentTo] = useState('takaya777boxing@gmail.com')
   const [paymentRecipient, setPaymentRecipient] = useState('')
   const [paymentSubject, setPaymentSubject] = useState('')
@@ -1028,6 +1029,7 @@ export default function InvoicesPage() {
     setPaymentMsg(null)
     setPaymentSubject('')
     setPaymentBody('')
+    setPaymentDate(todayStr()) // 振込日は常に「振込通知を出す当日」を初期値にする（古い日付が残らないように）
     setPaymentNoticeOpen(true)
   }
   const closePaymentNotice = () => {
