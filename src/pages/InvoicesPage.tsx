@@ -1210,12 +1210,17 @@ export default function InvoicesPage() {
           <span className="text-[11px] text-[var(--color-text-sub)]">
             {filtered.length} / {items.length} 件
           </span>
-          <span className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
-            📈 西野の売上 <span className="font-mono tabular-nums">¥{filteredTotals.ownSales.toLocaleString()}</span>
-          </span>
-          <span className="rounded-lg bg-gradient-to-r from-rose-500 to-red-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
-            📤 外注への支払 <span className="font-mono tabular-nums">¥{filteredTotals.subcontractPayment.toLocaleString()}</span>
-          </span>
+          {/* 売上/外注支払の分割は管理者(西野)専用の見方。一般ユーザーには総合計だけ出す */}
+          {me?.admin && (
+            <>
+              <span className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
+                📈 西野の売上 <span className="font-mono tabular-nums">¥{filteredTotals.ownSales.toLocaleString()}</span>
+              </span>
+              <span className="rounded-lg bg-gradient-to-r from-rose-500 to-red-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
+                📤 外注への支払 <span className="font-mono tabular-nums">¥{filteredTotals.subcontractPayment.toLocaleString()}</span>
+              </span>
+            </>
+          )}
           <span className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
             💰 合計 <span className="font-mono tabular-nums">¥{filteredTotal.toLocaleString()}</span>
           </span>
