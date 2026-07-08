@@ -926,6 +926,19 @@ export default function InvoicesPage() {
     [filtered]
   )
 
+  // 合計を「西野(閲覧している管理者)本人の売上」と「外注への支払(パートナー分)」に分ける。
+  // ラボップは統合請求書で西野に全額(外注分込み)を振込 → 西野の請求=売上 / 外注の請求=西野が払う経費。
+  const filteredTotals = useMemo(() => {
+    let ownSales = 0
+    let subcontractPayment = 0
+    for (const s of filtered) {
+      const amount = s.total_override ?? s.default_total ?? 0
+      if (me != null && s.user_id === me.id) ownSales += amount
+      else subcontractPayment += amount
+    }
+    return { ownSales, subcontractPayment }
+  }, [filtered, me])
+
   // 振込通知メール（支払通知書）
   const [paymentNoticeOpen, setPaymentNoticeOpen] = useState(false)
   const [paymentDate, setPaymentDate] = useState<string>(() => {
@@ -1193,9 +1206,15 @@ export default function InvoicesPage() {
           <option value="submitted_desc">📤 送信日（新しい順）</option>
           <option value="submitted_asc">📤 送信日（古い順）</option>
         </select>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="text-[11px] text-[var(--color-text-sub)]">
             {filtered.length} / {items.length} 件
+          </span>
+          <span className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
+            📈 西野の売上 <span className="font-mono tabular-nums">¥{filteredTotals.ownSales.toLocaleString()}</span>
+          </span>
+          <span className="rounded-lg bg-gradient-to-r from-rose-500 to-red-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
+            📤 外注への支払 <span className="font-mono tabular-nums">¥{filteredTotals.subcontractPayment.toLocaleString()}</span>
           </span>
           <span className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
             💰 合計 <span className="font-mono tabular-nums">¥{filteredTotal.toLocaleString()}</span>
