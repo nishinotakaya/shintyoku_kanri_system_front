@@ -14,7 +14,7 @@ import GithubPanel from '../components/git/GithubPanel'
 // 下書きは「一斉送信」で 1 コメントに結合して PR へ投稿。単発コメントも PR 詳細から送れる。
 
 type RepoGroup = { project_key: string; project_name: string; repositories: { name: string; description: string | null }[] }
-type PullRequest = { number: number; summary: string; description: string; base: string; branch: string; created_user: string; created: string }
+type PullRequest = { number: number; summary: string; description: string; base: string; branch: string; created_user: string; created: string; comment_count?: number }
 type TreeFile = { path: string; size: number }
 type DiffLine = { type: 'add' | 'del' | 'ctx' | 'hunk'; old_no?: number; new_no?: number; text: string }
 type DiffFile = { path: string; deleted: boolean; lines: DiffLine[] }
@@ -288,7 +288,10 @@ export default function GitPage() {
                 <button key={pr.number} onClick={() => openPr(pr.number)}
                   className={`block w-full rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
                   <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.summary}</div>
-                  <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">{pr.created_user} / {pr.branch} → {pr.base}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]">
+                    <span>{pr.created_user} / {pr.branch} → {pr.base}</span>
+                    <span>💬{pr.comment_count ?? 0}</span>
+                  </div>
                 </button>
               ))}
               {pulls.length === 0 && <div className="text-xs text-[var(--color-text-sub)]">{repoName ? 'オープンのPRはありません' : 'リポジトリを選択してください'}</div>}

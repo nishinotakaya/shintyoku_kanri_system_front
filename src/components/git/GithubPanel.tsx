@@ -10,7 +10,7 @@ const MD_PLUGINS = [remarkGfm, remarkBreaks]
 // GitHub を GitPage 内から閲覧・コメントするパネル。
 // リポジトリ選択 → PR一覧 → PR詳細（説明・変更ファイルdiff・コメント）の3段構成。
 
-type GithubSetting = { has_token: boolean; default_repos: string }
+type GithubSetting = { has_token: boolean; default_repos: string; display_name: string | null }
 type GithubRepository = {
   full_name: string
   name: string
@@ -44,8 +44,30 @@ type GithubPrDetail = {
   user: string
   html_url: string
   merged: boolean
+  head_sha: string | null
   comments: GithubPrComment[]
   files: GithubPrFile[]
+}
+type GithubNotification = {
+  id: string
+  reason: string
+  repo_full_name: string | null
+  title: string | null
+  type: string | null
+  number: number | null
+  updated_at: string
+  html_url: string | null
+  comment: { user: string; body: string; html_url: string } | null
+}
+
+// 通知理由の日本語ラベルと色（メンション/レビュー依頼を目立たせる）
+const REASON_META: Record<string, { label: string; cls: string }> = {
+  mention: { label: 'メンション', cls: 'bg-fuchsia-100 text-fuchsia-700' },
+  team_mention: { label: 'チーム宛て', cls: 'bg-fuchsia-100 text-fuchsia-700' },
+  review_requested: { label: 'レビュー依頼', cls: 'bg-amber-100 text-amber-700' },
+  comment: { label: 'コメント', cls: 'bg-sky-100 text-sky-700' },
+  assign: { label: 'アサイン', cls: 'bg-emerald-100 text-emerald-700' },
+  author: { label: '自分のPR', cls: 'bg-gray-100 text-gray-700' },
 }
 
 const STATE_FILTERS: { key: 'all' | 'open' | 'closed'; label: string }[] = [
@@ -75,6 +97,14 @@ export default function GithubPanel() {
   const [commentDraft, setCommentDraft] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [notifications, setNotifications] = useState<GithubNotification[]>([])
+  const [showInbox, setShowInbox] = useState(true)
+  // 変更ファイル単位のレビューコメント（開いているファイルのパスと下書き）
+  const [fileCommentPath, setFileCommentPath] = useState<string | null>(null)
+  const [fileCommentDraft, setFileCommentDraft] = useState('')
+  // パネル見出しのインライン編集
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key); setErr(null)
@@ -92,7 +122,7 @@ export default function GithubPanel() {
     })
   }, [])
 
-  // トークン設定済みならリポジトリ一覧を取得（default_repos が先頭）
+  // トークン設定済みならリポジトリ一覧と自分宛て通知を取得（default_repos が先頭）
   useEffect(() => {
     if (!setting?.has_token) return
     run('repos', async () => {
@@ -103,7 +133,37 @@ export default function GithubPanel() {
       const initialRepo = r.data.find((repo) => repo.full_name === savedRepo) ?? r.data[0]
       setSelectedRepo(initialRepo.full_name)
     })
+    // 自分宛て通知（メンション・レビュー依頼・コメント）。失敗しても本体は動かす
+    api.get<GithubNotification[]>('/github/notifications').then((r) => setNotifications(r.data)).catch(() => {})
   }, [setting?.has_token])
+
+  // 通知アイテムを開く: 同アプリ内でそのリポジトリ・PRを表示（PR以外はGitHubを新規タブで開く）
+  const openNotification = (notification: GithubNotification) => {
+    if (notification.type === 'PullRequest' && notification.repo_full_name && notification.number) {
+      setSelectedRepo(notification.repo_full_name)
+      void openPullRequest(notification.number)
+    } else if (notification.html_url) {
+      window.open(notification.html_url, '_blank')
+    }
+  }
+
+  // 見出し(表示名)を保存
+  const saveTitle = () => run('title', async () => {
+    const r = await api.patch<GithubSetting>('/github/setting', { github_setting: { display_name: titleDraft.trim() } })
+    setSetting((prev) => (prev ? { ...prev, display_name: r.data.display_name } : prev))
+    setEditingTitle(false)
+  })
+
+  // 変更ファイルへレビューコメントを投稿（公開・即時）
+  const submitFileComment = (path: string) => run(`file-comment-${path}`, async () => {
+    if (!prDetail || !prDetail.head_sha || !fileCommentDraft.trim()) return
+    await api.post('/github/review_comment', {
+      full_name: selectedRepo, number: prDetail.number,
+      commit_id: prDetail.head_sha, path, body: fileCommentDraft.trim(),
+    })
+    setFileCommentDraft(''); setFileCommentPath(null)
+    await openPullRequest(prDetail.number)
+  })
 
   // 選択リポジトリを記憶（次回開いたとき同じリポジトリから）
   useEffect(() => {
@@ -169,7 +229,22 @@ export default function GithubPanel() {
     <div className="space-y-3">
       <div className="glass rounded-2xl p-4 shadow-md space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-[var(--color-text)]">🐙 Git（GitHub）</span>
+          {editingTitle ? (
+            <span className="flex items-center gap-1">
+              <input value={titleDraft} autoFocus onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false) }}
+                placeholder="表示名（例: 自分のGitHub）"
+                className="rounded border border-fuchsia-300 px-2 py-0.5 text-sm" />
+              <button onClick={saveTitle} disabled={busy === 'title'} className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-50">保存</button>
+              <button onClick={() => setEditingTitle(false)} className="rounded border border-[var(--color-border)] px-2 py-0.5 text-[10px]">✕</button>
+            </span>
+          ) : (
+            <button onClick={() => { setTitleDraft(setting?.display_name ?? ''); setEditingTitle(true) }}
+              title="クリックで名前を変更" className="group flex items-center gap-1 text-sm font-semibold text-[var(--color-text)]">
+              <span>{setting?.display_name?.trim() || '🐙 Git（GitHub）'}</span>
+              <span className="text-[10px] text-[var(--color-text-sub)] opacity-0 group-hover:opacity-100">✏️</span>
+            </button>
+          )}
           {setting?.has_token && repositories.length > 0 && (
             <div className="flex max-h-24 flex-wrap gap-1 overflow-auto">
               {repositories.map((repo) => (
@@ -184,6 +259,40 @@ export default function GithubPanel() {
         </div>
         {err && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{err}</div>}
       </div>
+
+      {/* 自分宛て（メンション・レビュー依頼・コメント）インボックス */}
+      {setting?.has_token && notifications.length > 0 && (
+        <div className="glass rounded-2xl p-3 shadow-md">
+          <button onClick={() => setShowInbox((v) => !v)} className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
+            <span className="text-[10px] text-[var(--color-text-sub)]">{showInbox ? '▼' : '▶'}</span>
+            <span>🔔 自分宛て</span>
+            <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{notifications.length}</span>
+          </button>
+          {showInbox && (
+            <div className="max-h-72 space-y-1 overflow-auto">
+              {notifications.map((n) => {
+                const meta = REASON_META[n.reason] ?? { label: n.reason, cls: 'bg-gray-100 text-gray-700' }
+                return (
+                  <button key={n.id} onClick={() => openNotification(n)}
+                    className="block w-full rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-left hover:bg-fuchsia-50">
+                    <div className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-sub)]">
+                      <span className={`rounded px-1.5 py-0.5 font-semibold ${meta.cls}`}>{meta.label}</span>
+                      <span className="font-mono">{n.repo_full_name}{n.number ? ` #${n.number}` : ''}</span>
+                      <span>・{new Date(n.updated_at).toLocaleDateString('ja-JP')}</span>
+                    </div>
+                    <div className="mt-0.5 text-[11px] font-semibold text-[var(--color-text)]">{n.title}</div>
+                    {n.comment && (
+                      <div className="mt-0.5 line-clamp-2 text-[10px] text-[var(--color-text-sub)]">
+                        {n.comment.user}: {n.comment.body}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {busy === 'setting' && <div className="text-xs text-[var(--color-text-sub)]">確認中…</div>}
 
@@ -256,17 +365,39 @@ export default function GithubPanel() {
                   <div className="space-y-2">
                     {prDetail.files.map((file) => (
                       <div key={file.filename} className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white">
-                        <button onClick={() => setExpandedFile((current) => (current === file.filename ? null : file.filename))}
-                          className="flex w-full items-center gap-2 border-b border-[var(--color-border)] bg-gray-50 px-2 py-1 text-left font-mono text-[11px] font-semibold text-[var(--color-text)]">
-                          <span>{expandedFile === file.filename ? '▼' : '▶'}</span>
-                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${FILE_STATUS_STYLE[file.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                            {FILE_STATUS_LABEL[file.status] ?? file.status}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate">{file.filename}</span>
-                          <span className="shrink-0 font-sans text-[10px]">
-                            <span className="text-emerald-600">+{file.additions}</span> <span className="text-red-600">-{file.deletions}</span>
-                          </span>
-                        </button>
+                        <div className="flex w-full items-center gap-2 border-b border-[var(--color-border)] bg-gray-50 px-2 py-1 font-mono text-[11px] font-semibold text-[var(--color-text)]">
+                          <button onClick={() => setExpandedFile((current) => (current === file.filename ? null : file.filename))}
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                            <span>{expandedFile === file.filename ? '▼' : '▶'}</span>
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${FILE_STATUS_STYLE[file.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                              {FILE_STATUS_LABEL[file.status] ?? file.status}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">{file.filename}</span>
+                            <span className="shrink-0 font-sans text-[10px]">
+                              <span className="text-emerald-600">+{file.additions}</span> <span className="text-red-600">-{file.deletions}</span>
+                            </span>
+                          </button>
+                          {/* このファイルにレビューコメントを付ける（公開・即時POST） */}
+                          <button onClick={() => { setFileCommentPath((cur) => (cur === file.filename ? null : file.filename)); setFileCommentDraft('') }}
+                            title="このファイルにコメント" className="shrink-0 rounded bg-fuchsia-500 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-white hover:bg-fuchsia-600">
+                            ＋コメント
+                          </button>
+                        </div>
+                        {fileCommentPath === file.filename && (
+                          <div className="space-y-1.5 border-b border-[var(--color-border)] bg-fuchsia-50 p-2">
+                            <textarea value={fileCommentDraft} onChange={(e) => setFileCommentDraft(e.target.value)}
+                              rows={3} placeholder={`${file.filename} へのコメント（markdown可・GitHubに公開で投稿されます）`}
+                              className="w-full rounded border border-fuchsia-300 px-2 py-1 text-xs" />
+                            <div className="flex gap-1">
+                              <button onClick={() => submitFileComment(file.filename)}
+                                disabled={busy === `file-comment-${file.filename}` || !fileCommentDraft.trim()}
+                                className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-50">
+                                {busy === `file-comment-${file.filename}` ? '送信中…' : '💬 コメント'}
+                              </button>
+                              <button onClick={() => setFileCommentPath(null)} className="rounded border border-[var(--color-border)] px-2 py-0.5 text-[10px]">キャンセル</button>
+                            </div>
+                          </div>
+                        )}
                         {expandedFile === file.filename && (
                           file.patch
                             ? renderPatch(file.patch)
