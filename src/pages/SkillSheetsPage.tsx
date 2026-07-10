@@ -177,6 +177,17 @@ export default function SkillSheetsPage() {
         : '開発実績から案件を追加しました（確認して保存してください）')
     })
 
+  // 対応ログ(Backlog活動+Notionタスク)から職務経歴(案件)を1件 AI 生成して追加する。
+  // doGenerate と違い、AI 添削や書き出しは呼ばず案件を1件追加するだけ(内容確認・編集は手動で行う)。
+  const doGenerateFromActivities = () =>
+    run('generate-from-activities', async () => {
+      const s = await ensureSheet()
+      if (!s) return
+      const r = await api.post<{ project: SkillSheetProject }>(`/skill_sheets/${s.id}/generate_project_from_activities`)
+      const project = { ...EMPTY_PROJECT, ...r.data.project, phases: { ...EMPTY_PROJECT.phases, ...(r.data.project.phases ?? {}) } }
+      setSheet((prev) => prev ? { ...prev, projects: [...prev.projects, project] } : prev)
+      setMsg('対応ログから案件を追加しました（確認して保存してください）')
+    })
 
   const doSave = () =>
     run('save', async () => {
@@ -572,9 +583,18 @@ export default function SkillSheetsPage() {
             </div>
 
             {/* 職務経歴 */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="text-sm font-semibold text-[var(--color-text)]">職務経歴</div>
-              <button onClick={addProject} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px]">＋ 案件を追加</button>
+              <div className="flex items-center gap-2">
+                <button onClick={doGenerateFromActivities} disabled={!!busy}
+                  className="rounded-md border border-fuchsia-300 bg-fuchsia-50 px-2 py-1 text-[11px] font-semibold text-fuchsia-700 disabled:opacity-50">
+                  {busy === 'generate-from-activities' ? '生成中…（対応ログを読んでいます）' : '📥 対応ログから経歴を生成'}
+                </button>
+                <button onClick={addProject} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px]">＋ 案件を追加</button>
+              </div>
+            </div>
+            <div className="text-[10px] text-[var(--color-text-sub)]">
+              Backlog/Notionの対応ログから期間と業務内容を自動生成します。生成後に内容を確認・編集してから書き出してください
             </div>
             {sheet.projects.map((p, i) => {
               const isOpen = openProjects[i] !== false // デフォルト展開・false で折りたたみ
