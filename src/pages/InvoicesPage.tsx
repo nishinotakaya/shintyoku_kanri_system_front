@@ -693,6 +693,38 @@ export default function InvoicesPage() {
     }
   }
 
+  // freee 一括計上: チェック済みの「承認済み・未計上・金額あり」の請求書を順番に計上する
+  const freeeBulkTargets = useMemo(
+    () => items.filter((s) =>
+      checkedIds.has(`${s.kind}-${s.id}`) && s.kind === 'invoice' && s.status === 'approved' &&
+      !s.freee_deal_id && (s.total_override ?? s.default_total ?? 0) > 0),
+    [items, checkedIds]
+  )
+  const [freeeBulkBusy, setFreeeBulkBusy] = useState(false)
+  const reportBulkToFreee = async () => {
+    if (freeeBulkTargets.length === 0) return
+    const totalAmount = freeeBulkTargets.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0)
+    const lines = freeeBulkTargets.map((s) => `・${s.year}/${s.month} ${CATEGORY_LABELS[s.category] ?? s.category}（${s.user_display_name}）¥${(s.total_override ?? s.default_total ?? 0).toLocaleString()}`)
+    if (!confirm(`以下 ${freeeBulkTargets.length} 件を freee に売上計上します。よろしいですか？\n\n${lines.join('\n')}\n\n合計: ¥${totalAmount.toLocaleString()}`)) return
+    setFreeeBulkBusy(true)
+    const succeeded: string[] = []
+    const failed: string[] = []
+    try {
+      // freee 側のセッション/CSRF が直列前提のため1件ずつ順番に計上する(並列にしない)
+      for (const s of freeeBulkTargets) {
+        const label = `${s.year}/${s.month} ${CATEGORY_LABELS[s.category] ?? s.category}（${s.user_display_name}）`
+        try {
+          const { data } = await api.post(`/invoice_submissions/${s.id}/report_to_freee`)
+          succeeded.push(`✅ ${label} deal_id=${data.deal_id}`)
+        } catch (e: any) {
+          failed.push(`❌ ${label}: ${e?.response?.data?.error ?? '計上失敗'}`)
+        }
+      }
+      alert(`freee 一括計上 結果（成功${succeeded.length} / 失敗${failed.length}）\n\n${[...succeeded, ...failed].join('\n')}`)
+      await load()
+    } finally { setFreeeBulkBusy(false) }
+  }
+
   const removeSubmission = async (s: Submission) => {
     if (!confirm(`${s.year}/${s.month} ${s.kind === 'invoice' ? '請求書' : '立替金'}（${s.user_display_name}）を削除しますか？`)) return
     try {
@@ -1150,6 +1182,13 @@ export default function InvoicesPage() {
               className="rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
               title="選択した請求書/立替金に対して振込通知メールを送信し、振込済にする">
               💰 選択 {checkedIds.size} 件に振込通知
+            </button>
+          )}
+          {me?.admin && freeeBulkTargets.length > 0 && (
+            <button onClick={reportBulkToFreee} disabled={freeeBulkBusy}
+              className="rounded-md bg-gradient-to-r from-sky-500 to-blue-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+              title="選択した承認済み・未計上の請求書を freee に売上として一括計上">
+              🟦 選択 {freeeBulkTargets.length} 件を freee 一括計上{freeeBulkBusy ? '中…' : ''}
             </button>
           )}
           {me?.admin && checkedIssuedIds.size > 0 && (
