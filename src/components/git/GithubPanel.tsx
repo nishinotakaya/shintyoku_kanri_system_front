@@ -141,7 +141,7 @@ export default function GithubPanel() {
   const openNotification = (notification: GithubNotification) => {
     if (notification.type === 'PullRequest' && notification.repo_full_name && notification.number) {
       setSelectedRepo(notification.repo_full_name)
-      void openPullRequest(notification.number)
+      void openPullRequest(notification.number, notification.repo_full_name)
     } else if (notification.html_url) {
       window.open(notification.html_url, '_blank')
     }
@@ -182,8 +182,10 @@ export default function GithubPanel() {
     void loadPullRequests(selectedRepo)
   }, [selectedRepo])
 
-  const openPullRequest = (number: number) => run(`pr-${number}`, async () => {
-    const r = await api.get<GithubPrDetail>('/github/pr_detail', { params: { full_name: selectedRepo, number } })
+  // repoFullName を明示指定できるようにする(通知から別リポジトリのPRを開くとき、
+  // setSelectedRepo 直後は state が古いままなので selectedRepo に依存しない)
+  const openPullRequest = (number: number, repoFullName: string = selectedRepo) => run(`pr-${number}`, async () => {
+    const r = await api.get<GithubPrDetail>('/github/pr_detail', { params: { full_name: repoFullName, number } })
     setPrDetail(r.data)
     setExpandedFile(null)
   })
@@ -388,13 +390,14 @@ export default function GithubPanel() {
                             <textarea value={fileCommentDraft} onChange={(e) => setFileCommentDraft(e.target.value)}
                               rows={3} placeholder={`${file.filename} へのコメント（markdown可・GitHubに公開で投稿されます）`}
                               className="w-full rounded border border-fuchsia-300 px-2 py-1 text-xs" />
-                            <div className="flex gap-1">
+                            <div className="flex items-center gap-1">
                               <button onClick={() => submitFileComment(file.filename)}
-                                disabled={busy === `file-comment-${file.filename}` || !fileCommentDraft.trim()}
+                                disabled={busy === `file-comment-${file.filename}` || !fileCommentDraft.trim() || !prDetail.head_sha}
                                 className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-50">
                                 {busy === `file-comment-${file.filename}` ? '送信中…' : '💬 コメント'}
                               </button>
                               <button onClick={() => setFileCommentPath(null)} className="rounded border border-[var(--color-border)] px-2 py-0.5 text-[10px]">キャンセル</button>
+                              {!prDetail.head_sha && <span className="text-[10px] text-red-500">このPRはコミット情報が取れないためコメントできません</span>}
                             </div>
                           </div>
                         )}

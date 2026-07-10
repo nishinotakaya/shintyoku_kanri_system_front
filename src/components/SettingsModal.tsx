@@ -752,9 +752,10 @@ export default function SettingsModal({
               onClick={async () => {
                 setSaving(true); setMsg(null)
                 try {
-                  const payload: Record<string, unknown> = { default_repos: gh.default_repos }
-                  if (gh.personal_access_token) payload.personal_access_token = gh.personal_access_token
-                  const { data } = await api.patch('/github/setting', payload)
+                  // コントローラは params.require(:github_setting) なので必ずラップして送る(GithubPanelの改名保存と同じ形)
+                  const githubSetting: Record<string, unknown> = { default_repos: gh.default_repos }
+                  if (gh.personal_access_token) githubSetting.personal_access_token = gh.personal_access_token
+                  const { data } = await api.patch('/github/setting', { github_setting: githubSetting })
                   setGh({ personal_access_token: '', default_repos: data.default_repos ?? '', has_token: !!data.has_token })
                   setMsg('保存しました')
                   onSaved?.()

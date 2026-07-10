@@ -928,10 +928,12 @@ export default function InvoicesPage() {
 
   // 合計を「西野(閲覧している管理者)本人の売上」と「外注への支払(パートナー分)」に分ける。
   // ラボップは統合請求書で西野に全額(外注分込み)を振込 → 西野の請求=売上 / 外注の請求=西野が払う経費。
+  // PDF取込(scanned)は他社発行の受領請求書で西野の売上ではないため、分割集計からは除外する(総合計には含む)。
   const filteredTotals = useMemo(() => {
     let ownSales = 0
     let subcontractPayment = 0
     for (const s of filtered) {
+      if (s.kind === 'scanned') continue
       const amount = s.total_override ?? s.default_total ?? 0
       if (me != null && s.user_id === me.id) ownSales += amount
       else subcontractPayment += amount
