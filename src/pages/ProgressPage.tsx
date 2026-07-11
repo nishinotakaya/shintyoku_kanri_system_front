@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import KanbanBoard from '../components/KanbanBoard'
+import WorkspaceTabs from '../components/progress/WorkspaceTabs'
+import type { ProgressWorkspace } from '../components/progress/WorkspaceTabs'
 
 type BLTask = {
   id: number
@@ -30,6 +32,46 @@ export default function ProgressPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newTask, setNewTask] = useState({ summary: '', memo: '', deploy_note: '', due_date: '', assignee_name: '' })
   const [sheetUrl, setSheetUrl] = useState('')
+
+  // ワークスペース切替タブ
+  const [workspaces, setWorkspaces] = useState<ProgressWorkspace[]>([])
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null)
+  const [workspaceMsg, setWorkspaceMsg] = useState<string | null>(null)
+  const selectedWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null
+
+  useEffect(() => {
+    api.get<ProgressWorkspace[]>('/progress_workspaces').then((r) => {
+      const fetchedWorkspaces = r.data
+      setWorkspaces(fetchedWorkspaces)
+      const savedWorkspaceId = Number(localStorage.getItem('progressWorkspaceId'))
+      const savedWorkspaceExists = fetchedWorkspaces.some((workspace) => workspace.id === savedWorkspaceId)
+      setSelectedWorkspaceId(savedWorkspaceExists ? savedWorkspaceId : (fetchedWorkspaces[0]?.id ?? null))
+    })
+  }, [])
+
+  const selectWorkspace = (workspaceId: number) => {
+    setSelectedWorkspaceId(workspaceId)
+    localStorage.setItem('progressWorkspaceId', String(workspaceId))
+  }
+
+  const addWorkspace = async (name: string) => {
+    setWorkspaceMsg(null)
+    try {
+      const { data } = await api.post<ProgressWorkspace>('/progress_workspaces', { name, source_type: 'manual' })
+      setWorkspaces((prev) => [...prev, data])
+      selectWorkspace(data.id)
+    } catch (e: any) { setWorkspaceMsg(e?.response?.data?.error ?? 'ワークスペース追加に失敗しました') }
+  }
+
+  const deleteWorkspace = async (workspaceId: number) => {
+    setWorkspaceMsg(null)
+    try {
+      await api.delete(`/progress_workspaces/${workspaceId}`)
+      const remainingWorkspaces = workspaces.filter((workspace) => workspace.id !== workspaceId)
+      setWorkspaces(remainingWorkspaces)
+      if (selectedWorkspaceId === workspaceId) selectWorkspace(remainingWorkspaces[0]?.id ?? 0)
+    } catch (e: any) { setWorkspaceMsg(e?.response?.data?.error ?? 'ワークスペース削除に失敗しました') }
+  }
   // 自分の progress_sheet_url を初期ロード (西野はデフォあり、川村はなし)
   useEffect(() => {
     api.get<{ progress_sheet_url?: string | null }>('/me')
@@ -47,14 +89,25 @@ export default function ProgressPage() {
 
 
   const tasksQ = useQuery({
-    queryKey: ['backlog_tasks'],
-    queryFn: async () => (await api.get<BLTask[]>('/backlog/tasks')).data,
+    queryKey: ['backlog_tasks', selectedWorkspaceId],
+    queryFn: async () => (await api.get<BLTask[]>('/backlog/tasks', { params: { workspace_id: selectedWorkspaceId } })).data,
+    enabled: selectedWorkspaceId != null,
   })
 
   const sync = async () => {
     setSyncing(true); setSyncMsg(null)
     try {
       const { data } = await api.post('/backlog/sync')
+      setSyncMsg(`${data.synced} 件同期`)
+      tasksQ.refetch()
+    } catch (e: any) { setSyncMsg(e?.response?.data?.error ?? '同期失敗') }
+    finally { setSyncing(false) }
+  }
+
+  const syncNotion = async () => {
+    setSyncing(true); setSyncMsg(null)
+    try {
+      const { data } = await api.post('/backlog/sync_notion')
       setSyncMsg(`${data.synced} 件同期`)
       tasksQ.refetch()
     } catch (e: any) { setSyncMsg(e?.response?.data?.error ?? '同期失敗') }
@@ -81,7 +134,7 @@ export default function ProgressPage() {
   }
   const addTask = async () => {
     if (!newTask.summary.trim()) return
-    await api.post('/backlog/tasks', newTask)
+    await api.post('/backlog/tasks', { ...newTask, workspace_id: selectedWorkspaceId })
     setNewTask({ summary: '', memo: '', deploy_note: '', due_date: '', assignee_name: '' })
     setShowAddForm(false)
     tasksQ.refetch()
@@ -116,10 +169,29 @@ export default function ProgressPage() {
           <button onClick={() => setShowAddForm(!showAddForm)} className="whitespace-nowrap rounded-xl bg-[var(--color-primary)] px-3 py-2 text-xs font-semibold text-white shadow-md sm:px-5 sm:py-2.5 sm:text-sm">
             ＋ タスク追加
           </button>
-          <button onClick={sync} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
-            {syncing ? '同期中…' : '🔄 バックログ同期'}
-          </button>
+          {selectedWorkspace?.source_type === 'backlog' && (
+            <button onClick={sync} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+              {syncing ? '同期中…' : '🔄 バックログ同期'}
+            </button>
+          )}
+          {selectedWorkspace?.source_type === 'notion' && (
+            <button onClick={syncNotion} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+              {syncing ? '同期中…' : '🔄 Notion同期'}
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* ワークスペース切替タブ */}
+      <div className="glass rounded-2xl p-3 shadow-md">
+        <WorkspaceTabs
+          workspaces={workspaces}
+          selectedWorkspaceId={selectedWorkspaceId}
+          onSelect={selectWorkspace}
+          onAdd={addWorkspace}
+          onDelete={deleteWorkspace}
+        />
+        {workspaceMsg && <div className="mt-2 text-xs text-red-500">{workspaceMsg}</div>}
       </div>
 
       {/* タスク追加フォーム */}
@@ -146,7 +218,8 @@ export default function ProgressPage() {
         </div>
       )}
 
-      {/* スプレッドシート連携 */}
+      {/* スプレッドシート連携（Backlogタブのみ） */}
+      {selectedWorkspace?.source_type === 'backlog' && (
       <div className="glass rounded-2xl p-5 shadow-md">
         <div className="text-sm font-semibold text-[var(--color-text)]">Google スプレッドシート連携</div>
         <div className="text-xs text-[var(--color-text-sub)]">書き出し: DB → シート / インポート: シート → DB（A列idで更新、無ければ追加）</div>
@@ -218,6 +291,7 @@ export default function ProgressPage() {
         </div>
         {importMsg && <div className="mt-2 text-xs text-emerald-600">{importMsg}</div>}
       </div>
+      )}
 
       {/* 勤怠同期 + 休日設定 — カレンダーで同等機能を提供しているため非表示 (2026-05-13)
         <div className="glass rounded-2xl p-5 shadow-md">
