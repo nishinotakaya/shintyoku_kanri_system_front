@@ -199,6 +199,10 @@ export default function BusinessExpensesPage() {
   const [assetForm, setAssetForm] = useState({ name: '', acquired_on: '', cost: '', useful_life_years: '4', business_ratio: 100 })
   const [showAssetForm, setShowAssetForm] = useState(false)
 
+  // 月次一覧のチェックボックス選択（一括freee連携・一括削除用）
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState<'freee' | 'delete' | null>(null)
+
   const load = async () => {
     const r = await api.get<{ expenses: BusinessExpense[]; summary: Summary }>('/business_expenses', { params: { month } })
     setItems(r.data.expenses)
@@ -213,6 +217,7 @@ export default function BusinessExpensesPage() {
     setAssets(a.data)
   }
   useEffect(() => { void load().catch(() => setMsg('読み込みに失敗しました')) }, [month])
+  useEffect(() => { setSelectedIds(new Set()) }, [month])
   useEffect(() => { if (view === 'year') void loadTax().catch(() => setMsg('集計の読み込みに失敗しました')) }, [view, year])
 
   // 📷 レシート撮影 → AI読取 → 確認モーダル。複数選択時は最大20枚をキューにして
@@ -513,24 +518,90 @@ export default function BusinessExpensesPage() {
     setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
+  // ============ チェックボックス選択・一括操作 ============
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const allFilteredSelected = filtered.length > 0 && filtered.every((it) => selectedIds.has(it.id))
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (allFilteredSelected) return new Set([ ...prev ].filter((id) => !filtered.some((it) => it.id === id)))
+      const next = new Set(prev)
+      filtered.forEach((it) => next.add(it.id))
+      return next
+    })
+  }
+  const selectedItems = items.filter((it) => selectedIds.has(it.id))
+  const selectedUnsyncedCount = selectedItems.filter((it) => !it.freee_synced).length
+
+  const bulkReportToFreee = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`選択${selectedIds.size}件のうち、freee未連携の${selectedUnsyncedCount}件を連携します。よろしいですか？`)) return
+    setBulkBusy('freee')
+    try {
+      const r = await api.post<{
+        succeeded: { id: number; deal_id: number | null }[]
+        skipped: { id: number; reason: string }[]
+        failed: { id: number; reason: string }[]
+      }>('/business_expenses/report_bulk_to_freee', { ids: Array.from(selectedIds) })
+      const lines = [
+        `✅ 成功: ${r.data.succeeded.length}件`,
+        `⏭ スキップ（連携済み）: ${r.data.skipped.length}件`,
+        `❌ 失敗: ${r.data.failed.length}件`,
+      ]
+      if (r.data.failed.length > 0) {
+        lines.push('', '【失敗の理由】')
+        r.data.failed.forEach((f) => lines.push(`・ID${f.id}: ${f.reason}`))
+      }
+      alert(lines.join('\n'))
+      setSelectedIds(new Set())
+      await load()
+    } catch (e: any) {
+      setMsg(`freee連携失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setBulkBusy(null) }
+  }
+  const bulkDestroy = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`選択${selectedIds.size}件を削除します。よろしいですか？（元に戻せません）`)) return
+    setBulkBusy('delete')
+    try {
+      const r = await api.post<{ deleted: number }>('/business_expenses/bulk_destroy', { ids: Array.from(selectedIds) })
+      setMsg(`✅ ${r.data.deleted}件を削除しました`)
+      setSelectedIds(new Set())
+      await load()
+    } catch (e: any) {
+      setMsg(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setBulkBusy(null) }
+  }
+
   const Row = ({ it }: { it: BusinessExpense }) => (
-    <button onClick={() => setEditing(it)} className="flex w-full items-center gap-3 border-b border-[var(--color-border)] bg-white px-3 py-2.5 text-left last:border-b-0 hover:bg-fuchsia-50/40">
-      {it.has_receipt
-        ? <ReceiptThumb expenseId={it.id} />
-        : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-fuchsia-50 text-lg">{CAT_ICON[it.account_category ?? ''] ?? '🧾'}</span>}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-[var(--color-text)]">{it.store_name || '（店名なし）'}</span>
-        <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-[var(--color-text-sub)]">
-          <span>{it.expense_date ?? '日付なし'} ・ {it.account_category ?? '未分類'}{it.business_ratio < 100 ? ` ・ 按分${it.business_ratio}%` : ''}</span>
-          <PaymentBadge method={it.payment_method} source={it.payment_source} />
-          {!it.freee_synced && <span className="rounded bg-fuchsia-50 px-1 py-0.5 text-[9px] font-semibold text-fuchsia-600 ring-1 ring-fuchsia-200" title="このアプリだけに登録されている経費（freeeに取引未登録）">freee未連携</span>}
+    <div className="flex w-full items-center gap-2 border-b border-[var(--color-border)] bg-white px-3 py-2.5 last:border-b-0 hover:bg-fuchsia-50/40">
+      <input type="checkbox" checked={selectedIds.has(it.id)} onChange={() => toggleSelect(it.id)}
+        className="h-4 w-4 shrink-0 rounded border-gray-300 text-fuchsia-500 focus:ring-fuchsia-400" aria-label="選択" />
+      <button onClick={() => setEditing(it)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        {it.has_receipt
+          ? <ReceiptThumb expenseId={it.id} />
+          : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-fuchsia-50 text-lg">{CAT_ICON[it.account_category ?? ''] ?? '🧾'}</span>}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-[var(--color-text)]">{it.store_name || '（店名なし）'}</span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-[var(--color-text-sub)]">
+            <span>{it.expense_date ?? '日付なし'} ・ {it.account_category ?? '未分類'}{it.business_ratio < 100 ? ` ・ 按分${it.business_ratio}%` : ''}</span>
+            <PaymentBadge method={it.payment_method} source={it.payment_source} />
+            {it.freee_synced
+              ? <span className="rounded bg-sky-50 px-1 py-0.5 text-[9px] font-semibold text-sky-600 ring-1 ring-sky-200" title="freeeに取引登録済み">🟦連携済</span>
+              : <span className="rounded bg-fuchsia-50 px-1 py-0.5 text-[9px] font-semibold text-fuchsia-600 ring-1 ring-fuchsia-200" title="このアプリだけに登録されている経費（freeeに取引未登録）">freee未連携</span>}
+          </span>
         </span>
-      </span>
-      <span className="text-right">
-        <span className="block text-sm font-semibold tabular-nums">{yen(it.amount)}</span>
-        {it.status === 'needs_review' && <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">要確認</span>}
-      </span>
-    </button>
+        <span className="text-right">
+          <span className="block text-sm font-semibold tabular-nums">{yen(it.amount)}</span>
+          {it.status === 'needs_review' && <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">要確認</span>}
+        </span>
+      </button>
+    </div>
   )
 
   return (
@@ -608,6 +679,30 @@ export default function BusinessExpensesPage() {
                 <button key={c} onClick={() => setCatFilter(c)} className={`shrink-0 rounded-full px-3 py-1 text-xs ${catFilter === c ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] bg-white text-[var(--color-text-sub)]'}`}>{CAT_ICON[c]} {c}</button>
               ))}
             </div>
+
+            {/* 選択ヘッダー: 全選択 + 選択中は一括操作ボタンを表示 */}
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 px-1">
+              <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-sub)]">
+                <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-gray-300 text-fuchsia-500 focus:ring-fuchsia-400" />
+                全選択
+              </label>
+              {selectedIds.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-fuchsia-600">{selectedIds.size}件選択中</span>
+                  <button onClick={bulkReportToFreee} disabled={!!bulkBusy}
+                    className="rounded-lg bg-[#2864f0] px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50"
+                    title="選択した経費のうちfreee未連携分を一括計上">
+                    {bulkBusy === 'freee' ? '連携中…' : `🟦 選択${selectedIds.size}件を freee 連携`}
+                  </button>
+                  <button onClick={bulkDestroy} disabled={!!bulkBusy}
+                    className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50">
+                    {bulkBusy === 'delete' ? '削除中…' : `🗑 選択${selectedIds.size}件を削除`}
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-white">
               {filtered.map((it) => <Row key={it.id} it={it} />)}
               {filtered.length === 0 && <div className="p-6 text-center text-xs text-[var(--color-text-sub)]">この月の経費はありません。右下の 📷 でレシートを撮影するか、「📥 明細CSV取込」から始められます。</div>}
