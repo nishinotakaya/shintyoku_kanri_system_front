@@ -592,7 +592,7 @@ export default function BusinessExpensesPage() {
             <span>{it.expense_date ?? '日付なし'} ・ {it.account_category ?? '未分類'}{it.business_ratio < 100 ? ` ・ 按分${it.business_ratio}%` : ''}</span>
             <PaymentBadge method={it.payment_method} source={it.payment_source} />
             {it.freee_synced
-              ? <span className="rounded bg-sky-50 px-1 py-0.5 text-[9px] font-semibold text-sky-600 ring-1 ring-sky-200" title="freeeに取引登録済み">🟦連携済</span>
+              ? <span className="rounded bg-sky-50 px-1 py-0.5 text-[9px] font-semibold text-sky-600 ring-1 ring-sky-200" title="freeeに取引登録済み">🟦freee連携済</span>
               : <span className="rounded bg-fuchsia-50 px-1 py-0.5 text-[9px] font-semibold text-fuchsia-600 ring-1 ring-fuchsia-200" title="このアプリだけに登録されている経費（freeeに取引未登録）">freee未連携</span>}
           </span>
         </span>
