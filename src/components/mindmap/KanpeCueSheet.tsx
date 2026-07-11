@@ -3,12 +3,17 @@ import { api } from '../../lib/api'
 import AutoGrowTextarea from '../AutoGrowTextarea'
 import ConfirmDialog from '../ConfirmDialog'
 
-// 「カンペ」タブ本体。撮影中にチラ見して読む台本(西野式テンプレ)をAIで生成・保存する。
+// 「カンペ」タブ本体。撮影中にチラ見して読む台本をAIで生成・保存する。
+// テンプレはスタイルで分岐(sales=西野式セールス / app_build=アプリを作る完全台本)。
 // 未生成なら中央の生成ボタンのみ、生成済みなら【見出し】区切りでセクションカードに分解して表示する。
+
+type KanpeStyle = 'sales' | 'app_build'
 
 type Props = {
   mindmapId: number
   kanpeScript: string | null
+  kanpeStyle: KanpeStyle
+  onStyleChange: (style: KanpeStyle) => void
   onSaved: (kanpeScript: string) => void
 }
 
@@ -55,18 +60,33 @@ function buildKanpeScript(sections: KanpeSection[]): string {
   return sections.map((section) => (section.heading === '' ? section.body : `【${section.heading}】\n${section.body}`)).join('\n\n')
 }
 
-export default function KanpeCueSheet({ mindmapId, kanpeScript, onSaved }: Props) {
+export default function KanpeCueSheet({ mindmapId, kanpeScript, kanpeStyle, onStyleChange, onSaved }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editingBody, setEditingBody] = useState('')
   const [copied, setCopied] = useState(false)
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false)
+  const [styleChangedNotice, setStyleChangedNotice] = useState(false) // 生成済みのままスタイルを切り替えた時の再生成ヒント
 
   const sections = useMemo(() => (kanpeScript ? parseKanpeScript(kanpeScript) : []), [kanpeScript])
   // 読み上げ目安は本文だけで数える(【見出し】は声に出さないため)
   const totalChars = sections.reduce((sum, section) => sum + section.body.length, 0)
   const estimatedReadingMinutes = (totalChars / 300).toFixed(1) // 300字=1分で概算
+
+  // テンプレ切替トグル。未生成時と生成済み時の両方の画面で表示する
+  const styleToggle = (
+    <div className="flex items-center gap-1">
+      <button onClick={() => changeStyle('sales')} disabled={!!busy}
+        className={`rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-50 ${kanpeStyle === 'sales' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+        🎤 セールス（西野式）
+      </button>
+      <button onClick={() => changeStyle('app_build')} disabled={!!busy}
+        className={`rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-50 ${kanpeStyle === 'app_build' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+        🛠 アプリを作る
+      </button>
+    </div>
+  )
 
   const generateKanpe = async () => {
     setBusy('generate'); setErr(null)
@@ -74,11 +94,27 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, onSaved }: Props
       const response = await api.post<KanpeResponse>(`/interview_mindmaps/${mindmapId}/generate_kanpe`)
       onSaved(response.data.kanpe_script)
       setEditingIndex(null)
+      setStyleChangedNotice(false)
     } catch (e: any) {
       setErr(e?.response?.data?.error ?? '生成に失敗しました')
     } finally {
       setBusy(null)
       setShowRegenerateConfirm(false)
+    }
+  }
+
+  // どのテンプレでAI生成するかの切替(sales=西野式セールス / app_build=アプリを作る完全台本)
+  const changeStyle = async (style: KanpeStyle) => {
+    if (style === kanpeStyle) return
+    setBusy('style'); setErr(null)
+    try {
+      await api.patch(`/interview_mindmaps/${mindmapId}`, { kanpe_style: style })
+      onStyleChange(style)
+      setStyleChangedNotice(!!kanpeScript) // 旧スタイルの台本が残っている場合だけ再生成を促す
+    } catch (e: any) {
+      setErr(e?.response?.data?.error ?? 'スタイルの変更に失敗しました')
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -112,6 +148,10 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, onSaved }: Props
 
   // 本文を行ごとに描画し、「未来：」「問題：」「原因：」「解決：」だけラベル部分を強調する
   const renderBody = (body: string) => body.split('\n').map((line, lineIndex) => {
+    const directionMatch = line.match(/^\s*>(.*)$/)
+    if (directionMatch) {
+      return <p key={lineIndex} className="mb-1 whitespace-pre-wrap rounded bg-sky-50 px-1.5 py-0.5 text-[11px] leading-relaxed text-sky-700">{directionMatch[1].trim()}</p>
+    }
     const labelMatch = line.match(/^(未来|問題|原因|解決)：/)
     if (!labelMatch) {
       return line.trim() === '' ? <div key={lineIndex} className="h-2" /> : <p key={lineIndex} className="mb-1 whitespace-pre-wrap leading-relaxed">{line}</p>
@@ -127,12 +167,15 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, onSaved }: Props
   if (!kanpeScript) {
     return (
       <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+        {styleToggle}
         <button onClick={generateKanpe} disabled={!!busy}
           className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-500 px-6 py-3 text-sm font-semibold text-white shadow disabled:opacity-50">
-          {busy === 'generate' ? '書き出し中…（30秒〜1分ほどかかります）' : '🤖 AIでカンペを書き出す'}
+          {busy === 'generate' ? '書き出し中…（30秒〜1分ほどかかります）' : (kanpeStyle === 'app_build' ? '🤖 AIで台本を書き出す' : '🤖 AIでカンペを書き出す')}
         </button>
         <div className="max-w-md text-[11px] text-[var(--color-text-sub)]">
-          ペルソナ・スキルシート・マインドマップの回答を読み込んで、西野式テンプレ（挨拶→企画コール→本編→LINE誘導）のカンペを書き出します。
+          {kanpeStyle === 'app_build'
+            ? 'タイトル・マインドマップを読み込んで、アプリを作る完全台本（フック→デモ→AI時代の価値→CTA、画面・テロップ指示付き）を書き出します。'
+            : 'ペルソナ・スキルシート・マインドマップの回答を読み込んで、西野式テンプレ（挨拶→企画コール→本編→LINE誘導）のカンペを書き出します。'}
         </div>
         {err && <div className="w-full rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">{err}</div>}
       </div>
@@ -142,6 +185,7 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, onSaved }: Props
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {styleToggle}
         <button onClick={copyAll}
           className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:text-fuchsia-600">
           {copied ? '✅ コピーしました' : '📋 全文コピー'}
@@ -154,6 +198,11 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, onSaved }: Props
       </div>
 
       {err && <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">{err}</div>}
+      {styleChangedNotice && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          スタイルを変更しました。表示中の台本は前のスタイルのままです。「🤖 AIで書き直す」を押すと新しいスタイルで生成されます。
+        </div>
+      )}
 
       <div className="space-y-2">
         {sections.map((section, index) => (

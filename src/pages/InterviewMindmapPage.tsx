@@ -18,7 +18,7 @@ type MindNode = {
   expanded: boolean
 }
 type MindMode = 'interview' | 'youtube' | 'mote'
-type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; user?: { id: number; display_name: string } }
+type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; kanpe_style?: 'sales' | 'app_build'; user?: { id: number; display_name: string } }
 type Target = { id: number; display_name: string; email: string }
 
 // マインドマップの表示サイズ(%)。選択は localStorage に保存して次回も維持する
@@ -531,6 +531,11 @@ export default function InterviewMindmapPage() {
           ) : (
             <div style={{ zoom: zoomPercent / 100 }}>
               <KanpeCueSheet mindmapId={map.id} kanpeScript={map.kanpe_script ?? null}
+                kanpeStyle={map.kanpe_style ?? 'sales'}
+                onStyleChange={(kanpeStyle) => {
+                  setMap((current) => current ? { ...current, kanpe_style: kanpeStyle } : current)
+                  setMaps((prev) => prev.map((m) => m.id === map.id ? { ...m, kanpe_style: kanpeStyle } : m))
+                }}
                 onSaved={(kanpeScript) => {
                   setMap((current) => current ? { ...current, kanpe_script: kanpeScript } : current)
                   setMaps((prev) => prev.map((m) => m.id === map.id ? { ...m, kanpe_script: kanpeScript } : m))
