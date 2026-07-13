@@ -114,6 +114,17 @@ export default function ProgressPage() {
     finally { setSyncing(false) }
   }
 
+  // プライベートTodo ⇄ 専用Googleカレンダー。取込ボタン。登録(追加/更新/削除)はサーバ側で自動反映。
+  const importCalendar = async () => {
+    setSyncing(true); setSyncMsg(null)
+    try {
+      const { data } = await api.post('/backlog/import_calendar')
+      setSyncMsg(`カレンダーから ${data.imported} 件取込`)
+      tasksQ.refetch()
+    } catch (e: any) { setSyncMsg(e?.response?.data?.error ?? 'カレンダー取込に失敗しました') }
+    finally { setSyncing(false) }
+  }
+
   const handleTaskMoved = async (taskId: number, newStatusId: number) => {
     await api.patch(`/backlog/tasks/${taskId}`, { status_id: newStatusId })
     tasksQ.refetch()
@@ -177,6 +188,11 @@ export default function ProgressPage() {
           {selectedWorkspace?.source_type === 'notion' && (
             <button onClick={syncNotion} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
               {syncing ? '同期中…' : '🔄 Notion同期'}
+            </button>
+          )}
+          {selectedWorkspace?.name === 'プライベート' && (
+            <button onClick={importCalendar} disabled={syncing} title="Googleカレンダーの予定を取り込みます。タスクの追加・変更・削除は自動でカレンダーに反映されます。" className="whitespace-nowrap rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+              {syncing ? '取込中…' : '📅 カレンダー取込'}
             </button>
           )}
         </div>

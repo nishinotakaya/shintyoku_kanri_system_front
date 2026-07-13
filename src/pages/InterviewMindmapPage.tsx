@@ -5,6 +5,7 @@ import ThumbnailStudio from '../components/ThumbnailStudio'
 import MindmapGraph from '../components/mindmap/MindmapGraph'
 import KanpeCueSheet from '../components/mindmap/KanpeCueSheet'
 import ConfirmDialog from '../components/ConfirmDialog'
+import SearchableSelect from '../components/SearchableSelect'
 import AutoGrowTextarea from '../components/AutoGrowTextarea'
 import { breakBySentence } from '../lib/sentenceBreak'
 
@@ -419,11 +420,10 @@ export default function InterviewMindmapPage() {
         {isYoutube && userId != null && (
           <div className="flex flex-wrap items-center gap-2">
             {maps.length > 0 && (
-              <select value={map?.id ?? ''} title="動画タイトルでマインドマップを切替" disabled={!!busy}
-                onChange={(e) => selectMap(Number(e.target.value))}
-                className="max-w-[280px] rounded-md border border-[var(--color-border)] px-2 py-1 text-xs disabled:opacity-50">
-                {maps.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
-              </select>
+              <SearchableSelect options={maps.map((m) => ({ value: m.id, label: m.title }))}
+                value={map?.id ?? null} onChange={selectMap} disabled={!!busy}
+                title="動画タイトルでマインドマップを切替（検索できます）" placeholder="タイトルを検索…"
+                className="max-w-[280px]" />
             )}
             <input value={newMapTitle} onChange={(e) => setNewMapTitle(e.target.value)} placeholder="新しい動画タイトルを入力（またはAI提案）"
               className="min-w-[200px] flex-1 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs" />
