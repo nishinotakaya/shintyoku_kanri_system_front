@@ -385,7 +385,7 @@ export default function InterviewMindmapPage() {
           )}
         </div>
         {showControls && <>
-        <div className="text-[11px] text-[var(--color-text-sub)]">{isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isMote ? 'カテゴリ別の褒めフレーズ集。「📋 フレーズ集を取込」で一覧化、各カテゴリの「＋展開」でAIが追加フレーズを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
+        <div className="text-[11px] text-[var(--color-text-sub)]">{isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
         <div className="flex flex-wrap items-center gap-2">
           {me?.admin && (
             <select value={userId ?? ''} onChange={(e) => setUserId(Number(e.target.value))}
@@ -402,7 +402,7 @@ export default function InterviewMindmapPage() {
           {map && (
             <button onClick={importBank} disabled={!!busy}
               className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-50">
-              {busy === 'bank' ? '取込中…' : (isYoutube ? '📋 質問バンク取込（YouTube12問）' : isMote ? '📋 フレーズ集を取込' : '📋 質問バンク取込')}
+              {busy === 'bank' ? '取込中…' : (isYoutube ? '📋 質問バンク取込（YouTube12問）' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
             </button>
           )}
           {map && (
