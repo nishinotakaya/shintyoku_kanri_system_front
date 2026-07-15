@@ -3,7 +3,7 @@ import { useState } from 'react'
 export type ProgressWorkspace = {
   id: number
   name: string
-  source_type: 'backlog' | 'notion' | 'manual'
+  source_type: 'backlog' | 'notion' | 'trello' | 'manual'
   builtin: boolean
   position: number
 }
@@ -11,6 +11,7 @@ export type ProgressWorkspace = {
 const SOURCE_TYPE_ICON: Record<ProgressWorkspace['source_type'], string> = {
   backlog: '🌿',
   notion: '📝',
+  trello: '📋',
   manual: '✋',
 }
 

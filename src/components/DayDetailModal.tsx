@@ -81,6 +81,21 @@ type NotionTask = {
   memo?: string | null
 }
 
+type TrelloTask = {
+  id: number
+  trello_card_id: string
+  title: string
+  description: string | null
+  list_name: string | null
+  board_name: string | null
+  assignee_name: string | null
+  start_date: string | null
+  due_date: string | null
+  url: string | null
+  memo: string | null
+  synced_at: string | null
+}
+
 type SapEntry = { key: string; hours: string }
 
 const HOURS_OPTIONS = ['', '0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10']
@@ -461,7 +476,7 @@ export default function DayDetailModal({
 
   // Notion (リビング) タスク
   const [notionTasksByAssignee, setNotionTasksByAssignee] = useState<Record<string, NotionTask[]>>({ '西野': [], '川村': [] })
-  const [taskTab, setTaskTab] = useState<'tama' | 'living'>('tama')
+  const [taskTab, setTaskTab] = useState<'tama' | 'living' | 'trello'>('tama')
   const [notionSyncing, setNotionSyncing] = useState(false)
   const [notionSyncMsg, setNotionSyncMsg] = useState<string | null>(null)
   const groupNotion = (tasks: NotionTask[]): Record<string, NotionTask[]> => {
@@ -508,6 +523,39 @@ export default function DayDetailModal({
       onChanged?.()
     } catch (e: any) {
       alert(`リビング追加失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+
+  // Trello (テックリーダー) タスク
+  const [trelloTasks, setTrelloTasks] = useState<Record<string, TrelloTask[]>>({})
+  const [trelloSyncing, setTrelloSyncing] = useState(false)
+  const [trelloSyncMsg, setTrelloSyncMsg] = useState<string | null>(null)
+  const reloadTrello = async () => {
+    try {
+      const response = await api.get<TrelloTask[]>('/trello_tasks')
+      const grouped: Record<string, TrelloTask[]> = {}
+      response.data.forEach((task) => {
+        const listName = task.list_name ?? 'その他'
+        if (!grouped[listName]) grouped[listName] = []
+        grouped[listName].push(task)
+      })
+      setTrelloTasks(grouped)
+    } catch {
+      setTrelloTasks({})
+    }
+  }
+  useEffect(() => { reloadTrello() }, [date])
+  const handleTrelloSync = async () => {
+    if (trelloSyncing) return
+    setTrelloSyncing(true); setTrelloSyncMsg(null)
+    try {
+      const { data } = await api.post('/trello_tasks/sync')
+      setTrelloSyncMsg(`${data.synced} 件同期`)
+      await reloadTrello()
+    } catch (e: any) {
+      setTrelloSyncMsg(`同期失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setTrelloSyncing(false)
     }
   }
 
@@ -1134,6 +1182,12 @@ export default function DayDetailModal({
             >
               リビング
             </button>
+            <button
+              onClick={() => setTaskTab('trello')}
+              className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'trello' ? 'bg-sky-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
+            >
+              テックリーダー
+            </button>
             {taskTab === 'living' && (
               <>
                 <button
@@ -1145,6 +1199,19 @@ export default function DayDetailModal({
                   {notionSyncing ? '同期中…' : '🔄 Notion 同期'}
                 </button>
                 {notionSyncMsg && <span className="text-[10px] text-[var(--color-text-sub)]">{notionSyncMsg}</span>}
+              </>
+            )}
+            {taskTab === 'trello' && (
+              <>
+                <button
+                  onClick={handleTrelloSync}
+                  disabled={trelloSyncing}
+                  className="ml-auto rounded border border-sky-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+                  title="Trello から最新のカードを取得"
+                >
+                  {trelloSyncing ? '同期中…' : '🔄 Trello 同期'}
+                </button>
+                {trelloSyncMsg && <span className="text-[10px] text-[var(--color-text-sub)]">{trelloSyncMsg}</span>}
               </>
             )}
           </div>
@@ -1252,6 +1319,47 @@ export default function DayDetailModal({
                   </div>
                 )
               })}
+            </div>
+          ) : taskTab === 'trello' ? (
+            <div className="mt-1 space-y-2">
+              {Object.keys(trelloTasks).length === 0 ? (
+                <div className="text-[11px] text-[var(--color-text-sub)]">該当なし（Trello 同期 で取得）</div>
+              ) : (
+                Object.entries(trelloTasks).map(([listName, tasks]) => {
+                  if (tasks.length === 0) return null
+                  return (
+                    <div key={listName} className="rounded-lg border border-sky-200 bg-sky-50/30 p-2">
+                      <div className="text-xs font-semibold text-[var(--color-text)] mb-1">
+                        {listName}（{tasks.length}）
+                      </div>
+                      <div className="space-y-1">
+                        {tasks.map((task) => (
+                          <div key={task.id} className="rounded border border-sky-200 bg-white p-1.5 text-[11px]">
+                            {task.url ? (
+                              <a
+                                href={task.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block font-semibold truncate text-sky-700 hover:underline"
+                                title={task.title}
+                              >
+                                {task.title} ↗
+                              </a>
+                            ) : (
+                              <div className="font-semibold truncate text-[var(--color-text)]" title={task.title}>{task.title}</div>
+                            )}
+                            <div className="text-[10px] text-[var(--color-text-sub)] flex gap-2 flex-wrap">
+                              {task.assignee_name && <span>{task.assignee_name}</span>}
+                              {task.due_date && <span>期限: {task.due_date}</span>}
+                              {task.start_date && <span>{task.start_date}〜</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           ) : tasksLoading ? (
             <div className="mt-1 text-xs text-[var(--color-text-sub)]">読み込み中…</div>
