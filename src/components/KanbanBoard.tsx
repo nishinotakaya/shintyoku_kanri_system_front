@@ -94,6 +94,9 @@ export default function KanbanBoard({
   // 担当者一覧
   const assignees = [...new Map(tasks.filter((t) => t.assignee_name).map((t) => [t.assignee_name!, t.assignee_name!])).values()]
 
+  // 担当者セレクトの選択肢: 固定2名 + assignees の残り（重複除去）
+  const assigneeOptions = [...new Set(['西野 鷹也', '川村卓也', ...assignees])]
+
   // 検索 + 担当者フィルタ
   const q = search.toLowerCase()
   let filteredTasks = tasks
@@ -297,8 +300,7 @@ export default function KanbanBoard({
                 onClick={(e) => e.stopPropagation()}
                 className="rounded bg-[var(--color-bg)] px-1 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] border-none outline-none">
                 <option value="">担当</option>
-                <option value="西野 鷹也">西野 鷹也</option>
-                <option value="川村卓也">川村卓也</option>
+                {assigneeOptions.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
               <span>作成: {t.created_on?.slice(5) ?? '—'}</span>
               {t.completed_on && <span className="text-emerald-600 font-semibold">完了: {t.completed_on.slice(5)}</span>}
