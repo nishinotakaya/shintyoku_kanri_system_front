@@ -81,6 +81,11 @@ export default function SettingsModal({
   const [apiKey, setApiKey] = useState('')
   const [heygenKeySet, setHeygenKeySet] = useState(false)
   const [heygenKey, setHeygenKey] = useState('')
+  const [trelloKeySet, setTrelloKeySet] = useState(false)
+  const [trelloKey, setTrelloKey] = useState('')
+  const [trelloTokenSet, setTrelloTokenSet] = useState(false)
+  const [trelloToken, setTrelloToken] = useState('')
+  const [trelloBoardId, setTrelloBoardId] = useState('')
   const [closingDay, setClosingDay] = useState(25)
   const [scheduleUrl, setScheduleUrl] = useState('')
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null)
@@ -110,9 +115,14 @@ export default function SettingsModal({
     setMsg(null)
     setApiKey('')
     setHeygenKey('')
+    setTrelloKey('')
+    setTrelloToken('')
     api.get('/me').then((r) => {
       setKeySet(!!r.data.openai_api_key_set)
       setHeygenKeySet(!!r.data.heygen_api_key_set)
+      setTrelloKeySet(!!r.data.trello_api_key_set)
+      setTrelloTokenSet(!!r.data.trello_api_token_set)
+      setTrelloBoardId(r.data.trello_board_id ?? '')
       setClosingDay(r.data.closing_day ?? 25)
       setTransit({
         from: r.data.default_transit_from ?? '',
@@ -155,6 +165,9 @@ export default function SettingsModal({
       }
       if (apiKey) payload.openai_api_key = apiKey
       if (heygenKey) payload.heygen_api_key = heygenKey
+      if (trelloKey) payload.trello_api_key = trelloKey
+      if (trelloToken) payload.trello_api_token = trelloToken
+      payload.trello_board_id = trelloBoardId
       await api.patch('/me', { user: payload })
       await api.patch('/monthly_setting', { application_date: applicationDate || null }, { params: { month: monthParam } })
       // 乗車区間を業務報告 + 立替金に一括反映
@@ -168,6 +181,8 @@ export default function SettingsModal({
       }
       setApiKey('')
       if (heygenKey) { setHeygenKey(''); setHeygenKeySet(true) }
+      if (trelloKey) { setTrelloKey(''); setTrelloKeySet(true) }
+      if (trelloToken) { setTrelloToken(''); setTrelloTokenSet(true) }
       setKeySet(true)
       onSaved?.()
     } catch (e: any) {
@@ -463,6 +478,49 @@ export default function SettingsModal({
                 placeholder="自分のキーを使う場合のみ入力"
                 className="mt-3 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-mono text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
               />
+            </div>
+
+            <div>
+              <div className="text-xs text-[var(--color-text-sub)]">Trello 連携</div>
+              <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">
+                Trello のカードをカレンダー・進捗管理に連携します。未設定の場合は共通設定を使用します。
+              </div>
+              <div className="mt-3 space-y-3">
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-sub)]">
+                    APIキー — 現在: {trelloKeySet ? <span className="text-emerald-600">設定済み</span> : <span className="text-gray-500">未設定（共通設定を使用）</span>}
+                  </div>
+                  <input
+                    type="password"
+                    value={trelloKey}
+                    onChange={(e) => setTrelloKey(e.target.value)}
+                    placeholder="自分のキーを使う場合のみ入力"
+                    className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-mono text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-sub)]">
+                    トークン — 現在: {trelloTokenSet ? <span className="text-emerald-600">設定済み</span> : <span className="text-gray-500">未設定（共通設定を使用）</span>}
+                  </div>
+                  <input
+                    type="password"
+                    value={trelloToken}
+                    onChange={(e) => setTrelloToken(e.target.value)}
+                    placeholder="自分のトークンを使う場合のみ入力"
+                    className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-mono text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--color-text-sub)]">ボードID</div>
+                  <input
+                    type="text"
+                    value={trelloBoardId}
+                    onChange={(e) => setTrelloBoardId(e.target.value)}
+                    placeholder="自分のボードを使う場合のみ入力"
+                    className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 font-mono text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+                  />
+                </div>
+              </div>
             </div>
 
             {msg && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-600">{msg}</div>}

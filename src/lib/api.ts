@@ -72,6 +72,9 @@ export type Me = {
   openai_api_key_set?: boolean
   heygen_api_key_set?: boolean
   heygen_available?: boolean
+  trello_api_key_set?: boolean
+  trello_api_token_set?: boolean
+  trello_board_id?: string | null
   can_issue_orders?: boolean
   postal_code?: string | null
   address?: string | null
