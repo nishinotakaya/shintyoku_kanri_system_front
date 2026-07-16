@@ -51,6 +51,8 @@ export default function UsersPage() {
     { key: 'interview_mindmap', label: '面談対策' },
     { key: 'youtube_mindmap', label: 'YouTube動画' },
     { key: 'mote_mindmap', label: 'モテ会話' },
+    { key: 'mote_qa_mindmap', label: 'モテ質問' },
+    { key: 'love_youtube_mindmap', label: '恋愛YouTube' },
     { key: 'backlog_activities', label: '対応ログ' },
     { key: 'video_studio', label: '動画スタジオ' },
     { key: 'keihi', label: '経費計上' },

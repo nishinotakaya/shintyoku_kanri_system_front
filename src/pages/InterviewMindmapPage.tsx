@@ -18,7 +18,7 @@ type MindNode = {
   checked: boolean
   expanded: boolean
 }
-type MindMode = 'interview' | 'youtube' | 'mote'
+type MindMode = 'interview' | 'youtube' | 'mote' | 'mote_qa' | 'love_youtube'
 type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; kanpe_style?: 'sales' | 'app_build'; user?: { id: number; display_name: string } }
 type Target = { id: number; display_name: string; email: string }
 
@@ -68,16 +68,21 @@ export default function InterviewMindmapPage() {
   const [showReset, setShowReset] = useState(false)
   const [showBankReset, setShowBankReset] = useState(false)
   const [sheetUrl, setSheetUrl] = useState('')
-  const [mode, setMode] = useState<MindMode>('interview') // 面談 / YouTube / モテ
+  const [mode, setMode] = useState<MindMode>('interview') // 面談 / YouTube / モテ / モテQ&A / 恋愛YouTube
   const [zoomPercent, setZoomPercent] = useState(() => {
     const saved = Number(localStorage.getItem(ZOOM_STORAGE_KEY))
     return ZOOM_LEVELS.includes(saved) ? saved : 100
   })
   const canYoutube = !!(me?.admin || me?.can_use_youtube_mindmap)
   const canMote = !!(me?.admin || me?.can_use_mote_mindmap)
+  const canMoteQa = !!(me?.admin || me?.can_use_mote_qa_mindmap)
+  const canLoveYoutube = !!(me?.admin || me?.can_use_love_youtube_mindmap)
   const isYoutube = mode === 'youtube'
   const isMote = mode === 'mote'
-  const useTts = mode !== 'interview' // YouTube/モテ は高品質音声で読み上げ
+  const isMoteQa = mode === 'mote_qa'
+  const isLoveYoutube = mode === 'love_youtube'
+  const isYoutubeMode = isYoutube || isLoveYoutube // 動画タイトルで複数マップを切り替えるモード共通
+  const useTts = mode !== 'interview' // YouTube/モテ/モテQ&A/恋愛YouTube は高品質音声で読み上げ
 
   useEffect(() => { setSheetUrl(map?.spreadsheet_url ?? '') }, [map?.id, map?.spreadsheet_url])
 
@@ -229,8 +234,8 @@ export default function InterviewMindmapPage() {
   const cancelEdit = () => { setEditId(null); setAiDraftFor(null) }
   const saveText = (node: MindNode) => run(`save-${node.id}`, async () => {
     if (!map) return
-    // YouTube の起点(root)を編集 → タイトルとして保存（root テキストもタイトルに追従）
-    if (node.kind === 'root' && map.mode === 'youtube') {
+    // YouTube/恋愛YouTube の起点(root)を編集 → タイトルとして保存（root テキストもタイトルに追従）
+    if (node.kind === 'root' && (map.mode === 'youtube' || map.mode === 'love_youtube')) {
       const r = await api.patch<Mindmap>(`/interview_mindmaps/${map.id}`, { title: draft })
       setMap(r.data); setMaps((prev) => prev.map((m) => m.id === r.data.id ? r.data : m)); cancelEdit()
       return
@@ -239,10 +244,10 @@ export default function InterviewMindmapPage() {
     setMap((m) => m ? { ...m, nodes: m.nodes.map((n) => n.id === node.id ? r.data : n) } : m)
     cancelEdit()
   })
-  // グラフ表示からのダブルクリック編集用（draft 非依存）。root(YouTube)はタイトルに反映。
+  // グラフ表示からのダブルクリック編集用（draft 非依存）。root(YouTube/恋愛YouTube)はタイトルに反映。
   const saveNodeText = async (node: MindNode, text: string) => {
     if (!map) return
-    if (node.kind === 'root' && map.mode === 'youtube') {
+    if (node.kind === 'root' && (map.mode === 'youtube' || map.mode === 'love_youtube')) {
       const r = await api.patch<Mindmap>(`/interview_mindmaps/${map.id}`, { title: text })
       setMap(r.data); setMaps((prev) => prev.map((m) => m.id === r.data.id ? r.data : m))
       return
@@ -289,9 +294,9 @@ export default function InterviewMindmapPage() {
     if (node.kind === 'keyword') return null // キーワード(黄色)ノードは表示しない
     const kids = (childrenOf.get(node.id) ?? []).filter((c) => c.kind !== 'keyword')
     const st = KIND_STYLE[node.kind] ?? KIND_STYLE.question
-    // answer も展開可: A(回答)から深掘りQ(モテは言い回しバリエーション)を生成できる
+    // answer も展開可: A(回答)から深掘りQ(モテ/モテQ&Aは言い回しバリエーション)を生成できる
     const canExpand = node.kind === 'root' || node.kind === 'question' || node.kind === 'followup' || node.kind === 'answer'
-    const expandTitle = node.kind === 'answer' ? (isMote ? 'AIで言い回しバリエーションを生成' : 'AIで深掘り質問を生成') : 'AIで展開'
+    const expandTitle = node.kind === 'answer' ? ((isMote || isMoteQa) ? 'AIで言い回しバリエーションを生成' : 'AIで深掘り質問を生成') : 'AIで展開'
     return (
       // インデントはスマホで浅く(8px)、PCで通常(16px)。深い階層でも右に寄りすぎない
       <div key={node.id} className={`mt-1 ${depth === 0 ? '' : 'ml-2 sm:ml-4'}`}>
@@ -322,13 +327,13 @@ export default function InterviewMindmapPage() {
           ) : (
             <span
               className="min-w-[160px] flex-1 cursor-text whitespace-pre-wrap break-words text-xs text-[var(--color-text)]"
-              title={node.kind === 'root' && isYoutube ? 'ダブルクリックでタイトルを編集' : 'ダブルクリックで編集'}
+              title={node.kind === 'root' && isYoutubeMode ? 'ダブルクリックでタイトルを編集' : 'ダブルクリックで編集'}
               onDoubleClick={() => startEdit(node)}
             >{breakBySentence(node.text)}</span>
           )}
           <span className="ml-auto flex shrink-0 items-center gap-1">
             {editId !== node.id && (
-              <button onClick={() => startEdit(node)} title={node.kind === 'root' && isYoutube ? 'タイトルを編集' : '編集'} className="text-[11px] text-[var(--color-text-sub)] hover:text-fuchsia-600">✏️</button>
+              <button onClick={() => startEdit(node)} title={node.kind === 'root' && isYoutubeMode ? 'タイトルを編集' : '編集'} className="text-[11px] text-[var(--color-text-sub)] hover:text-fuchsia-600">✏️</button>
             )}
             {node.kind !== 'root' && editId !== node.id && node.text.trim() !== '' && (
               <button onClick={() => proofread(node)} disabled={busy === `pf-${node.id}`}
@@ -367,9 +372,9 @@ export default function InterviewMindmapPage() {
           <button onClick={() => setShowControls((value) => !value)} title={showControls ? '折りたたむ' : '開く'}
             className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
             <span className="text-[10px] text-[var(--color-text-sub)]">{showControls ? '▼' : '▶'}</span>
-            <span>{isYoutube ? '🎬 YouTubeインタビューマインドマップ' : isMote ? '💬 モテ会話マインドマップ' : '🧠 面談対策マインドマップ'}</span>
+            <span>{isYoutube ? '🎬 YouTubeインタビューマインドマップ' : isLoveYoutube ? '❤️ 恋愛系YouTubeマインドマップ' : isMoteQa ? '❓ モテ質問Q&Aマインドマップ' : isMote ? '💬 モテ会話マインドマップ' : '🧠 面談対策マインドマップ'}</span>
           </button>
-          {(canYoutube || canMote) && (
+          {(canYoutube || canMote || canMoteQa || canLoveYoutube) && (
             <div className="flex items-center gap-1">
               <button onClick={() => setMode('interview')}
                 className={`rounded-lg px-3 py-1 text-xs font-semibold ${mode === 'interview' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>面談</button>
@@ -381,11 +386,19 @@ export default function InterviewMindmapPage() {
                 <button onClick={() => setMode('mote')}
                   className={`rounded-lg px-3 py-1 text-xs font-semibold ${isMote ? 'bg-pink-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>💬 モテ</button>
               )}
+              {canMoteQa && (
+                <button onClick={() => setMode('mote_qa')}
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isMoteQa ? 'bg-rose-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❓ モテQ&A</button>
+              )}
+              {canLoveYoutube && (
+                <button onClick={() => setMode('love_youtube')}
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isLoveYoutube ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❤️ 恋愛YT</button>
+              )}
             </div>
           )}
         </div>
         {showControls && <>
-        <div className="text-[11px] text-[var(--color-text-sub)]">{isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
+        <div className="text-[11px] text-[var(--color-text-sub)]">{isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isLoveYoutube ? '起点（＝動画テーマ。ダブルクリックで編集）から想定質問→台本回答の流れで展開。「📋 質問バンク取込（恋愛YouTube）」で定番の想定質問を取り込み、🔊は高品質音声で読み上げ。' : isMoteQa ? '相手からの質問→モテる返しを一覧化。「📋 質問集を取込」で定番質問と模範回答を取込み、各質問の「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
         <div className="flex flex-wrap items-center gap-2">
           {me?.admin && (
             <select value={userId ?? ''} onChange={(e) => setUserId(Number(e.target.value))}
@@ -393,7 +406,7 @@ export default function InterviewMindmapPage() {
               {targets.map((t) => <option key={t.id} value={t.id}>{t.display_name || t.email}</option>)}
             </select>
           )}
-          {!map && userId != null && !isYoutube && (
+          {!map && userId != null && !isYoutubeMode && (
             <button onClick={() => createMap()} disabled={!!busy}
               className="rounded-lg bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
               {busy === 'create' ? '作成中…' : '＋ マインドマップを作成'}
@@ -402,7 +415,7 @@ export default function InterviewMindmapPage() {
           {map && (
             <button onClick={importBank} disabled={!!busy}
               className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-50">
-              {busy === 'bank' ? '取込中…' : (isYoutube ? '📋 質問バンク取込（YouTube12問）' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
+              {busy === 'bank' ? '取込中…' : (isYoutube ? '📋 質問バンク取込（YouTube12問）' : isLoveYoutube ? '📋 質問バンク取込（恋愛YouTube）' : isMoteQa ? '📋 質問集を取込' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
             </button>
           )}
           {map && (
@@ -417,7 +430,7 @@ export default function InterviewMindmapPage() {
           )}
           {map && <span className="text-[11px] text-[var(--color-text-sub)]">暗記進捗 {progress.done}/{progress.total}</span>}
         </div>
-        {isYoutube && userId != null && (
+        {isYoutubeMode && userId != null && (
           <div className="flex flex-wrap items-center gap-2">
             {maps.length > 0 && (
               <SearchableSelect options={maps.map((m) => ({ value: m.id, label: m.title }))}
@@ -427,11 +440,13 @@ export default function InterviewMindmapPage() {
             )}
             <input value={newMapTitle} onChange={(e) => setNewMapTitle(e.target.value)} placeholder="新しい動画タイトルを入力（またはAI提案）"
               className="min-w-[200px] flex-1 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs" />
-            <button onClick={suggestTitles} disabled={!!busy}
-              title="onclassのYouTubeリサーチ（高再生の傾向）とスキルシートからタイトル案を生成"
-              className="rounded-lg border border-fuchsia-300 bg-fuchsia-50 px-3 py-1.5 text-xs font-semibold text-fuchsia-600 disabled:opacity-50">
-              {busy === 'suggest-titles' ? '提案中…' : '🪄 AIタイトル提案'}
-            </button>
+            {isYoutube && (
+              <button onClick={suggestTitles} disabled={!!busy}
+                title="onclassのYouTubeリサーチ（高再生の傾向）とスキルシートからタイトル案を生成"
+                className="rounded-lg border border-fuchsia-300 bg-fuchsia-50 px-3 py-1.5 text-xs font-semibold text-fuchsia-600 disabled:opacity-50">
+                {busy === 'suggest-titles' ? '提案中…' : '🪄 AIタイトル提案'}
+              </button>
+            )}
             <button onClick={() => createMap(newMapTitle.trim())} disabled={!!busy || !newMapTitle.trim()}
               className="rounded-lg bg-gradient-to-r from-red-500 to-rose-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
               {busy === 'create' ? '作成中…' : '＋ この動画タイトルで作成'}
@@ -546,8 +561,8 @@ export default function InterviewMindmapPage() {
         </div>
       )}
 
-      {/* YouTube モード: タイトル+内容から自動でサムネを生成(アコーディオン) */}
-      {map && isYoutube && (
+      {/* YouTube/恋愛YouTube モード: タイトル+内容から自動でサムネを生成(アコーディオン) */}
+      {map && isYoutubeMode && (
         <div className="glass rounded-2xl shadow-md p-4">
           <button onClick={() => setShowThumb((value) => !value)} title={showThumb ? '折りたたむ' : '開く'}
             className="flex w-full items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
