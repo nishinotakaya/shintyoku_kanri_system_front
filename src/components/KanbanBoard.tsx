@@ -21,6 +21,7 @@ type BLTask = {
   url: string | null
   did_previous: boolean
   do_today: boolean
+  trello_list_name: string | null
 }
 
 const COLUMNS = [
@@ -187,6 +188,15 @@ export default function KanbanBoard({
               {urgent && !overdue && <span className="whitespace-nowrap rounded-lg bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-white">🔥あと{dueDiff}日</span>}
             </div>
 
+            {t.source === 'trello' && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">📋 Trello</span>
+                {t.trello_list_name && (
+                  <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">{t.trello_list_name}</span>
+                )}
+              </div>
+            )}
+
             {t.source !== 'backlog' && onSummaryChanged ? (
               <input
                 value={editingSummary[t.id] ?? t.summary}
@@ -296,12 +306,17 @@ export default function KanbanBoard({
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--color-text-sub)]">
-              <select value={t.assignee_name ?? ''} onChange={(e) => { e.stopPropagation(); onAssigneeChanged?.(t.id, e.target.value) }}
-                onClick={(e) => e.stopPropagation()}
-                className="rounded bg-[var(--color-bg)] px-1 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] border-none outline-none">
-                <option value="">担当</option>
-                {assigneeOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
+              {t.source === 'trello' ? (
+                <span className="font-semibold">👤 {t.assignee_name ?? '担当なし'}</span>
+              ) : (
+                <select value={t.assignee_name ?? ''} onChange={(e) => { e.stopPropagation(); onAssigneeChanged?.(t.id, e.target.value) }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded bg-[var(--color-bg)] px-1 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] border-none outline-none">
+                  <option value="">担当</option>
+                  {assigneeOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              )}
+              {t.due_date && <span>完了予定: {t.due_date.slice(5)}</span>}
               <span>作成: {t.created_on?.slice(5) ?? '—'}</span>
               {t.completed_on && <span className="text-emerald-600 font-semibold">完了: {t.completed_on.slice(5)}</span>}
               {t.created_on && (() => {

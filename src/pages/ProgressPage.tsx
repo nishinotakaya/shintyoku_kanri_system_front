@@ -24,6 +24,7 @@ type BLTask = {
   url: string | null
   did_previous: boolean
   do_today: boolean
+  trello_list_name: string | null
 }
 
 export default function ProgressPage() {
