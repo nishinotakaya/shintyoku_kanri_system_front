@@ -322,17 +322,24 @@ export default function GithubPanel() {
             <div className="max-h-[70vh] space-y-1 overflow-auto">
               {busy === 'pulls' && <div className="text-xs text-[var(--color-text-sub)]">読込中…</div>}
               {visiblePullRequests.map((pr) => (
-                <button key={pr.number} onClick={() => openPullRequest(pr.number)}
-                  className={`block w-full rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
-                  <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.title}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-sub)]">
-                    {pullRequestStateBadge(pr)}
-                    {pr.draft && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">draft</span>}
-                    <span>{pr.user}</span>
-                    <span>・{new Date(pr.updated_at).toLocaleDateString('ja-JP')}</span>
-                    <span>💬{pr.comments}</span>
+                <div key={pr.number} role="button" tabIndex={0} onClick={() => openPullRequest(pr.number)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPullRequest(pr.number) }}
+                  className={`flex cursor-pointer items-start gap-1 rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.title}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-sub)]">
+                      {pullRequestStateBadge(pr)}
+                      {pr.draft && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">draft</span>}
+                      <span>{pr.user}</span>
+                      <span>・{new Date(pr.updated_at).toLocaleDateString('ja-JP')}</span>
+                      <span>💬{pr.comments}</span>
+                    </div>
                   </div>
-                </button>
+                  {pr.html_url && (
+                    <a href={pr.html_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                      title="GitHubで開く" className="shrink-0 px-0.5 text-[12px] text-[var(--color-text-sub)] hover:text-sky-600">↗</a>
+                  )}
+                </div>
               ))}
               {busy !== 'pulls' && visiblePullRequests.length === 0 && (
                 <div className="text-xs text-[var(--color-text-sub)]">{selectedRepo ? 'PRはありません' : 'リポジトリを選択してください'}</div>

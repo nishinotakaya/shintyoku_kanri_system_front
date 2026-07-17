@@ -14,7 +14,7 @@ import GithubPanel from '../components/git/GithubPanel'
 // 下書きは「一斉送信」で 1 コメントに結合して PR へ投稿。単発コメントも PR 詳細から送れる。
 
 type RepoGroup = { project_key: string; project_name: string; repositories: { name: string; description: string | null }[] }
-type PullRequest = { number: number; summary: string; description: string; base: string; branch: string; created_user: string; created: string; comment_count?: number }
+type PullRequest = { number: number; summary: string; description: string; base: string; branch: string; created_user: string; created: string; comment_count?: number; url?: string | null }
 type TreeFile = { path: string; size: number }
 type DiffLine = { type: 'add' | 'del' | 'ctx' | 'hunk'; old_no?: number; new_no?: number; text: string }
 type DiffFile = { path: string; deleted: boolean; lines: DiffLine[] }
@@ -45,6 +45,9 @@ export default function GitPage() {
   const [pulls, setPulls] = useState<PullRequest[]>([])
   const [prDetail, setPrDetail] = useState<PrDetail | null>(null)
   const [prComment, setPrComment] = useState('')
+  // PR一覧行から直接投稿するインラインコメント（選択中PRでなくても投稿できる）
+  const [quickCommentPrNumber, setQuickCommentPrNumber] = useState<number | null>(null)
+  const [quickCommentText, setQuickCommentText] = useState('')
   const [commentTab, setCommentTab] = useState<'backlog' | 'system'>('backlog')
   const [systemNotes, setSystemNotes] = useState<SystemNote[]>([])
   const [systemNoteDraft, setSystemNoteDraft] = useState('')
@@ -188,11 +191,24 @@ export default function GitPage() {
     await loadSystemNotes(prDetail.number)
   })
 
+  // PR へのコメント投稿。選択中PRの詳細画面・PR一覧行の両方から共通で使う
+  const postComment = (prNumber: number, content: string) =>
+    api.post('/backlog_git/comment', { project: projectKey, repo: repoName, number: prNumber, content })
+
   const submitComment = () => run('comment', async () => {
     if (!prDetail || !prComment.trim()) return
-    await api.post('/backlog_git/comment', { project: projectKey, repo: repoName, number: prDetail.number, content: prComment.trim() })
+    await postComment(prDetail.number, prComment.trim())
     setPrComment('')
     void openPr(prDetail.number)
+  })
+
+  // PR一覧行の＋から直接投稿。投稿後は入力欄を閉じ、一覧のコメント数を再取得する
+  const submitQuickComment = (prNumber: number) => run(`quick-comment-${prNumber}`, async () => {
+    if (!quickCommentText.trim()) return
+    await postComment(prNumber, quickCommentText.trim())
+    setQuickCommentPrNumber(null)
+    setQuickCommentText('')
+    await loadPulls()
   })
 
   const group = groups.find((g) => g.project_key === projectKey)
@@ -285,14 +301,42 @@ export default function GitPage() {
             <div className="mb-1 text-xs font-semibold text-[var(--color-text)]">オープンPR {pulls.length}件</div>
             <div className="max-h-[70vh] space-y-1 overflow-auto">
               {pulls.map((pr) => (
-                <button key={pr.number} onClick={() => openPr(pr.number)}
-                  className={`block w-full rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
-                  <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.summary}</div>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]">
-                    <span>{pr.created_user} / {pr.branch} → {pr.base}</span>
-                    <span>💬{pr.comment_count ?? 0}</span>
+                <div key={pr.number}>
+                  <div role="button" tabIndex={0} onClick={() => openPr(pr.number)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPr(pr.number) }}
+                    className={`flex cursor-pointer items-start gap-1 rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.summary}</div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--color-text-sub)]">
+                        <span>{pr.created_user} / {pr.branch} → {pr.base}</span>
+                        <span>💬{pr.comment_count ?? 0}</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button onClick={(e) => { e.stopPropagation(); setQuickCommentPrNumber((prev) => (prev === pr.number ? null : pr.number)); setQuickCommentText('') }}
+                        title="このPRにコメントする" className="px-0.5 text-[12px] text-[var(--color-text-sub)] hover:text-fuchsia-600">＋</button>
+                      {pr.url && (
+                        <a href={pr.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                          title="Backlogで開く" className="px-0.5 text-[12px] text-[var(--color-text-sub)] hover:text-sky-600">↗</a>
+                      )}
+                    </div>
                   </div>
-                </button>
+                  {quickCommentPrNumber === pr.number && (
+                    <div className="mt-1 rounded-lg border border-sky-200 bg-sky-50/50 p-2">
+                      <textarea value={quickCommentText} autoFocus onChange={(e) => setQuickCommentText(e.target.value)} rows={2}
+                        placeholder="このPRにコメントする（markdown可・Backlogに投稿されます）"
+                        className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-[11px]" />
+                      <div className="mt-1 flex justify-end gap-1">
+                        <button onClick={() => { setQuickCommentPrNumber(null); setQuickCommentText('') }}
+                          className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px]">✕</button>
+                        <button onClick={() => submitQuickComment(pr.number)} disabled={!!busy || !quickCommentText.trim()}
+                          className="rounded bg-gradient-to-r from-sky-500 to-blue-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50">
+                          {busy === `quick-comment-${pr.number}` ? '送信中…' : '投稿'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
               {pulls.length === 0 && <div className="text-xs text-[var(--color-text-sub)]">{repoName ? 'オープンのPRはありません' : 'リポジトリを選択してください'}</div>}
             </div>
@@ -304,7 +348,13 @@ export default function GitPage() {
             {prDetail ? (
               <div className="space-y-3">
                 <div>
-                  <div className="text-sm font-bold text-[var(--color-text)]">#{prDetail.number} {prDetail.summary}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-bold text-[var(--color-text)]">#{prDetail.number} {prDetail.summary}</div>
+                    {prDetail.url && (
+                      <a href={prDetail.url} target="_blank" rel="noopener noreferrer"
+                        className="text-[11px] font-semibold text-sky-600 hover:underline">Backlogで開く ↗</a>
+                    )}
+                  </div>
                   <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
                     {prDetail.created_user} / <span className="font-mono">{prDetail.branch}</span> → <span className="font-mono">{prDetail.base}</span>
                     {prDetail.status && <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">{prDetail.status}</span>}
