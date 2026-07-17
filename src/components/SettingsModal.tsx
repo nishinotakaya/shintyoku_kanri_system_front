@@ -87,6 +87,7 @@ export default function SettingsModal({
   const [trelloToken, setTrelloToken] = useState('')
   const [trelloBoardId, setTrelloBoardId] = useState('')
   const [closingDay, setClosingDay] = useState(25)
+  const [gender, setGender] = useState<string>('')
   const [scheduleUrl, setScheduleUrl] = useState('')
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
@@ -124,6 +125,7 @@ export default function SettingsModal({
       setTrelloTokenSet(!!r.data.trello_api_token_set)
       setTrelloBoardId(r.data.trello_board_id ?? '')
       setClosingDay(r.data.closing_day ?? 25)
+      setGender(r.data.gender ?? '')
       setTransit({
         from: r.data.default_transit_from ?? '',
         to: r.data.default_transit_to ?? '',
@@ -153,6 +155,7 @@ export default function SettingsModal({
     try {
       const payload: Record<string, unknown> = {
         closing_day: closingDay,
+        gender: gender || null,
         default_transit_from: transit.from,
         default_transit_to: transit.to,
         default_transit_fee: transit.fee,
@@ -445,6 +448,22 @@ export default function SettingsModal({
                   className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
                 />
               </div>
+            </div>
+
+            <div>
+              <div className="text-xs text-[var(--color-text-sub)]">性別</div>
+              <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">
+                モテQ&Aマインドマップの内容（相手の性別）に使われます
+              </div>
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                className="mt-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-2 text-[var(--color-text)] outline-none focus:border-fuchsia-400/60"
+              >
+                <option value="">未設定</option>
+                <option value="male">男性</option>
+                <option value="female">女性</option>
+              </select>
             </div>
 
             <div>
