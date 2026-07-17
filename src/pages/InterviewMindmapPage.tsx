@@ -87,10 +87,10 @@ export default function InterviewMindmapPage() {
 
   useEffect(() => { setSheetUrl(map?.spreadsheet_url ?? '') }, [map?.id, map?.spreadsheet_url])
 
-  // カンペは YouTube モード専用。モードを離れたらカンペビューのままにしない
+  // カンペは動画タイトル駆動のモード(YouTube/恋愛YouTube)専用。モードを離れたらカンペビューのままにしない
   useEffect(() => {
-    if (!isYoutube) setMapView((currentView) => (currentView === 'kanpe' ? 'list' : currentView))
-  }, [isYoutube])
+    if (!isYoutubeMode) setMapView((currentView) => (currentView === 'kanpe' ? 'list' : currentView))
+  }, [isYoutubeMode])
 
   const changeZoom = (percent: number) => {
     setZoomPercent(percent)
@@ -536,8 +536,8 @@ export default function InterviewMindmapPage() {
                     className={`rounded px-2 py-0.5 text-[10px] font-semibold ${mapView === 'list' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>📋 リスト</button>
                   <button onClick={() => setMapView('graph')}
                     className={`rounded px-2 py-0.5 text-[10px] font-semibold ${mapView === 'graph' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🕸 マインドマップ</button>
-                  {/* カンペは西野式YouTubeセールステンプレ専用なので YouTube モードだけに出す */}
-                  {isYoutube && (
+                  {/* カンペは動画タイトル駆動のモード(YouTube/恋愛YouTube)だけに出す。恋愛YTは西野式セールステンプレ固定(app_buildトグルはYouTube限定) */}
+                  {isYoutubeMode && (
                     <button onClick={() => setMapView('kanpe')}
                       className={`rounded px-2 py-0.5 text-[10px] font-semibold ${mapView === 'kanpe' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>📝 カンペ</button>
                   )}
@@ -580,6 +580,7 @@ export default function InterviewMindmapPage() {
             <div style={{ zoom: zoomPercent / 100 }}>
               <KanpeCueSheet mindmapId={map.id} mapTitle={map.title} kanpeScript={map.kanpe_script ?? null}
                 kanpeStyle={map.kanpe_style ?? 'sales'}
+                showAppBuildOption={isYoutube}
                 onStyleChange={(kanpeStyle) => {
                   setMap((current) => current ? { ...current, kanpe_style: kanpeStyle } : current)
                   setMaps((prev) => prev.map((m) => m.id === map.id ? { ...m, kanpe_style: kanpeStyle } : m))

@@ -15,6 +15,7 @@ type Props = {
   mapTitle: string
   kanpeScript: string | null
   kanpeStyle: KanpeStyle
+  showAppBuildOption: boolean // アプリを作る完全台本テンプレはエンジニア動画専用。恋愛YouTubeでは出さず西野式セールス固定にする
   onStyleChange: (style: KanpeStyle) => void
   onSaved: (kanpeScript: string) => void
 }
@@ -62,7 +63,7 @@ function buildKanpeScript(sections: KanpeSection[]): string {
   return sections.map((section) => (section.heading === '' ? section.body : `【${section.heading}】\n${section.body}`)).join('\n\n')
 }
 
-export default function KanpeCueSheet({ mindmapId, mapTitle, kanpeScript, kanpeStyle, onStyleChange, onSaved }: Props) {
+export default function KanpeCueSheet({ mindmapId, mapTitle, kanpeScript, kanpeStyle, showAppBuildOption, onStyleChange, onSaved }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -76,17 +77,20 @@ export default function KanpeCueSheet({ mindmapId, mapTitle, kanpeScript, kanpeS
   const totalChars = sections.reduce((sum, section) => sum + section.body.length, 0)
   const estimatedReadingMinutes = (totalChars / 300).toFixed(1) // 300字=1分で概算
 
-  // テンプレ切替トグル。未生成時と生成済み時の両方の画面で表示する
+  // テンプレ切替トグル。未生成時と生成済み時の両方の画面で表示する。
+  // 「アプリを作る」はエンジニア動画専用テンプレなので、対応モード(showAppBuildOption)以外では出さず西野式セールス固定にする
   const styleToggle = (
     <div className="flex items-center gap-1">
       <button onClick={() => changeStyle('sales')} disabled={!!busy}
         className={`rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-50 ${kanpeStyle === 'sales' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
         🎤 セールス（西野式）
       </button>
-      <button onClick={() => changeStyle('app_build')} disabled={!!busy}
-        className={`rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-50 ${kanpeStyle === 'app_build' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
-        🛠 アプリを作る
-      </button>
+      {showAppBuildOption && (
+        <button onClick={() => changeStyle('app_build')} disabled={!!busy}
+          className={`rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-50 ${kanpeStyle === 'app_build' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
+          🛠 アプリを作る
+        </button>
+      )}
     </div>
   )
 
