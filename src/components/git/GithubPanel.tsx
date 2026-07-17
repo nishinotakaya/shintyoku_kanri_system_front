@@ -36,6 +36,8 @@ type GithubPullRequest = {
 }
 type GithubPrComment = { id: number; user: string; body: string; created_at: string; html_url: string }
 type GithubPrFile = { filename: string; status: string; additions: number; deletions: number; patch: string | null }
+type PatchLine = { type: 'add' | 'del' | 'ctx' | 'hunk'; newNo: number | null; text: string }
+type DraftComment = { path: string; line: number; code: string; body: string }
 type GithubPrDetail = {
   number: number
   title: string
@@ -86,6 +88,46 @@ const FILE_STATUS_STYLE: Record<string, string> = {
   renamed: 'bg-sky-100 text-sky-700',
 }
 
+const PATCH_LINE_BG: Record<PatchLine['type'], string> = {
+  add: 'bg-emerald-50 text-emerald-700',
+  del: 'bg-red-50 text-red-700',
+  ctx: '',
+  hunk: 'bg-sky-50 text-sky-700',
+}
+
+// unified diff の patch 文字列をハンク解析し、新ファイル側の行番号(newNo)を各行に付与する。
+// del 行は新ファイルに存在しないので newNo は null のまま進めない。
+function parsePatch(patch: string): PatchLine[] {
+  const patchLines: PatchLine[] = []
+  let newLineNumber = 0
+  for (const rawLine of patch.split('\n')) {
+    if (rawLine.startsWith('@@')) {
+      const hunkMatch = rawLine.match(/\+(\d+)/)
+      newLineNumber = hunkMatch ? Number(hunkMatch[1]) : 0
+      patchLines.push({ type: 'hunk', newNo: null, text: rawLine })
+      continue
+    }
+    if (rawLine.startsWith('+') && !rawLine.startsWith('+++')) {
+      patchLines.push({ type: 'add', newNo: newLineNumber, text: rawLine })
+      newLineNumber += 1
+      continue
+    }
+    if (rawLine.startsWith('-') && !rawLine.startsWith('---')) {
+      patchLines.push({ type: 'del', newNo: null, text: rawLine })
+      continue
+    }
+    patchLines.push({ type: 'ctx', newNo: newLineNumber, text: rawLine })
+    newLineNumber += 1
+  }
+  return patchLines
+}
+
+// "path:line" を最後のコロンで分割（パスにコロンは通常含まれない前提）
+function splitDraftKey(key: string): [string, string] {
+  const lastColon = key.lastIndexOf(':')
+  return [key.slice(0, lastColon), key.slice(lastColon + 1)]
+}
+
 export default function GithubPanel() {
   const [setting, setSetting] = useState<GithubSetting | null>(null)
   const [repositories, setRepositories] = useState<GithubRepository[]>([])
@@ -105,6 +147,23 @@ export default function GithubPanel() {
   // パネル見出しのインライン編集
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  // 一覧エリアごとの取得エラー（再試行ボタンで同じ取得を再実行する）
+  const [reposError, setReposError] = useState<string | null>(null)
+  const [prsError, setPrsError] = useState<string | null>(null)
+  const [prDetailError, setPrDetailError] = useState<string | null>(null)
+  // 再試行用に直近リクエストしたPR番号・リポジトリを覚えておく
+  const [openingPrNumber, setOpeningPrNumber] = useState<number | null>(null)
+  const [openingRepoFullName, setOpeningRepoFullName] = useState('')
+  // 行ごとのレビュー下書き（一斉送信で1コメントに結合してPRへ投稿）
+  const [drafts, setDrafts] = useState<DraftComment[]>([])
+  const [editingDraftKey, setEditingDraftKey] = useState<string | null>(null) // "path:line"
+  const [draftBody, setDraftBody] = useState('')
+  const [draftCode, setDraftCode] = useState('')
+  const [draftPreview, setDraftPreview] = useState(false)
+  // PR一覧行から直接投稿するインラインコメント（選択中PRでなくても投稿できる）
+  const [quickCommentPrNumber, setQuickCommentPrNumber] = useState<number | null>(null)
+  const [quickCommentText, setQuickCommentText] = useState('')
+  const [posted, setPosted] = useState<string | null>(null)
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key); setErr(null)
@@ -112,6 +171,12 @@ export default function GithubPanel() {
       const axiosError = e as { response?: { data?: { error?: string } }; message?: string }
       setErr(axiosError.response?.data?.error ?? axiosError.message ?? '失敗しました')
     } finally { setBusy(null) }
+  }
+
+  // 一覧エリア個別のエラーメッセージ抽出（再試行ボタンの表示用）
+  const extractErrorMessage = (e: unknown) => {
+    const axiosError = e as { response?: { data?: { error?: string } } }
+    return axiosError.response?.data?.error ?? '取得に失敗しました'
   }
 
   // 初回: トークン設定を確認。未設定ならここで止め、以降のAPIは呼ばない
@@ -122,17 +187,24 @@ export default function GithubPanel() {
     })
   }, [])
 
-  // トークン設定済みならリポジトリ一覧と自分宛て通知を取得（default_repos が先頭）
-  useEffect(() => {
-    if (!setting?.has_token) return
-    run('repos', async () => {
+  const loadRepositories = () => run('repos', async () => {
+    try {
       const r = await api.get<GithubRepository[]>('/github/repositories')
       setRepositories(r.data)
+      setReposError(null)
       if (r.data.length === 0) return
       const savedRepo = localStorage.getItem('githubSelectedRepo')
       const initialRepo = r.data.find((repo) => repo.full_name === savedRepo) ?? r.data[0]
       setSelectedRepo(initialRepo.full_name)
-    })
+    } catch (e) {
+      setReposError(extractErrorMessage(e))
+    }
+  })
+
+  // トークン設定済みならリポジトリ一覧と自分宛て通知を取得（default_repos が先頭）
+  useEffect(() => {
+    if (!setting?.has_token) return
+    void loadRepositories()
     // 自分宛て通知（メンション・レビュー依頼・コメント）。失敗しても本体は動かす
     api.get<GithubNotification[]>('/github/notifications').then((r) => setNotifications(r.data)).catch(() => {})
   }, [setting?.has_token])
@@ -171,30 +243,89 @@ export default function GithubPanel() {
   }, [selectedRepo])
 
   const loadPullRequests = (fullName: string) => run('pulls', async () => {
-    const r = await api.get<GithubPullRequest[]>('/github/pull_requests', { params: { full_name: fullName, state: 'all' } })
-    setPullRequests(r.data)
+    try {
+      const r = await api.get<GithubPullRequest[]>('/github/pull_requests', { params: { full_name: fullName, state: 'all' } })
+      setPullRequests(r.data)
+      setPrsError(null)
+    } catch (e) {
+      setPrsError(extractErrorMessage(e))
+    }
   })
 
   // リポジトリ切替: 詳細をリセットしてPR一覧を取得
   useEffect(() => {
     if (!selectedRepo) return
-    setPrDetail(null); setExpandedFile(null)
+    setPrDetail(null); setExpandedFile(null); setPrDetailError(null)
     void loadPullRequests(selectedRepo)
   }, [selectedRepo])
 
   // repoFullName を明示指定できるようにする(通知から別リポジトリのPRを開くとき、
   // setSelectedRepo 直後は state が古いままなので selectedRepo に依存しない)
   const openPullRequest = (number: number, repoFullName: string = selectedRepo) => run(`pr-${number}`, async () => {
-    const r = await api.get<GithubPrDetail>('/github/pr_detail', { params: { full_name: repoFullName, number } })
-    setPrDetail(r.data)
-    setExpandedFile(null)
+    setOpeningPrNumber(number); setOpeningRepoFullName(repoFullName)
+    try {
+      const r = await api.get<GithubPrDetail>('/github/pr_detail', { params: { full_name: repoFullName, number } })
+      setPrDetail(r.data)
+      setExpandedFile(null)
+      setPrDetailError(null)
+    } catch (e) {
+      setPrDetail(null)
+      setPrDetailError(extractErrorMessage(e))
+    }
   })
+
+  // PR へのコメント投稿。選択中PRの詳細画面・PR一覧行の両方から共通で使う
+  const postPrComment = (prNumber: number, body: string) =>
+    api.post('/github/comment', { full_name: selectedRepo, number: prNumber, body })
 
   const submitComment = () => run('comment', async () => {
     if (!prDetail || !commentDraft.trim()) return
-    await api.post('/github/comment', { full_name: selectedRepo, number: prDetail.number, body: commentDraft.trim() })
+    await postPrComment(prDetail.number, commentDraft.trim())
     setCommentDraft('')
     await openPullRequest(prDetail.number)
+  })
+
+  // PR一覧行の＋から直接投稿。投稿後は入力欄を閉じ、一覧のコメント数を再取得する
+  const submitQuickComment = (prNumber: number) => run(`quick-comment-${prNumber}`, async () => {
+    if (!quickCommentText.trim()) return
+    await postPrComment(prNumber, quickCommentText.trim())
+    setQuickCommentPrNumber(null)
+    setQuickCommentText('')
+    await loadPullRequests(selectedRepo)
+  })
+
+  // 行レビュー下書き: diff行の＋から編集を開始し、保存して一斉送信で1コメントに結合してPRへ投稿する
+  const draftAt = (path: string, line: number) => drafts.find((d) => d.path === path && d.line === line)
+
+  const startDraft = (path: string, line: number, code: string) => {
+    const existing = draftAt(path, line)
+    setDraftBody(existing?.body ?? '')
+    setDraftCode(existing?.code ?? code)
+    setEditingDraftKey(`${path}:${line}`)
+    setDraftPreview(false)
+  }
+
+  const saveDraft = () => {
+    if (!editingDraftKey || !draftBody.trim()) { setEditingDraftKey(null); return }
+    const [path, lineText] = splitDraftKey(editingDraftKey)
+    const line = Number(lineText)
+    setDrafts((prev) => [...prev.filter((d) => !(d.path === path && d.line === line)), { path, line, code: draftCode, body: draftBody.trim() }])
+    setEditingDraftKey(null); setDraftBody(''); setDraftCode('')
+  }
+
+  const removeDraft = (draft: DraftComment) =>
+    setDrafts((prev) => prev.filter((d) => !(d.path === draft.path && d.line === draft.line)))
+
+  const reviewTarget = prDetail?.number
+  const submitDrafts = () => run('submit-review', async () => {
+    if (!reviewTarget || drafts.length === 0) return
+    const r = await api.post<{ posted: number }>('/github/post_review', {
+      full_name: selectedRepo, number: reviewTarget, comments: drafts,
+    })
+    setDrafts([])
+    await openPullRequest(reviewTarget)
+    setPosted(`PR #${reviewTarget} に ${r.data.posted} 件のレビューを投稿しました`)
+    setTimeout(() => setPosted(null), 5000)
   })
 
   const visiblePullRequests = useMemo(
@@ -214,18 +345,58 @@ export default function GithubPanel() {
     return <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">closed</span>
   }
 
-  // patch の各行を +/- で緑/赤に色付け（先頭の +++ / --- はファイルヘッダなので除外）
-  const renderPatch = (patch: string) => (
-    <pre className="max-h-96 overflow-x-auto whitespace-pre bg-white p-2 font-mono text-[11px] leading-5">
-      {patch.split('\n').map((line, index) => {
-        const isAdd = line.startsWith('+') && !line.startsWith('+++')
-        const isDel = line.startsWith('-') && !line.startsWith('---')
-        const isHunk = line.startsWith('@@')
-        const lineStyle = isAdd ? 'bg-emerald-50 text-emerald-700' : isDel ? 'bg-red-50 text-red-700' : isHunk ? 'bg-sky-50 text-sky-700' : ''
-        return <div key={index} className={lineStyle}>{line || ' '}</div>
-      })}
-    </pre>
+  // 行レビューの編集ボックス（diff行の＋から開く。保存すると下書き一覧に積まれる）
+  const renderDraftEditor = (path: string, line: number) => (
+    <div className="border-y border-fuchsia-200 bg-fuchsia-50/60 p-2 font-sans">
+      <div className="mb-1 flex items-center gap-2 text-[10px] text-[var(--color-text-sub)]">
+        <span className="font-mono">{path}:{line}</span>
+        <button onClick={() => setDraftPreview((v) => !v)} className={`rounded px-1.5 py-0.5 ${draftPreview ? 'bg-fuchsia-500 text-white' : 'border border-fuchsia-300 text-fuchsia-600'}`}>
+          {draftPreview ? '編集に戻る' : 'プレビュー'}
+        </button>
+      </div>
+      {draftPreview ? (
+        <div className="prose prose-sm max-w-none rounded border border-[var(--color-border)] bg-white p-2 text-xs">
+          <ReactMarkdown remarkPlugins={MD_PLUGINS}>{draftBody || '(空)'}</ReactMarkdown>
+        </div>
+      ) : (
+        <textarea value={draftBody} autoFocus rows={3}
+          onChange={(e) => setDraftBody(e.target.value)}
+          placeholder="レビューコメント（markdown可）"
+          className="w-full rounded border border-fuchsia-300 px-2 py-1 text-xs" />
+      )}
+      <div className="mt-1 flex gap-1">
+        <button onClick={saveDraft} className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-semibold text-white">下書き保存</button>
+        <button onClick={() => setEditingDraftKey(null)} className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px]">キャンセル</button>
+      </div>
+    </div>
   )
+
+  // patch を行番号付きで描画。add/ctx行の左の＋でその行にレビュー下書きを開始できる。
+  const renderPatch = (path: string, patch: string) => {
+    const patchLines = parsePatch(patch)
+    return (
+      <div className="max-h-96 overflow-auto bg-white font-mono text-[11px] leading-5">
+        {patchLines.map((patchLine, index) => {
+          const canComment = patchLine.newNo != null && patchLine.type !== 'hunk'
+          const draft = canComment ? draftAt(path, patchLine.newNo!) : undefined
+          return (
+            <div key={index}>
+              <div className={`group flex ${PATCH_LINE_BG[patchLine.type]} ${draft ? 'bg-amber-50' : ''}`}>
+                {canComment ? (
+                  <button onClick={() => startDraft(path, patchLine.newNo!, patchLine.text)} title="この行にレビューコメント"
+                    className="w-5 shrink-0 select-none text-center text-fuchsia-500 opacity-0 group-hover:opacity-100">＋</button>
+                ) : <span className="w-5 shrink-0" />}
+                <span className="w-9 shrink-0 select-none border-r border-[var(--color-border)] pr-1 text-right text-gray-400">{patchLine.newNo ?? ''}</span>
+                <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre px-1">{patchLine.text || ' '}</pre>
+                {draft && <span className="pr-2 text-amber-500" title="下書きあり">💬</span>}
+              </div>
+              {canComment && editingDraftKey === `${path}:${patchLine.newNo}` && renderDraftEditor(path, patchLine.newNo!)}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">
@@ -260,6 +431,14 @@ export default function GithubPanel() {
           )}
         </div>
         {err && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{err}</div>}
+        {posted && <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">✅ {posted}</div>}
+        {reposError && (
+          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+            <span>{reposError}</span>
+            <button onClick={loadRepositories} disabled={!!busy}
+              className="ml-auto rounded border border-red-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-red-600 disabled:opacity-50">再試行</button>
+          </div>
+        )}
       </div>
 
       {/* 自分宛て（メンション・レビュー依頼・コメント）インボックス */}
@@ -321,27 +500,55 @@ export default function GithubPanel() {
             <div className="mb-1 text-xs font-semibold text-[var(--color-text)]">PR {visiblePullRequests.length}件</div>
             <div className="max-h-[70vh] space-y-1 overflow-auto">
               {busy === 'pulls' && <div className="text-xs text-[var(--color-text-sub)]">読込中…</div>}
+              {prsError && (
+                <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-600">
+                  <span className="min-w-0 flex-1">{prsError}</span>
+                  <button onClick={() => loadPullRequests(selectedRepo)} disabled={!!busy}
+                    className="shrink-0 rounded border border-red-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-red-600 disabled:opacity-50">再試行</button>
+                </div>
+              )}
               {visiblePullRequests.map((pr) => (
-                <div key={pr.number} role="button" tabIndex={0} onClick={() => openPullRequest(pr.number)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPullRequest(pr.number) }}
-                  className={`flex cursor-pointer items-start gap-1 rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.title}</div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-sub)]">
-                      {pullRequestStateBadge(pr)}
-                      {pr.draft && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">draft</span>}
-                      <span>{pr.user}</span>
-                      <span>・{new Date(pr.updated_at).toLocaleDateString('ja-JP')}</span>
-                      <span>💬{pr.comments}</span>
+                <div key={pr.number}>
+                  <div role="button" tabIndex={0} onClick={() => openPullRequest(pr.number)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPullRequest(pr.number) }}
+                    className={`flex cursor-pointer items-start gap-1 rounded-lg border px-2 py-1.5 text-left text-[11px] ${prDetail?.number === pr.number ? 'border-fuchsia-400 bg-fuchsia-50' : 'border-[var(--color-border)] bg-white hover:bg-gray-50'}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[var(--color-text)]">#{pr.number} {pr.title}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-sub)]">
+                        {pullRequestStateBadge(pr)}
+                        {pr.draft && <span className="rounded bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">draft</span>}
+                        <span>{pr.user}</span>
+                        <span>・{new Date(pr.updated_at).toLocaleDateString('ja-JP')}</span>
+                        <span>💬{pr.comments}</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button onClick={(e) => { e.stopPropagation(); setQuickCommentPrNumber((prev) => (prev === pr.number ? null : pr.number)); setQuickCommentText('') }}
+                        title="このPRにコメントする" className="px-0.5 text-[12px] text-[var(--color-text-sub)] hover:text-fuchsia-600">＋</button>
+                      {pr.html_url && (
+                        <a href={pr.html_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                          title="GitHubで開く" className="px-0.5 text-[12px] text-[var(--color-text-sub)] hover:text-sky-600">↗</a>
+                      )}
                     </div>
                   </div>
-                  {pr.html_url && (
-                    <a href={pr.html_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-                      title="GitHubで開く" className="shrink-0 px-0.5 text-[12px] text-[var(--color-text-sub)] hover:text-sky-600">↗</a>
+                  {quickCommentPrNumber === pr.number && (
+                    <div className="mt-1 rounded-lg border border-sky-200 bg-sky-50/50 p-2">
+                      <textarea value={quickCommentText} autoFocus onChange={(e) => setQuickCommentText(e.target.value)} rows={2}
+                        placeholder="このPRにコメントする（markdown可・GitHubに公開で投稿されます）"
+                        className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-[11px]" />
+                      <div className="mt-1 flex justify-end gap-1">
+                        <button onClick={() => { setQuickCommentPrNumber(null); setQuickCommentText('') }}
+                          className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[10px]">✕</button>
+                        <button onClick={() => submitQuickComment(pr.number)} disabled={!!busy || !quickCommentText.trim()}
+                          className="rounded bg-gradient-to-r from-sky-500 to-blue-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow disabled:opacity-50">
+                          {busy === `quick-comment-${pr.number}` ? '送信中…' : '投稿'}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}
-              {busy !== 'pulls' && visiblePullRequests.length === 0 && (
+              {busy !== 'pulls' && !prsError && visiblePullRequests.length === 0 && (
                 <div className="text-xs text-[var(--color-text-sub)]">{selectedRepo ? 'PRはありません' : 'リポジトリを選択してください'}</div>
               )}
             </div>
@@ -350,6 +557,13 @@ export default function GithubPanel() {
           {/* PR 詳細 */}
           <div className="glass min-w-0 flex-1 rounded-2xl p-3 shadow-md">
             {busy?.startsWith('pr-') && <div className="text-xs text-[var(--color-text-sub)]">PR取得中…</div>}
+            {prDetailError && !busy?.startsWith('pr-') && (
+              <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                <span className="min-w-0 flex-1">{prDetailError}</span>
+                <button onClick={() => openingPrNumber && openPullRequest(openingPrNumber, openingRepoFullName)} disabled={!!busy || !openingPrNumber}
+                  className="shrink-0 rounded border border-red-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-red-600 disabled:opacity-50">再試行</button>
+              </div>
+            )}
             {prDetail ? (
               <div className="space-y-3">
                 <div>
@@ -370,7 +584,7 @@ export default function GithubPanel() {
 
                 {/* 変更ファイル */}
                 <div>
-                  <div className="mb-1 text-xs font-semibold text-[var(--color-text)]">📝 変更ファイル {prDetail.files.length}件</div>
+                  <div className="mb-1 text-xs font-semibold text-[var(--color-text)]">📝 変更ファイル {prDetail.files.length}件 <span className="ml-1 font-normal text-[10px] text-[var(--color-text-sub)]">展開して行の左の＋でレビュー</span></div>
                   <div className="space-y-2">
                     {prDetail.files.map((file) => (
                       <div key={file.filename} className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white">
@@ -410,7 +624,7 @@ export default function GithubPanel() {
                         )}
                         {expandedFile === file.filename && (
                           file.patch
-                            ? renderPatch(file.patch)
+                            ? renderPatch(file.filename, file.patch)
                             : <div className="p-2 text-[11px] text-[var(--color-text-sub)]">差分はありません（バイナリ or 大きすぎるファイル）</div>
                         )}
                       </div>
@@ -444,8 +658,32 @@ export default function GithubPanel() {
                 </div>
               </div>
             ) : (
-              !busy && <div className="py-10 text-center text-xs text-[var(--color-text-sub)]">左の一覧からPRを選択してください</div>
+              !busy && !prDetailError && <div className="py-10 text-center text-xs text-[var(--color-text-sub)]">左の一覧からPRを選択してください</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* レビュー下書き一覧 + 一斉送信 */}
+      {drafts.length > 0 && (
+        <div className="glass sticky bottom-2 rounded-2xl border border-amber-200 p-3 shadow-lg">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-xs font-semibold text-[var(--color-text)]">📝 レビュー下書き {drafts.length}件</span>
+            <button onClick={submitDrafts} disabled={!!busy || !reviewTarget}
+              title={reviewTarget ? `PR #${reviewTarget} に1コメントへ結合して投稿` : 'PR一覧からPRを開いてください'}
+              className="ml-auto rounded-lg bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+              {busy === 'submit-review' ? '送信中…' : `🚀 一斉送信${reviewTarget ? `（PR #${reviewTarget}）` : ''}`}
+            </button>
+          </div>
+          <div className="max-h-40 space-y-1 overflow-auto">
+            {drafts.map((d) => (
+              <div key={`${d.path}:${d.line}`} className="flex items-start gap-2 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-[11px]">
+                <span className="shrink-0 font-mono text-fuchsia-600">{d.path}:{d.line}</span>
+                <span className="min-w-0 flex-1 truncate text-[var(--color-text)]">{d.body}</span>
+                <button onClick={() => { setDraftBody(d.body); setDraftCode(d.code); setEditingDraftKey(`${d.path}:${d.line}`) }} className="text-[var(--color-text-sub)] hover:text-fuchsia-600" title="編集">✏️</button>
+                <button onClick={() => removeDraft(d)} className="text-gray-400 hover:text-red-500" title="削除">🗑</button>
+              </div>
+            ))}
           </div>
         </div>
       )}
