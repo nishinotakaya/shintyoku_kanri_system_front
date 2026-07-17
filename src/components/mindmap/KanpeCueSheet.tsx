@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api } from '../../lib/api'
+import { downloadMarkdownFile, sanitizeFilename } from '../../lib/downloadMarkdown'
 import AutoGrowTextarea from '../AutoGrowTextarea'
 import ConfirmDialog from '../ConfirmDialog'
 
@@ -11,6 +12,7 @@ type KanpeStyle = 'sales' | 'app_build'
 
 type Props = {
   mindmapId: number
+  mapTitle: string
   kanpeScript: string | null
   kanpeStyle: KanpeStyle
   onStyleChange: (style: KanpeStyle) => void
@@ -60,7 +62,7 @@ function buildKanpeScript(sections: KanpeSection[]): string {
   return sections.map((section) => (section.heading === '' ? section.body : `【${section.heading}】\n${section.body}`)).join('\n\n')
 }
 
-export default function KanpeCueSheet({ mindmapId, kanpeScript, kanpeStyle, onStyleChange, onSaved }: Props) {
+export default function KanpeCueSheet({ mindmapId, mapTitle, kanpeScript, kanpeStyle, onStyleChange, onSaved }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -146,6 +148,12 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, kanpeStyle, onSt
     }
   }
 
+  // 完全カンペをmdファイルとしてダウンロードする
+  const downloadKanpeAsMarkdown = () => {
+    if (!kanpeScript) return
+    downloadMarkdownFile(`${sanitizeFilename(mapTitle || 'カンペ')}_完全カンペ.md`, kanpeScript)
+  }
+
   // 本文を行ごとに描画し、「未来：」「問題：」「原因：」「解決：」だけラベル部分を強調する
   const renderBody = (body: string) => body.split('\n').map((line, lineIndex) => {
     const directionMatch = line.match(/^\s*>(.*)$/)
@@ -189,6 +197,10 @@ export default function KanpeCueSheet({ mindmapId, kanpeScript, kanpeStyle, onSt
         <button onClick={copyAll}
           className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:text-fuchsia-600">
           {copied ? '✅ コピーしました' : '📋 全文コピー'}
+        </button>
+        <button onClick={downloadKanpeAsMarkdown} disabled={!kanpeScript}
+          className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:text-fuchsia-600 disabled:opacity-50">
+          📄 mdで保存
         </button>
         <button onClick={() => setShowRegenerateConfirm(true)} disabled={!!busy}
           className="rounded-lg border border-fuchsia-300 bg-fuchsia-50 px-3 py-1.5 text-xs font-semibold text-fuchsia-600 disabled:opacity-50">

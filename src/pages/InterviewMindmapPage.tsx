@@ -8,6 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import SearchableSelect from '../components/SearchableSelect'
 import AutoGrowTextarea from '../components/AutoGrowTextarea'
 import { breakBySentence } from '../lib/sentenceBreak'
+import { downloadMarkdownFile, sanitizeFilename } from '../lib/downloadMarkdown'
 
 type MindNode = {
   id: number
@@ -289,6 +290,32 @@ export default function InterviewMindmapPage() {
     return { done, total: qs.length }
   }, [map])
 
+  // 全モード共通: Q&Aツリーをmarkdownのネスト箇条書きに変換して.mdでダウンロードする。ノードのテキストは加工しない
+  const kindPrefix = (node: MindNode): string => {
+    if (node.kind === 'question' || node.kind === 'followup') return `**Q. ${node.text}**`
+    if (node.kind === 'answer') return `A. ${node.text}`
+    return node.text
+  }
+
+  const buildMindmapMarkdown = (): string => {
+    if (!map) return ''
+    const lines: string[] = [`# ${map.title}`]
+    const walk = (node: MindNode, depth: number) => {
+      if (node.kind === 'keyword') return
+      lines.push(`${'  '.repeat(depth)}- ${kindPrefix(node)}`)
+      ;(childrenOf.get(node.id) ?? []).forEach((child) => walk(child, depth + 1))
+    }
+    ;(childrenOf.get(null) ?? []).forEach((root) => {
+      (childrenOf.get(root.id) ?? []).forEach((child) => walk(child, 0))
+    })
+    return lines.join('\n')
+  }
+
+  const downloadMindmapAsMarkdown = () => {
+    if (!map) return
+    downloadMarkdownFile(`${sanitizeFilename(map.title || 'マインドマップ')}_マインドマップ.md`, buildMindmapMarkdown())
+  }
+
   // 通常の再帰関数として描画する(コンポーネント化すると毎描画で再マウントされ、編集中のカーソルが飛ぶため)
   const renderNode = (node: MindNode, depth: number): React.ReactNode => {
     if (node.kind === 'keyword') return null // キーワード(黄色)ノードは表示しない
@@ -428,6 +455,12 @@ export default function InterviewMindmapPage() {
             <button onClick={() => setShowReset(true)} disabled={!!busy}
               className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 disabled:opacity-50">↺ リセット</button>
           )}
+          {map && (
+            <button onClick={downloadMindmapAsMarkdown} disabled={map.nodes.every((n) => n.kind === 'root')}
+              className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:text-fuchsia-600 disabled:opacity-50">
+              📄 mdで保存
+            </button>
+          )}
           {map && <span className="text-[11px] text-[var(--color-text-sub)]">暗記進捗 {progress.done}/{progress.total}</span>}
         </div>
         {isYoutubeMode && userId != null && (
@@ -545,7 +578,7 @@ export default function InterviewMindmapPage() {
             </>
           ) : (
             <div style={{ zoom: zoomPercent / 100 }}>
-              <KanpeCueSheet mindmapId={map.id} kanpeScript={map.kanpe_script ?? null}
+              <KanpeCueSheet mindmapId={map.id} mapTitle={map.title} kanpeScript={map.kanpe_script ?? null}
                 kanpeStyle={map.kanpe_style ?? 'sales'}
                 onStyleChange={(kanpeStyle) => {
                   setMap((current) => current ? { ...current, kanpe_style: kanpeStyle } : current)
