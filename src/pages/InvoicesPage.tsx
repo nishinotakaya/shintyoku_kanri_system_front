@@ -65,6 +65,15 @@ const KIND_LABELS: Record<string, string> = {
   expense: '立替金',
   work_report: '業務報告書',
 }
+// 一覧の日時セル用。秒まで出すと列が広がって横スクロールの原因になるので分までにする。
+// 日付と時刻の間に改行を許して、狭い幅では 2 行に折り返させる。
+function formatListDateTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  const ymd = `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+  const hm = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return `${ymd} ${hm}`
+}
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600',
   pending: 'bg-amber-100 text-amber-700',
@@ -540,8 +549,17 @@ export default function InvoicesPage() {
 
   // チェック済み複数件を統合 PDF 生成（同種・同 year/month/category であれば）
   const mergeChecked = async () => {
-    const selected = items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`) && s.status === 'approved')
-    if (selected.length < 2) { alert('2 件以上選択してください'); return }
+    const checked = items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`))
+    const notApproved = checked.filter((s) => s.status !== 'approved')
+    // 統合は「承認済み」の確定額のみが対象。下書き/申請中/却下が混ざっていたら、どれが対象外かを明示する。
+    if (notApproved.length > 0) {
+      const statusJa: Record<string, string> = { draft: '下書き', pending: '申請中', rejected: '却下' }
+      const names = notApproved.map((s) => `・${s.user_display_name}（${statusJa[s.status] ?? s.status}／¥${(s.total_override ?? s.default_total ?? 0).toLocaleString()}）`).join('\n')
+      alert(`統合できるのは「承認済み」の申請だけです。\n次の申請は未承認のため対象外です：\n${names}\n\n先に承認してから、承認済みを2件以上選んで統合してください。`)
+      return
+    }
+    const selected = checked.filter((s) => s.status === 'approved')
+    if (selected.length < 2) { alert('承認済みの申請を2件以上選択してください'); return }
     const kinds = new Set(selected.map((s) => s.kind))
     if (kinds.size > 1) { alert('種別が混在しています（請求書 と 立替金 の同時統合は不可）'); return }
     const months = new Set(selected.map((s) => `${s.year}-${s.month}`))
@@ -980,6 +998,7 @@ export default function InvoicesPage() {
   }
   const [paymentNoticeOpen, setPaymentNoticeOpen] = useState(false)
   const [paymentDate, setPaymentDate] = useState<string>(todayStr)
+  const [paymentSigner, setPaymentSigner] = useState('西野 鷹也') // 電子サインの署名者名(支払者)
   const [paymentTo, setPaymentTo] = useState('takaya777boxing@gmail.com')
   const [paymentRecipient, setPaymentRecipient] = useState('')
   const [paymentSubject, setPaymentSubject] = useState('')
@@ -990,6 +1009,11 @@ export default function InvoicesPage() {
   const checkedSubmissionIds = useMemo(
     () => Array.from(checkedIds).map((k) => Number(k.split('-')[1])).filter((n) => Number.isFinite(n)),
     [checkedIds]
+  )
+  // 統合対象になり得る「承認済み」のチェック数（ボタン表記を実際に統合できる件数に合わせる）
+  const checkedApprovedCount = useMemo(
+    () => items.filter((s) => checkedIds.has(`${s.kind}-${s.id}`) && s.status === 'approved').length,
+    [items, checkedIds]
   )
   // 申請(submit): 下書きを承認フローへ。チェック済みの下書きを対象にする。
   const checkedDrafts = useMemo(
@@ -1098,6 +1122,7 @@ export default function InvoicesPage() {
       const r = await api.post<{ ok: boolean; sent_to: string; count: number }>('/emails/payment_notice_send', {
         invoice_submission_ids: checkedSubmissionIds,
         paid_on: paymentDate,
+        signer_name: paymentSigner,
         to: paymentTo,
         subject: paymentSubject,
         body: paymentBody,
@@ -1167,8 +1192,8 @@ export default function InvoicesPage() {
           {me?.admin && checkedIds.size >= 2 && (
             <button onClick={() => mergeChecked()}
               className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
-              title="選択した請求書/立替金を 1 PDF に統合（同種・同月のみ）">
-              🔗 選択 {checkedIds.size} 件を統合 PDF
+              title="承認済みの申請のみ 1 PDF に統合できます（同種・同月）。下書き/申請中は対象外です。">
+              🔗 承認済 {checkedApprovedCount} 件を統合 PDF
             </button>
           )}
           {me?.admin && (checkedIds.size + checkedIssuedIds.size + mergedSubmissionIds.size) > 0 && (
@@ -1299,8 +1324,10 @@ export default function InvoicesPage() {
         <div className="text-sm text-[var(--color-text-sub)]">該当する申請がありません</div>
       ) : (
         <>
+        {/* 一覧は横スクロールさせない。列は画面幅に合わせて詰め、長い値はセル内で折り返す。
+            overflow-x-auto は極端に狭い画面用の保険（通常幅では収まるのでバーは出ない）。 */}
         <div className="glass overflow-x-auto rounded-xl shadow-md">
-          <table className="w-full min-w-[900px] text-xs">
+          <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
                 {me?.admin && <th className="px-1 py-2 text-center w-6"></th>}
@@ -1378,7 +1405,7 @@ export default function InvoicesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">{p.generated_at ? new Date(p.generated_at).toLocaleString('ja-JP') : '—'}</td>
+                    <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">{formatListDateTime(p.generated_at)}</td>
                     <td className="px-2 py-2 text-center">
                       <div className="flex gap-1 justify-center flex-wrap">
                         <button onClick={() => previewIssuedPdf(p)}
@@ -1520,7 +1547,7 @@ export default function InvoicesPage() {
                     </span>
                   </td>
                   <td className="px-2 py-2 text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</td>
-                  <td className="px-2 py-2 font-semibold whitespace-nowrap">{s.user_display_name}</td>
+                  <td className="px-2 py-2 font-semibold">{s.user_display_name}</td>
                   <td className="px-2 py-2 font-mono text-xs">
                     {(() => {
                       const effective = s.effective_purchase_order_no || s.purchase_order_no_override || s.received_purchase_order_no
@@ -1567,10 +1594,10 @@ export default function InvoicesPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)] whitespace-nowrap">
-                    {s.submitted_at ? new Date(s.submitted_at).toLocaleString('ja-JP') : '—'}
+                  <td className="px-2 py-2 text-[10px] text-[var(--color-text-sub)]">
+                    {formatListDateTime(s.submitted_at)}
                   </td>
-                  <td className="px-2 py-2 text-center whitespace-nowrap">
+                  <td className="px-2 py-2 text-center">
                     {s.kind === 'scanned' && s.scanned_source ? (
                       <div className="flex items-center justify-center gap-1">
                         <button
@@ -1948,6 +1975,12 @@ export default function InvoicesPage() {
                 <div className="text-[11px] font-semibold mb-0.5">宛名 (任意)</div>
                 <input type="text" value={paymentRecipient} onChange={(e) => setPaymentRecipient(e.target.value)}
                   placeholder="例: 川村 卓也"
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
+              </label>
+              <label className="block col-span-2">
+                <div className="text-[11px] font-semibold mb-0.5">電子サイン 署名者名（支払通知書に「電子的に証明済／署名者／日時／検証番号」を印字）</div>
+                <input type="text" value={paymentSigner} onChange={(e) => setPaymentSigner(e.target.value)}
+                  placeholder="例: 西野 鷹也"
                   className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
               </label>
             </div>
