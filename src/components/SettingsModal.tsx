@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import DocumentFolderSync from './DocumentFolderSync'
 
 type InvoiceSetting = {
   client_name: string
@@ -298,6 +299,8 @@ export default function SettingsModal({
                 <span className="text-xs text-[var(--color-text-sub)]">例: 25 日 → 「4 月分」は 3/26 〜 4/25</span>
               </div>
             </div>
+
+            <DocumentFolderSync />
 
             <div>
               <div className="text-xs text-[var(--color-text-sub)]">申請日（{year}年{month}月分）</div>
