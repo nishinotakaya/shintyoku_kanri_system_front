@@ -880,6 +880,33 @@ export default function InvoicesPage() {
       })
   }, [issuedPdfs, items, filterKind, filterStatus, filterMonth, filterUserKeys])
 
+  // 表に出す発行済み統合PDF。合計もこの同じ集合を使うので、JSX 側の絞り込みと二重管理にしない。
+  const visibleIssuedPdfs = useMemo(() => {
+    return issuedPdfs
+      .filter((p) => {
+        if (!filterMonth) return true
+        return `${p.year}-${String(p.month).padStart(2, '0')}` === filterMonth
+      })
+      .filter((p) => filterKind === 'all' || p.kind === filterKind)
+      .filter((p) => {
+        if (filterUserKeys.length === 0) return true
+        const names = (p.source_user_names ?? []).filter(Boolean) as string[]
+        return filterUserKeys.some((key) => {
+          if (key.startsWith('id:')) return p.user_id === Number(key.substring(3))
+          if (key.startsWith('combo:')) {
+            const target = key.substring(6).split(' + ')
+            return target.every((n) => names.includes(n))
+          }
+          return false
+        })
+      })
+      .filter((p) => {
+        if (!filterText) return true
+        const hay = `${p.filename} ${p.purchase_order_no ?? ''} ${(p.source_user_names ?? []).join(' ')}`
+        return hay.toLowerCase().includes(filterText.toLowerCase())
+      })
+  }, [issuedPdfs, filterMonth, filterKind, filterUserKeys, filterText])
+
   // 統合行も月/種別/ユーザーのフィルターを適用（従来は無条件表示で、月で絞ると申請0件時にテーブルごと消えていた）
   const visibleMerged = useMemo(() => {
     return mergedRows
@@ -971,25 +998,49 @@ export default function InvoicesPage() {
       })
   }, [items, filterKind, filterStatus, filterMonth, filterUserKeys, filterText, sortKey])
 
-  const filteredTotal = useMemo(
-    () => filtered.reduce((acc, s) => acc + (s.total_override ?? s.default_total ?? 0), 0),
-    [filtered]
-  )
-
-  // 合計を「西野(閲覧している管理者)本人の売上」と「外注への支払(パートナー分)」に分ける。
-  // ラボップは統合請求書で西野に全額(外注分込み)を振込 → 西野の請求=売上 / 外注の請求=西野が払う経費。
-  // PDF取込(scanned)は他社発行の受領請求書で西野の売上ではないため、分割集計からは除外する(総合計には含む)。
+  // 合計は「ラボップへ実際に出す 1 通」= 統合を単位に数える。
+  // 個別申請(西野ぶん・川村ぶん)は統合の内訳なので二重計上しない。
+  // 統合が存在しない (種別×年月×カテゴリ) だけ、個別申請をそのまま足す
+  // (テックリーダーズ等の西野単独案件が合計から消えないようにするため)。
+  //
+  // 内訳:
+  //   合計         = 統合の合計 + 統合が無い組み合わせの個別合計
+  //   外注への支払 = 自分以外(川村さん等)の個別申請の合計 ... 実際に西野が支払う額
+  //   西野の売上   = 合計 - 外注への支払
+  // 統合額を手編集して内訳の単純合計とズレている場合も、その差額は西野の売上側に乗る。
+  // PDF取込(scanned)は他社発行の受領請求書なので集計に含めない。
   const filteredTotals = useMemo(() => {
-    let ownSales = 0
+    const documentKey = (kind: string, year: number | null, month: number | null, category: string | null) =>
+      `${kind}-${year}-${month}-${category ?? ''}`
+
+    const mergedKeys = new Set<string>()
+    let mergedSum = 0
+    for (const pdf of visibleIssuedPdfs) {
+      const key = documentKey(pdf.kind, pdf.year, pdf.month, pdf.category)
+      if (mergedKeys.has(key)) continue
+      mergedKeys.add(key)
+      mergedSum += pdf.total_amount ?? 0
+    }
+    for (const merged of visibleMerged) {
+      const kind = merged.kind === 'merged_expense' ? 'expense' : 'invoice'
+      const key = documentKey(kind, merged.year, merged.month, merged.category)
+      if (mergedKeys.has(key)) continue
+      mergedKeys.add(key)
+      mergedSum += merged.total
+    }
+
+    let uncoveredSum = 0
     let subcontractPayment = 0
     for (const s of filtered) {
       if (s.kind === 'scanned') continue
       const amount = s.total_override ?? s.default_total ?? 0
-      if (me != null && s.user_id === me.id) ownSales += amount
-      else subcontractPayment += amount
+      if (!mergedKeys.has(documentKey(s.kind, s.year, s.month, s.category))) uncoveredSum += amount
+      if (me != null && s.user_id !== me.id) subcontractPayment += amount
     }
-    return { ownSales, subcontractPayment }
-  }, [filtered, me])
+
+    const total = mergedSum + uncoveredSum
+    return { total, ownSales: total - subcontractPayment, subcontractPayment }
+  }, [visibleIssuedPdfs, visibleMerged, filtered, me])
 
   // 振込通知メール（支払通知書）
   const todayStr = () => {
@@ -1313,7 +1364,7 @@ export default function InvoicesPage() {
             </>
           )}
           <span className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
-            💰 合計 <span className="font-mono tabular-nums">¥{filteredTotal.toLocaleString()}</span>
+            💰 合計 <span className="font-mono tabular-nums">¥{filteredTotals.total.toLocaleString()}</span>
           </span>
         </div>
       </div>
@@ -1344,30 +1395,7 @@ export default function InvoicesPage() {
             </thead>
             <tbody>
               {/* 保存済 統合 PDF (issued_invoice_pdfs) を最上部に表示。filterMonth/filterKind/filterUserKeys/filterText も適用 */}
-              {issuedPdfs
-                .filter((p) => {
-                  if (!filterMonth) return true
-                  const ym = `${p.year}-${String(p.month).padStart(2, '0')}`
-                  return ym === filterMonth
-                })
-                .filter((p) => filterKind === 'all' || p.kind === filterKind)
-                .filter((p) => {
-                  if (filterUserKeys.length === 0) return true
-                  const names = (p.source_user_names ?? []).filter(Boolean) as string[]
-                  return filterUserKeys.some((key) => {
-                    if (key.startsWith('id:')) return p.user_id === Number(key.substring(3))
-                    if (key.startsWith('combo:')) {
-                      const target = key.substring(6).split(' + ')
-                      return target.every((n) => names.includes(n))
-                    }
-                    return false
-                  })
-                })
-                .filter((p) => {
-                  if (!filterText) return true
-                  const hay = `${p.filename} ${p.purchase_order_no ?? ''} ${(p.source_user_names ?? []).join(' ')}`
-                  return hay.toLowerCase().includes(filterText.toLowerCase())
-                })
+              {visibleIssuedPdfs
                 .map((p) => {
                 // source_user_names (バックエンド計算済) を優先、無ければ items から推定、最後は user_display_name
                 const fromBackend = (p.source_user_names ?? []).filter(Boolean)
