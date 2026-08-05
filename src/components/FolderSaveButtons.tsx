@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { getStoredDirHandle, saveDirHandle, ensureRwPermission, clearDirHandle } from '../lib/dirHandleStore'
+import { SAVE_ROOT_STORAGE_KEY } from '../lib/documentImport'
 
 // 全セクション共通の「フォルダ保存」3ボタン群。
 // IndexedDB のキーを統一しているので、どこから保存先を選んでも他セクションでも記憶される。
 // fetchSpec(): API から取得する Blob と保存ファイル名・月フォルダ名を返す
-const HANDLE_KEY = 'app-save-root'
+const HANDLE_KEY = SAVE_ROOT_STORAGE_KEY
 
 type FetchSpec = {
   blob: Blob

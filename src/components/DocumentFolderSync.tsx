@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getStoredDirHandle, saveDirHandle, ensureRwPermission, clearDirHandle } from '../lib/dirHandleStore'
 import {
   DOC_TYPE_LABELS,
+  describeFailure,
   fetchMyDocuments,
   importDocumentsToFolder,
+  SAVE_ROOT_STORAGE_KEY,
   type DocType,
   type ImportProgress,
   type ImportResult,
@@ -11,7 +13,7 @@ import {
 
 // 保存先フォルダのキーは FolderSaveButtons と共通。
 // 単発の「フォルダ保存」も、この一括取り込みも同じフォルダを指す。
-const HANDLE_KEY = 'app-save-root'
+const HANDLE_KEY = SAVE_ROOT_STORAGE_KEY
 const ALL_DOC_TYPES: DocType[] = ['invoice', 'expense', 'purchase_order', 'work_report']
 
 export default function DocumentFolderSync() {
@@ -20,6 +22,9 @@ export default function DocumentFolderSync() {
   const [progress, setProgress] = useState<ImportProgress | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // busy(=progress !== null) は setProgress の直前まで await が続くため、その間の
+  // 2 回目クリックを防げない。実行中かどうかは同期的にこの ref で判定する。
+  const runningRef = useRef(false)
 
   const supported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
   const busy = progress !== null
@@ -36,8 +41,16 @@ export default function DocumentFolderSync() {
       await saveDirHandle(HANDLE_KEY, handle)
       setFolderName(handle.name)
       setMessage('保存先を設定しました')
-    } catch {
-      // ユーザーがキャンセルした場合は何もしない
+    } catch (error) {
+      // ユーザーがキャンセルした場合のみ無言で終える。それ以外(Chrome の system files 制約や
+      // IndexedDB 書き込み失敗など)は無反応にせず画面にエラーを出す。
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      const message = error instanceof Error ? error.message : String(error)
+      setMessage(
+        message.includes('system files')
+          ? 'Chrome の制約でこのフォルダは使えません。Documents 配下など別の場所を選んでください'
+          : `保存先を設定できませんでした: ${message}`
+      )
     }
   }
 
@@ -53,22 +66,24 @@ export default function DocumentFolderSync() {
   }
 
   const runImport = async () => {
-    if (busy) return
+    if (runningRef.current) return
+    runningRef.current = true
     setMessage(null)
     setResult(null)
-    const root = await getStoredDirHandle(HANDLE_KEY)
-    if (!root) { setMessage('先に保存先フォルダを選択してください'); return }
-    if (!(await ensureRwPermission(root))) { setMessage('フォルダへの書き込み権限が拒否されました'); return }
-
-    setProgress({ done: 0, total: 0, current: '' })
     try {
+      const root = await getStoredDirHandle(HANDLE_KEY)
+      if (!root) { setMessage('先に保存先フォルダを選択してください'); return }
+      if (!(await ensureRwPermission(root))) { setMessage('フォルダへの書き込み権限が拒否されました'); return }
+
+      setProgress({ done: 0, total: 0, current: '' })
       const documents = await fetchMyDocuments(docTypes)
       if (documents.length === 0) { setMessage('取り込む帳票がありません'); return }
       setResult(await importDocumentsToFolder(root, documents, setProgress))
-    } catch (e: any) {
-      setMessage(`取り込みに失敗しました: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } catch (error) {
+      setMessage(`取り込みに失敗しました: ${await describeFailure(error)}`)
     } finally {
       setProgress(null)
+      runningRef.current = false
     }
   }
 

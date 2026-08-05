@@ -883,6 +883,8 @@ export default function InvoicesPage() {
   // 表に出す発行済み統合PDF。合計もこの同じ集合を使うので、JSX 側の絞り込みと二重管理にしない。
   const visibleIssuedPdfs = useMemo(() => {
     return issuedPdfs
+      // 発行済みPDFは承認済み相当。下書き/申請中/却下で絞ったら表・合計の両方から外す（issuedRows / visibleMerged と条件を揃える）。
+      .filter(() => filterStatus === 'all' || filterStatus === 'approved')
       .filter((p) => {
         if (!filterMonth) return true
         return `${p.year}-${String(p.month).padStart(2, '0')}` === filterMonth
@@ -905,7 +907,7 @@ export default function InvoicesPage() {
         const hay = `${p.filename} ${p.purchase_order_no ?? ''} ${(p.source_user_names ?? []).join(' ')}`
         return hay.toLowerCase().includes(filterText.toLowerCase())
       })
-  }, [issuedPdfs, filterMonth, filterKind, filterUserKeys, filterText])
+  }, [issuedPdfs, filterStatus, filterMonth, filterKind, filterUserKeys, filterText])
 
   // 統合行も月/種別/ユーザーのフィルターを適用（従来は無条件表示で、月で絞ると申請0件時にテーブルごと消えていた）
   const visibleMerged = useMemo(() => {
@@ -1000,12 +1002,18 @@ export default function InvoicesPage() {
 
   // 合計は「ラボップへ実際に出す 1 通」= 統合を単位に数える。
   // 個別申請(西野ぶん・川村ぶん)は統合の内訳なので二重計上しない。
-  // 統合が存在しない (種別×年月×カテゴリ) だけ、個別申請をそのまま足す
+  // 統合(発行済みPDF or virtual統合行)に含まれない個別申請だけ、そのまま足す
   // (テックリーダーズ等の西野単独案件が合計から消えないようにするため)。
   //
+  // カバレッジ判定は「種別×年月×カテゴリ」というキーではなく、実際の構成申請 ID
+  // (IssuedPdf.source_submission_ids / MergedRow.ids) で行う。キー判定だと
+  // カテゴリ混在統合(構成申請が別カテゴリのため未カバー扱いで二重計上)や、
+  // 同月同カテゴリに複数 PO の統合が並立するケース(2件目が丸ごと消える)を正しく扱えない。
+  // source_submission_ids が無い旧データ用に、旧来のキー判定(legacyCoveredKeys)も併用する。
+  //
   // 内訳:
-  //   合計         = 統合の合計 + 統合が無い組み合わせの個別合計
-  //   外注への支払 = 自分以外(川村さん等)の個別申請の合計 ... 実際に西野が支払う額
+  //   合計         = 統合の合計 + 統合に含まれない個別申請の合計
+  //   外注への支払 = 自分以外(川村さん等)の「承認済み」個別申請の合計 ... 実際に西野が支払う額
   //   西野の売上   = 合計 - 外注への支払
   // 統合額を手編集して内訳の単純合計とズレている場合も、その差額は西野の売上側に乗る。
   // PDF取込(scanned)は他社発行の受領請求書なので集計に含めない。
@@ -1013,20 +1021,37 @@ export default function InvoicesPage() {
     const documentKey = (kind: string, year: number | null, month: number | null, category: string | null) =>
       `${kind}-${year}-${month}-${category ?? ''}`
 
-    const mergedKeys = new Set<string>()
+    const coveredSubmissionIds = new Set<number>()
+    const legacyCoveredKeys = new Set<string>()
+    const countedDocumentIds = new Set<string>()
     let mergedSum = 0
-    for (const pdf of visibleIssuedPdfs) {
-      const key = documentKey(pdf.kind, pdf.year, pdf.month, pdf.category)
-      if (mergedKeys.has(key)) continue
-      mergedKeys.add(key)
+
+    // 発行済みPDFは pdf を先に処理し、同一文書の pdf/xlsx 二重計上を防ぐ
+    // (同じ構成申請の pdf と xlsx が両方存在する場合は pdf の金額を優先する)。
+    const pdfsPdfFirst = [...visibleIssuedPdfs].sort((a, b) => {
+      if (a.file_format === b.file_format) return 0
+      return a.file_format === 'pdf' ? -1 : 1
+    })
+    for (const pdf of pdfsPdfFirst) {
+      const sourceIds = pdf.source_submission_ids ?? []
+      const idKey = sourceIds.length > 0 ? [...sourceIds].sort((a, b) => a - b).join(',') : ''
+      const fallbackKey = `${documentKey(pdf.kind, pdf.year, pdf.month, pdf.category)}-${pdf.purchase_order_no ?? ''}`
+      const dedupeKey = idKey || fallbackKey
+      if (countedDocumentIds.has(dedupeKey)) continue
+      countedDocumentIds.add(dedupeKey)
       mergedSum += pdf.total_amount ?? 0
+      if (sourceIds.length > 0) {
+        sourceIds.forEach((id) => coveredSubmissionIds.add(id))
+      } else {
+        legacyCoveredKeys.add(documentKey(pdf.kind, pdf.year, pdf.month, pdf.category))
+      }
     }
     for (const merged of visibleMerged) {
-      const kind = merged.kind === 'merged_expense' ? 'expense' : 'invoice'
-      const key = documentKey(kind, merged.year, merged.month, merged.category)
-      if (mergedKeys.has(key)) continue
-      mergedKeys.add(key)
+      const idKey = [...merged.ids].sort((a, b) => a - b).join(',')
+      if (countedDocumentIds.has(idKey)) continue
+      countedDocumentIds.add(idKey)
       mergedSum += merged.total
+      merged.ids.forEach((id) => coveredSubmissionIds.add(id))
     }
 
     let uncoveredSum = 0
@@ -1034,8 +1059,11 @@ export default function InvoicesPage() {
     for (const s of filtered) {
       if (s.kind === 'scanned') continue
       const amount = s.total_override ?? s.default_total ?? 0
-      if (!mergedKeys.has(documentKey(s.kind, s.year, s.month, s.category))) uncoveredSum += amount
-      if (me != null && s.user_id !== me.id) subcontractPayment += amount
+      const covered = coveredSubmissionIds.has(s.id) || legacyCoveredKeys.has(documentKey(s.kind, s.year, s.month, s.category))
+      if (!covered) uncoveredSum += amount
+      // 外注への支払は「承認済み」の確定額のみ。他人の下書き/申請中/却下を含めると、
+      // 合計が変わらないのに西野の売上(残差)だけが動いてしまう。
+      if (me != null && s.status === 'approved' && s.user_id !== me.id) subcontractPayment += amount
     }
 
     const total = mergedSum + uncoveredSum

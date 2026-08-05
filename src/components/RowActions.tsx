@@ -31,12 +31,19 @@ export default function RowActions({ onView, onEdit, onDelete, dlItems, viewLabe
   const menuRef = useRef<HTMLDivElement>(null)
   const items = dlItems ?? []
 
-  // ⋯ ボタンの位置に合わせてメニューを fixed 配置する(テーブルの overflow で切れないように)
+  // ⋯ ボタンの位置に合わせてメニューを fixed 配置する(テーブルの overflow で切れないように)。
+  // 画面下端の行では下方向に開くと項目が画面外へ出て操作できなくなるため、
+  // 残りの下側スペースが足りなければ上方向(トリガーの上端基準)へ反転する。
   useLayoutEffect(() => {
     if (!open || !btnRef.current) return
     const rect = btnRef.current.getBoundingClientRect()
-    setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) })
-  }, [open])
+    const estimatedMenuHeight = 28 + items.length * 28 // 見出し + 項目 の概算高さ
+    const fitsBelow = rect.bottom + 4 + estimatedMenuHeight <= window.innerHeight - 8
+    setPos({
+      top: fitsBelow ? rect.bottom + 4 : Math.max(8, rect.top - 4 - estimatedMenuHeight),
+      right: Math.max(8, window.innerWidth - rect.right),
+    })
+  }, [open, items.length])
 
   // 外側クリック / スクロール / リサイズ で閉じる
   useEffect(() => {
