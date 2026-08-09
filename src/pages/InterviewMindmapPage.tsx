@@ -20,7 +20,7 @@ type MindNode = {
   expanded: boolean
 }
 type MindMode = 'interview' | 'youtube' | 'mote' | 'mote_qa' | 'love_youtube'
-type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; kanpe_style?: 'sales' | 'app_build'; user?: { id: number; display_name: string } }
+type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; kanpe_style?: 'sales' | 'app_build'; filmed?: boolean; user?: { id: number; display_name: string } }
 type Target = { id: number; display_name: string; email: string }
 
 // マインドマップの表示サイズ(%)。選択は localStorage に保存して次回も維持する
@@ -160,6 +160,21 @@ export default function InterviewMindmapPage() {
     const r = await api.get<Mindmap>(`/interview_mindmaps/${id}`)
     setMap(r.data)
   })
+
+  // 撮影済フラグの切替。セレクト内のチェック操作なので busy を立てず楽観更新し、失敗時は送信前の値に戻す
+  const toggleFilmed = async (mapId: number, filmed: boolean) => {
+    const previousFilmed = maps.find((m) => m.id === mapId)?.filmed ?? false
+    setMaps((prev) => prev.map((m) => m.id === mapId ? { ...m, filmed } : m))
+    setMap((current) => current && current.id === mapId ? { ...current, filmed } : current)
+    try {
+      await api.patch<Mindmap>(`/interview_mindmaps/${mapId}`, { filmed })
+      setErr(null)
+    } catch {
+      setMaps((prev) => prev.map((m) => m.id === mapId ? { ...m, filmed: previousFilmed } : m))
+      setMap((current) => current && current.id === mapId ? { ...current, filmed: previousFilmed } : current)
+      setErr('撮影済フラグの更新に失敗しました')
+    }
+  }
 
   const deleteMap = () => run('deleteMap', async () => {
     if (!map) return
@@ -466,9 +481,11 @@ export default function InterviewMindmapPage() {
         {isYoutubeMode && userId != null && (
           <div className="flex flex-wrap items-center gap-2">
             {maps.length > 0 && (
-              <SearchableSelect options={maps.map((m) => ({ value: m.id, label: m.title }))}
+              <SearchableSelect options={maps.map((m) => ({ value: m.id, label: m.title, checked: !!m.filmed }))}
                 value={map?.id ?? null} onChange={selectMap} disabled={!!busy}
-                title="動画タイトルでマインドマップを切替（検索できます）" placeholder="タイトルを検索…"
+                title="動画タイトルでマインドマップを切替（検索・撮影済で絞り込みできます）" placeholder="タイトルを検索…"
+                checkTabs={{ all: '全て', checked: '撮影済', unchecked: '撮影前' }}
+                onToggleCheck={toggleFilmed}
                 className="max-w-[280px]" />
             )}
             <input value={newMapTitle} onChange={(e) => setNewMapTitle(e.target.value)} placeholder="新しい動画タイトルを入力（またはAI提案）"
