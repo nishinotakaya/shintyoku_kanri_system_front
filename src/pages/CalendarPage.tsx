@@ -55,8 +55,10 @@ export default function CalendarPage() {
   // 閲覧対象ユーザーの苗字（admin が他人をセレクトしてる時は切替先の苗字、それ以外は自分）
   const viewingUser = pickableUsers.find((u) => u.id === asUserId) ?? me
   const viewingSurname = (viewingUser?.display_name ?? '').split(/[\s　]/)[0] ?? ''
-  // 編集権限は常に自分基準（admin はすべて編集可）
-  const canEditPerson = (person: string) => isAdmin || person === myCurrentSurname || myCurrentSurname.includes(person)
+  // 編集権限は常に自分基準（admin はすべて編集可）。
+  // シートヘッダが「川村卓也」で自分の苗字が「川村」のような表記ゆれ両方向を許容する
+  const canEditPerson = (person: string) =>
+    isAdmin || (myCurrentSurname !== '' && person !== '' && (person.includes(myCurrentSurname) || myCurrentSurname.includes(person)))
 
   // 当月 + 翌月分も取得（カレンダー表示日が次の締日期間に属する分をカバー）
   const nextMonthDate = new Date(year, month, 1)

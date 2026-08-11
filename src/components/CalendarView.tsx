@@ -19,7 +19,10 @@ const STATUS_OPTIONS = [
   'TL@押上',
 ]
 
-const PERSONS = ['西野', '川村', '大隅'] as const
+// 常に行を出す基本メンバー(スプレッドシートに列がある人)。
+// シート取込で新しい人物・ステータスが入った場合は、このリストに無くても
+// 取込データから動的に行・選択肢へ追加される(下の persons / statusOptions)。
+const BASE_PERSONS = ['西野', '川村', '大隅', '土倉']
 
 type Props = {
   year: number
@@ -72,6 +75,20 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
       map.set(entry.date, arr)
     })
     return map
+  }, [teamSchedules])
+
+  // 表示する人物行: 基本メンバー + 取込データに現れた人物（シートに新メンバーが増えても行が出る）
+  const persons = useMemo(() => {
+    const set = new Set<string>(BASE_PERSONS)
+    teamSchedules.forEach((entry) => { if (entry.person) set.add(entry.person) })
+    return [...set]
+  }, [teamSchedules])
+
+  // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）
+  const statusOptions = useMemo(() => {
+    const set = new Set<string>(STATUS_OPTIONS)
+    teamSchedules.forEach((entry) => { if (entry.status) set.add(entry.status) })
+    return [...set]
   }, [teamSchedules])
 
   // 締日（25日）まで: 前月26日〜当月25日 の範囲で集計
@@ -322,11 +339,11 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
               )}
 
 
-              {/* チーム予定（西野・川村・大隅 を常に 3 行表示） */}
+              {/* チーム予定（基本メンバー + 取込データの人物を全行表示） */}
               {/* スマホ: 予定チップ (Googleカレンダー風・タップで日別モーダルへ) */}
               {(teamMap.get(c.date) ?? []).length > 0 && (
                 <div className="md:hidden mt-auto flex flex-col gap-px overflow-hidden">
-                  {PERSONS.map((person) => {
+                  {persons.map((person) => {
                     const entry = (teamMap.get(c.date) ?? []).find((target) => target.person === person)
                     if (!entry?.status) return null
                     return (
@@ -340,12 +357,12 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
 
               {(onCreateTeamSchedule || onUpdateTeamSchedule || (teamMap.get(c.date) ?? []).length > 0) && (
                 <div className="hidden md:block mt-1 space-y-0.5 border-t border-[var(--color-border)] pt-1">
-                  {PERSONS.map((person) => {
+                  {persons.map((person) => {
                     const entry = (teamMap.get(c.date) ?? []).find((target) => target.person === person)
                     const status = entry?.status ?? ''
                     const personEditable = canEditPerson ? canEditPerson(person) : true
                     const editable = personEditable && (!!onUpdateTeamSchedule || !!onCreateTeamSchedule)
-                    const knownOption = !!status && STATUS_OPTIONS.includes(status)
+                    const knownOption = !!status && statusOptions.includes(status)
                     const handleChange = (value: string) => {
                       let nextStatus = value
                       if (value === '__custom__') {
@@ -375,7 +392,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                           >
                             <option value="">{status ? '予定なし' : '＋ 予定を追加'}</option>
                             {!knownOption && status !== '' && <option value={status}>{status}</option>}
-                            {STATUS_OPTIONS.map((option) => (
+                            {statusOptions.map((option) => (
                               <option key={option} value={option}>{option}</option>
                             ))}
                             <option value="__custom__">…自由入力</option>
