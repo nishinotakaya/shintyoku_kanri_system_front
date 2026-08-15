@@ -18,6 +18,7 @@ type Card = {
   theme: string       // お題
   back: string        // 予備のお題・振り方・盛り上げ・NG
   depth: 'light' | 'mid' | 'deep'
+  spicy: boolean     // 🌶 ぶっこみデッキの札か
 }
 
 const SUITS = ['♥', '♦', '♣', '♠'] as const
@@ -34,13 +35,15 @@ const depthOf = (rank: string): Card['depth'] => {
 
 // 「♥7｜今までで一番きゅんとした瞬間」→ suit/rank/theme に分解する。形式が違う行は山札に入れない。
 function parseCard(node: MindNode, back: string): Card | null {
-  const matched = node.text.match(/^([♥♦♣♠])(A|K|Q|J|10|[2-9])｜(.+)$/)
+  const spicy = node.text.startsWith('🌶')
+  const text = spicy ? node.text.slice('🌶'.length) : node.text
+  const matched = text.match(/^([♥♦♣♠])(A|K|Q|J|10|[2-9])｜(.+)$/)
   if (matched) {
     const [, suit, rank, theme] = matched
-    return { id: node.id, suit, rank, theme: theme.trim(), back, depth: depthOf(rank) }
+    return { id: node.id, suit, rank, theme: theme.trim(), back, depth: depthOf(rank), spicy }
   }
-  const joker = node.text.match(/^🃏\s*ジョーカー(.)｜(.+)$/)
-  if (joker) return { id: node.id, suit: '🃏', rank: joker[1], theme: joker[2].trim(), back, depth: 'light' }
+  const joker = text.match(/^🃏\s*ジョーカー(.)｜(.+)$/)
+  if (joker) return { id: node.id, suit: '🃏', rank: joker[1], theme: joker[2].trim(), back, depth: 'light', spicy }
   return null
 }
 
@@ -69,6 +72,7 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
   const [drawn, setDrawn] = useState(0)       // 山札の何枚目か
   const [flipped, setFlipped] = useState(false)
   const [showBack, setShowBack] = useState(false) // 振り方・盛り上げ方の面
+  const [spicy, setSpicy] = useState(false) // 🌶 ぶっこみモード
   const [seed, setSeed] = useState(0)
 
   const allCards = useMemo(() => {
@@ -86,13 +90,14 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 
   const deck = useMemo(() => {
     const filtered = allCards.filter((card) => {
+      if (card.spicy !== spicy) return false
       if (suitFilter && card.suit !== suitFilter) return false
       if (depthFilter && card.depth !== depthFilter) return false
       return true
     })
     return shuffled(filtered)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCards, suitFilter, depthFilter, seed])
+  }, [allCards, suitFilter, depthFilter, spicy, seed])
 
   const card = deck[drawn] ?? null
   const remaining = Math.max(deck.length - drawn - 1, 0)
@@ -114,7 +119,9 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden"
-      style={{ background: 'radial-gradient(120% 90% at 50% 0%, #ffe6f3 0%, #ffd9ec 35%, #efd9ff 70%, #e3dbff 100%)' }}>
+      style={{ background: spicy
+        ? 'radial-gradient(120% 90% at 50% 0%, #ffd9e4 0%, #ffb7cf 35%, #ff9ec0 70%, #e6789f 100%)'
+        : 'radial-gradient(120% 90% at 50% 0%, #ffe6f3 0%, #ffd9ec 35%, #efd9ff 70%, #e3dbff 100%)' }}>
       <style>{`
         @keyframes ttc-float { 0%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-14px) rotate(8deg)} 100%{transform:translateY(0) rotate(0deg)} }
         @keyframes ttc-pop { 0%{transform:scale(.86);opacity:0} 100%{transform:scale(1);opacity:1} }
@@ -127,7 +134,7 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 
       {/* ふわふわ浮かぶ背景の飾り */}
       <div aria-hidden className="pointer-events-none absolute inset-0 select-none">
-        {['💕', '✨', '🌸', '💗', '🎀', '⭐️', '🩷', '🫧'].map((emoji, index) => (
+        {(spicy ? ['🌶', '💋', '🔥', '💄', '🍒', '💘', '🥂', '✨'] : ['💕', '✨', '🌸', '💗', '🎀', '⭐️', '🩷', '🫧']).map((emoji, index) => (
           <span key={index} className="ttc-float absolute text-2xl opacity-60"
             style={{
               left: `${[8, 82, 20, 70, 45, 90, 12, 60][index]}%`,
@@ -139,10 +146,16 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 
       <div className="relative flex items-center justify-between px-4 py-3">
         <span className="text-sm font-black tracking-wide text-[#c2438a] drop-shadow-sm">🃏 トークテーマトランプ</span>
-        <button onClick={onClose} aria-label="閉じる"
-          className="rounded-full border-2 border-white/80 bg-white/70 px-3 py-1 text-sm font-bold text-[#c2438a] shadow-sm backdrop-blur hover:bg-white">
-          ✕ とじる
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setSpicy((on) => !on); reset() }} aria-pressed={spicy}
+            className={`rounded-full px-4 py-1.5 text-sm font-black shadow-md transition-transform active:scale-95 ${spicy ? 'bg-gradient-to-r from-rose-500 to-red-500 text-white shadow-red-400/50' : 'border-2 border-white/80 bg-white/70 text-[#c2438a] backdrop-blur'}`}>
+            🌶 ぶっこみ {spicy ? 'ON' : 'OFF'}
+          </button>
+          <button onClick={onClose} aria-label="閉じる"
+            className="rounded-full border-2 border-white/80 bg-white/70 px-3 py-1 text-sm font-bold text-[#c2438a] shadow-sm backdrop-blur hover:bg-white">
+            ✕
+          </button>
+        </div>
       </div>
 
       {allCards.length === 0 ? (
@@ -157,10 +170,10 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
         <>
           <div className="relative flex flex-1 items-center justify-center px-4">
             {layout === 'donut' && (
-              <DonutRing ring={ring} onPick={drawAt} activeIndex={flipped ? drawn : -1} />
+              <DonutRing ring={ring} onPick={drawAt} activeIndex={drawn} spicy={spicy} />
             )}
             {card ? (
-              <PlayingCard card={card} flipped={flipped} showBack={showBack}
+              <PlayingCard card={card} flipped={flipped} showBack={showBack} compact={layout === 'donut'}
                 onTap={() => {
                   if (!flipped) { setFlipped(true); return }
                   if (!showBack) { setShowBack(true); return }
@@ -212,14 +225,16 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 }
 
 // 本物のトランプに寄せた 1 枚。タップで Y 軸に 3D 回転して表になる。
-function PlayingCard({ card, flipped, showBack, onTap }:
-  { card: Card; flipped: boolean; showBack: boolean; onTap: () => void }) {
+function PlayingCard({ card, flipped, showBack, onTap, compact }:
+  { card: Card; flipped: boolean; showBack: boolean; onTap: () => void; compact?: boolean }) {
   const red = isRedSuit(card.suit)
   const ink = red ? '#e0407a' : '#4b3f72'
 
   return (
     <button onClick={onTap} aria-label="カードをめくる"
-      className="relative z-10 h-[62vh] max-h-[520px] w-[76vw] max-w-[340px] active:scale-[0.98]"
+      className={`relative z-10 active:scale-[0.98] ${compact
+        ? 'h-[34vh] max-h-[260px] w-[44vw] max-w-[190px]'
+        : 'h-[62vh] max-h-[520px] w-[76vw] max-w-[340px]'}`}
       style={{ perspective: '1400px' }}>
       <div className="ttc-inner relative h-full w-full"
         style={{
@@ -249,11 +264,11 @@ function PlayingCard({ card, flipped, showBack, onTap }:
           <div className="flex flex-1 items-center justify-center overflow-hidden px-1">
             {!showBack ? (
               <div className="ttc-pop flex flex-col items-center gap-3 text-center">
-                <span className="ttc-sparkle text-3xl">{DEPTH_EMOJI[card.depth]}</span>
-                <p className="text-[25px] font-black leading-snug text-[#3a2f4d]">{card.theme}</p>
+                <span className="ttc-sparkle text-3xl">{card.spicy ? '🌶' : DEPTH_EMOJI[card.depth]}</span>
+                <p className={`font-black leading-snug text-[#3a2f4d] ${compact ? 'text-[15px]' : 'text-[25px]'}`}>{card.theme}</p>
                 <span className="rounded-full px-3 py-1 text-[11px] font-bold"
-                  style={{ background: red ? '#ffe4ef' : '#eae6ff', color: ink }}>
-                  {DEPTH_LABEL[card.depth]}
+                  style={{ background: card.spicy ? '#ffe0e6' : red ? '#ffe4ef' : '#eae6ff', color: card.spicy ? '#d63b5e' : ink }}>
+                  {card.spicy ? 'ぶっこみ' : DEPTH_LABEL[card.depth]}
                 </span>
               </div>
             ) : (
@@ -289,24 +304,41 @@ function CornerIndex({ card, color, bottom }: { card: Card; color: string; botto
   )
 }
 
-// 伏せた札を円形に並べる。好きな1枚をタップすると、そのカードが中央で開く。
-function DonutRing({ ring, onPick, activeIndex }:
-  { ring: number[]; onPick: (index: number) => void; activeIndex: number }) {
+// ドーナツ型の札を円形に並べる。好きな1枚をタップすると、そのカードが中央で開く。
+// 1枚1枚が穴あきのドーナツ(外側の輪＋中央の穴)になっていて、指で押しやすい大きさにしてある。
+function DonutRing({ ring, onPick, activeIndex, spicy }:
+  { ring: number[]; onPick: (index: number) => void; activeIndex: number; spicy: boolean }) {
+  const glaze = spicy
+    ? ['#ff7aa2', '#ff5c8a', '#ff9ab4', '#ff6f9c']
+    : ['#ffb3d6', '#ffc9e3', '#f7c6ff', '#ffd7ea']
+  const sprinkleColors = ['#fff', '#ffe066', '#8ee6c8', '#9ec7ff']
+
   return (
-    <div aria-hidden={false} className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="relative h-[min(84vw,380px)] w-[min(84vw,380px)]">
+    <div className="absolute inset-0 flex items-center justify-center">
+      <div className="relative h-[min(88vw,400px)] w-[min(88vw,400px)]">
         {ring.map((index) => {
           const angle = (360 / ring.length) * index
+          const picked = index === activeIndex
           return (
-            <button key={index} onClick={() => onPick(index)} aria-label={`${index + 1}枚目を引く`}
-              className="pointer-events-auto absolute left-1/2 top-1/2 h-16 w-11 rounded-lg border-[3px] border-white shadow-lg transition-transform hover:scale-110"
+            <button key={index} onClick={() => onPick(index)} aria-label={`${index + 1}枚目のドーナツを引く`}
+              className="absolute left-1/2 top-1/2 h-[62px] w-[62px] rounded-full shadow-lg transition-transform duration-200 hover:scale-110 active:scale-95"
               style={{
-                background: index === activeIndex
-                  ? 'linear-gradient(160deg,#fff 0%,#ffe9f3 100%)'
-                  : 'repeating-linear-gradient(45deg,#ff9ec7 0 6px,#ffb3d6 6px 12px)',
-                transform: `translate(-50%,-50%) rotate(${angle}deg) translateY(calc(-1 * min(38vw, 168px))) rotate(${-angle}deg)`,
+                transform: `translate(-50%,-50%) rotate(${angle}deg) translateY(calc(-1 * min(40vw, 176px))) rotate(${-angle}deg) scale(${picked ? 1.18 : 1})`,
+                background: `radial-gradient(circle at 50% 50%, transparent 0 17px, ${glaze[index % glaze.length]} 17px 100%)`,
+                border: picked ? '3px solid #fff' : '3px solid rgba(255,255,255,.85)',
+                filter: picked ? 'drop-shadow(0 0 10px rgba(255,255,255,.9))' : undefined,
               }}>
-              <span className="text-lg">{index === activeIndex ? '💗' : ''}</span>
+              {/* スプリンクル */}
+              {Array.from({ length: 6 }, (_, dot) => (
+                <span key={dot} aria-hidden
+                  className="absolute h-[7px] w-[2.5px] rounded-full"
+                  style={{
+                    background: sprinkleColors[(index + dot) % sprinkleColors.length],
+                    left: '50%', top: '50%',
+                    transform: `rotate(${dot * 61 + index * 17}deg) translateY(-22px) rotate(${dot * 40}deg)`,
+                  }} />
+              ))}
+              {picked && <span className="relative text-sm">{spicy ? '🌶' : '💗'}</span>}
             </button>
           )
         })}
