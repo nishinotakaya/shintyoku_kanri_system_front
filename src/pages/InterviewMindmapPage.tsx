@@ -4,6 +4,7 @@ import type { Me } from '../lib/api'
 import ThumbnailStudio from '../components/ThumbnailStudio'
 import MindmapGraph from '../components/mindmap/MindmapGraph'
 import KanpeCueSheet from '../components/mindmap/KanpeCueSheet'
+import TalkThemeCards from '../components/mindmap/TalkThemeCards'
 import ConfirmDialog from '../components/ConfirmDialog'
 import SearchableSelect from '../components/SearchableSelect'
 import AutoGrowTextarea from '../components/AutoGrowTextarea'
@@ -19,7 +20,7 @@ type MindNode = {
   checked: boolean
   expanded: boolean
 }
-type MindMode = 'interview' | 'youtube' | 'mote' | 'mote_qa' | 'love_youtube'
+type MindMode = 'interview' | 'youtube' | 'mote' | 'mote_qa' | 'love_youtube' | 'talk_cards'
 type Mindmap = { id: number; user_id: number; title: string; mode?: MindMode; spreadsheet_url?: string | null; nodes: MindNode[]; kanpe_script?: string | null; kanpe_style?: 'sales' | 'app_build'; filmed?: boolean; user?: { id: number; display_name: string } }
 type Target = { id: number; display_name: string; email: string }
 
@@ -68,6 +69,7 @@ export default function InterviewMindmapPage() {
   const [othersHover, setOthersHover] = useState<Set<number>>(new Set()) // 他者がホバー中(ポーリング)
   const [showReset, setShowReset] = useState(false)
   const [showBankReset, setShowBankReset] = useState(false)
+  const [showCards, setShowCards] = useState(false) // トークテーマトランプの全画面表示
   const [sheetUrl, setSheetUrl] = useState('')
   const [mode, setMode] = useState<MindMode>('interview') // 面談 / YouTube / モテ / モテQ&A / 恋愛YouTube
   const [zoomPercent, setZoomPercent] = useState(() => {
@@ -78,10 +80,12 @@ export default function InterviewMindmapPage() {
   const canMote = !!(me?.admin || me?.can_use_mote_mindmap)
   const canMoteQa = !!(me?.admin || me?.can_use_mote_qa_mindmap)
   const canLoveYoutube = !!(me?.admin || me?.can_use_love_youtube_mindmap)
+  const canTalkCards = !!(me?.admin || me?.can_use_talk_cards_mindmap)
   const isYoutube = mode === 'youtube'
   const isMote = mode === 'mote'
   const isMoteQa = mode === 'mote_qa'
   const isLoveYoutube = mode === 'love_youtube'
+  const isTalkCards = mode === 'talk_cards'
   const isYoutubeMode = isYoutube || isLoveYoutube // 動画タイトルで複数マップを切り替えるモード共通
   const useTts = mode !== 'interview' // YouTube/モテ/モテQ&A/恋愛YouTube は高品質音声で読み上げ
 
@@ -409,14 +413,18 @@ export default function InterviewMindmapPage() {
 
   return (
     <div className="space-y-3">
+      {showCards && map && (
+        <TalkThemeCards nodes={map.nodes} importing={busy === 'bank'}
+          onClose={() => setShowCards(false)} onImport={importBank} />
+      )}
       <div className="glass rounded-2xl shadow-md p-4 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <button onClick={() => setShowControls((value) => !value)} title={showControls ? '折りたたむ' : '開く'}
             className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
             <span className="text-[10px] text-[var(--color-text-sub)]">{showControls ? '▼' : '▶'}</span>
-            <span>{isYoutube ? '🎬 YouTubeインタビューマインドマップ' : isLoveYoutube ? '❤️ 恋愛系YouTubeマインドマップ' : isMoteQa ? '❓ モテ質問Q&Aマインドマップ' : isMote ? '💬 モテ会話マインドマップ' : '🧠 面談対策マインドマップ'}</span>
+            <span>{isTalkCards ? '🃏 トークテーマトランプ' : isYoutube ? '🎬 YouTubeインタビューマインドマップ' : isLoveYoutube ? '❤️ 恋愛系YouTubeマインドマップ' : isMoteQa ? '❓ モテ質問Q&Aマインドマップ' : isMote ? '💬 モテ会話マインドマップ' : '🧠 面談対策マインドマップ'}</span>
           </button>
-          {(canYoutube || canMote || canMoteQa || canLoveYoutube) && (
+          {(canYoutube || canMote || canMoteQa || canLoveYoutube || canTalkCards) && (
             <div className="flex items-center gap-1">
               <button onClick={() => setMode('interview')}
                 className={`rounded-lg px-3 py-1 text-xs font-semibold ${mode === 'interview' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>面談</button>
@@ -432,6 +440,10 @@ export default function InterviewMindmapPage() {
                 <button onClick={() => setMode('mote_qa')}
                   className={`rounded-lg px-3 py-1 text-xs font-semibold ${isMoteQa ? 'bg-rose-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❓ モテQ&A</button>
               )}
+              {canTalkCards && (
+                <button onClick={() => setMode('talk_cards')}
+                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isTalkCards ? 'bg-violet-600 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🃏 トランプ</button>
+              )}
               {canLoveYoutube && (
                 <button onClick={() => setMode('love_youtube')}
                   className={`rounded-lg px-3 py-1 text-xs font-semibold ${isLoveYoutube ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❤️ 恋愛YT</button>
@@ -440,7 +452,7 @@ export default function InterviewMindmapPage() {
           )}
         </div>
         {showControls && <>
-        <div className="text-[11px] text-[var(--color-text-sub)]">{isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isLoveYoutube ? '起点（＝動画テーマ。ダブルクリックで編集）から想定質問→台本回答の流れで展開。「📋 質問バンク取込（恋愛YouTube）」で定番の想定質問を取り込み、🔊は高品質音声で読み上げ。' : isMoteQa ? '相手からの質問→モテる返しを一覧化。「📋 質問集を取込」で定番質問と模範回答を取込み、各質問の「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
+        <div className="text-[11px] text-[var(--color-text-sub)]">{isTalkCards ? '合コンでその場に出して使うトークテーマの札。♥恋愛 ♦価値観 ♣笑い ♠本音 の4スート×A〜K＝54枚で、数字が大きいほど踏み込む。「🃏 カードを開く」で全画面になり、タップで1枚ずつめくれる。1枚につきお題3つ＋振り方・盛り上げ方・NG付き。' : isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isLoveYoutube ? '起点（＝動画テーマ。ダブルクリックで編集）から想定質問→台本回答の流れで展開。「📋 質問バンク取込（恋愛YouTube）」で定番の想定質問を取り込み、🔊は高品質音声で読み上げ。' : isMoteQa ? '相手からの質問→モテる返しを一覧化。「📋 質問集を取込」で定番質問と模範回答を取込み、各質問の「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
         <div className="flex flex-wrap items-center gap-2">
           {me?.admin && (
             <select value={userId ?? ''} onChange={(e) => setUserId(Number(e.target.value))}
@@ -457,7 +469,13 @@ export default function InterviewMindmapPage() {
           {map && (
             <button onClick={importBank} disabled={!!busy}
               className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-50">
-              {busy === 'bank' ? '取込中…' : (isYoutube ? '📋 質問バンク取込（YouTube12問）' : isLoveYoutube ? '📋 質問バンク取込（恋愛YouTube）' : isMoteQa ? '📋 質問集を取込' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
+              {busy === 'bank' ? '取込中…' : (isTalkCards ? '📋 カード54枚を取込' : isYoutube ? '📋 質問バンク取込（YouTube12問）' : isLoveYoutube ? '📋 質問バンク取込（恋愛YouTube）' : isMoteQa ? '📋 質問集を取込' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
+            </button>
+          )}
+          {map && isTalkCards && (
+            <button onClick={() => setShowCards(true)}
+              className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-1.5 text-xs font-bold text-white shadow">
+              🃏 カードを開く
             </button>
           )}
           {map && (
