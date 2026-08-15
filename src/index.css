@@ -35,3 +35,29 @@ html, body, #root {
 }
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
+
+
+/* トークテーマトランプ(TalkThemeCards)のアニメーション。
+   コンポーネント内に <style> を直書きしないよう、キーフレームはここに集約する。 */
+@keyframes ttc-float {
+  0%   { transform: translateY(0) rotate(0deg); }
+  50%  { transform: translateY(-14px) rotate(8deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes ttc-pop {
+  0%   { transform: scale(.86); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes ttc-sparkle {
+  0%, 100% { opacity: .35; transform: scale(.9); }
+  50%      { opacity: 1; transform: scale(1.15); }
+}
+.ttc-float   { animation: ttc-float 5s ease-in-out infinite; }
+.ttc-pop     { animation: ttc-pop .35s cubic-bezier(.34, 1.56, .64, 1) both; }
+.ttc-sparkle { animation: ttc-sparkle 2.4s ease-in-out infinite; }
+.ttc-inner   { transition: transform .7s cubic-bezier(.4, .2, .2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ttc-float, .ttc-pop, .ttc-sparkle { animation: none !important; }
+  .ttc-inner { transition: none !important; }
+}

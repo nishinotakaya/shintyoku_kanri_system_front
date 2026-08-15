@@ -452,7 +452,7 @@ export default function InterviewMindmapPage() {
           )}
         </div>
         {showControls && <>
-        <div className="text-[11px] text-[var(--color-text-sub)]">{isTalkCards ? '合コンでその場に出して使うトークテーマの札。♥恋愛 ♦価値観 ♣笑い ♠本音 の4スート×A〜K＝54枚で、数字が大きいほど踏み込む。「🃏 カードを開く」で全画面になり、タップで1枚ずつめくれる。1枚につきお題3つ＋振り方・盛り上げ方・NG付き。' : isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isLoveYoutube ? '起点（＝動画テーマ。ダブルクリックで編集）から想定質問→台本回答の流れで展開。「📋 質問バンク取込（恋愛YouTube）」で定番の想定質問を取り込み、🔊は高品質音声で読み上げ。' : isMoteQa ? '相手からの質問→モテる返しを一覧化。「📋 質問集を取込」で定番質問と模範回答を取込み、各質問の「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
+        <div className="text-[11px] text-[var(--color-text-sub)]">{isTalkCards ? '合コンでその場に出して使うトークテーマの札。♥恋愛 ♦価値観 ♣笑い ♠本音 の4スート×A〜K＝54枚（通常デッキ）と、踏み込み度を上げた🌶ぶっこみデッキ54枚の計108枚。数字が大きいほど深い話になる。「🃏 カードを開く」で全画面になり、タップでくるくる回して1枚ずつめくれる。「めくり」と「ドーナツ」でレイアウトを切替、右上の「🌶 ぶっこみ」でデッキを入れ替え。取込は何度押しても増えない。' : isYoutube ? '起点（＝動画タイトル。ダブルクリックで編集）とYouTube用プロフィール(自己PR)をもとに、固定の質問バンク(12問)で展開。回答は本人の語り口で端的にAI生成、🔊は高品質音声で読み上げ。' : isLoveYoutube ? '起点（＝動画テーマ。ダブルクリックで編集）から想定質問→台本回答の流れで展開。「📋 質問バンク取込（恋愛YouTube）」で定番の想定質問を取り込み、🔊は高品質音声で読み上げ。' : isMoteQa ? '相手からの質問→モテる返しを一覧化。「📋 質問集を取込」で定番質問と模範回答を取込み、各質問の「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : isMote ? '相手のセリフ→盛り上がる返し＋合コンのつかみゲーム集。「📋 会話＆合コンネタを取込」で一覧化、各セリフの「＋展開」でAIが別の返しを生成。🔊で読み上げ。' : 'スキルシートから想定質問を予測し、AIで枝分かれ展開。質問は声に出して練習、覚えたらチェック。'}</div>
         <div className="flex flex-wrap items-center gap-2">
           {me?.admin && (
             <select value={userId ?? ''} onChange={(e) => setUserId(Number(e.target.value))}
@@ -469,7 +469,7 @@ export default function InterviewMindmapPage() {
           {map && (
             <button onClick={importBank} disabled={!!busy}
               className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-50">
-              {busy === 'bank' ? '取込中…' : (isTalkCards ? '📋 カード54枚を取込' : isYoutube ? '📋 質問バンク取込（YouTube12問）' : isLoveYoutube ? '📋 質問バンク取込（恋愛YouTube）' : isMoteQa ? '📋 質問集を取込' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
+              {busy === 'bank' ? '取込中…' : (isTalkCards ? '📋 カード108枚を取込' : isYoutube ? '📋 質問バンク取込（YouTube12問）' : isLoveYoutube ? '📋 質問バンク取込（恋愛YouTube）' : isMoteQa ? '📋 質問集を取込' : isMote ? '📋 会話＆合コンネタを取込' : '📋 質問バンク取込')}
             </button>
           )}
           {map && isTalkCards && (

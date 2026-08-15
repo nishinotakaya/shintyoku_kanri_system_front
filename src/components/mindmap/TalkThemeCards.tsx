@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 // 合コンの席でスマホを出して全員で見る「トークテーマトランプ」。
 // 取り込んだ質問ノード(「♥7｜お題」形式)を山札にして、本物のトランプのように 1 枚ずつめくる。
@@ -72,8 +72,13 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
   const [drawn, setDrawn] = useState(0)       // 山札の何枚目か
   const [flipped, setFlipped] = useState(false)
   const [showBack, setShowBack] = useState(false) // 振り方・盛り上げ方の面
+  const [picked, setPicked] = useState(false) // ドーナツで1枚選んだか
   const [spicy, setSpicy] = useState(false) // 🌶 ぶっこみモード
   const [seed, setSeed] = useState(0)
+  const flipTimer = useRef<number | null>(null)
+
+  // 閉じた直後に setFlipped が走らないよう、めくり待ちのタイマーを片付ける
+  useEffect(() => () => { if (flipTimer.current !== null) window.clearTimeout(flipTimer.current) }, [])
 
   const allCards = useMemo(() => {
     const answerOf = new Map<number, string>()
@@ -99,18 +104,22 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allCards, suitFilter, depthFilter, spicy, seed])
 
-  const card = deck[drawn] ?? null
-  const remaining = Math.max(deck.length - drawn - 1, 0)
+  // 取込やフィルタで山札が縮んでも範囲外を指さないよう、常に丸めてから引く
+  const drawnIndex = deck.length ? Math.min(drawn, deck.length - 1) : 0
+  const card = deck[drawnIndex] ?? null
+  const remaining = Math.max(deck.length - drawnIndex - 1, 0)
 
-  const reset = () => { setDrawn(0); setFlipped(false); setShowBack(false) }
+  const reset = () => { setDrawn(0); setFlipped(false); setShowBack(false); setPicked(false) }
   const drawAt = (index: number) => {
     setShowBack(false)
     setFlipped(false)
+    setPicked(true)
     setDrawn(index)
     // 一度伏せてから回す。すぐ true にすると回転が始まらない
-    window.setTimeout(() => setFlipped(true), 60)
+    if (flipTimer.current !== null) window.clearTimeout(flipTimer.current)
+    flipTimer.current = window.setTimeout(() => setFlipped(true), 60)
   }
-  const next = () => drawAt(drawn + 1 >= deck.length ? 0 : drawn + 1)
+  const next = () => drawAt(drawnIndex + 1 >= deck.length ? 0 : drawnIndex + 1)
   const changeFilter = (apply: () => void) => { apply(); reset() }
 
   // ドーナツに並べる伏せ札(多すぎると潰れるので12枚まで)
@@ -122,16 +131,6 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
       style={{ background: spicy
         ? 'radial-gradient(120% 90% at 50% 0%, #ffd9e4 0%, #ffb7cf 35%, #ff9ec0 70%, #e6789f 100%)'
         : 'radial-gradient(120% 90% at 50% 0%, #ffe6f3 0%, #ffd9ec 35%, #efd9ff 70%, #e3dbff 100%)' }}>
-      <style>{`
-        @keyframes ttc-float { 0%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-14px) rotate(8deg)} 100%{transform:translateY(0) rotate(0deg)} }
-        @keyframes ttc-pop { 0%{transform:scale(.86);opacity:0} 100%{transform:scale(1);opacity:1} }
-        @keyframes ttc-sparkle { 0%,100%{opacity:.35;transform:scale(.9)} 50%{opacity:1;transform:scale(1.15)} }
-        .ttc-float{animation:ttc-float 5s ease-in-out infinite}
-        .ttc-pop{animation:ttc-pop .35s cubic-bezier(.34,1.56,.64,1) both}
-        .ttc-sparkle{animation:ttc-sparkle 2.4s ease-in-out infinite}
-        @media (prefers-reduced-motion: reduce){ .ttc-float,.ttc-pop,.ttc-sparkle{animation:none!important} .ttc-inner{transition:none!important} }
-      `}</style>
-
       {/* ふわふわ浮かぶ背景の飾り */}
       <div aria-hidden className="pointer-events-none absolute inset-0 select-none">
         {(spicy ? ['🌶', '💋', '🔥', '💄', '🍒', '💘', '🥂', '✨'] : ['💕', '✨', '🌸', '💗', '🎀', '⭐️', '🩷', '🫧']).map((emoji, index) => (
@@ -169,19 +168,28 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
       ) : (
         <>
           <div className="relative flex flex-1 items-center justify-center px-4">
+            {/* ドーナツは「選ぶ面」。1つ選ぶまではカードを出さないので、札が隠れず全部タップできる */}
             {layout === 'donut' && (
-              <DonutRing ring={ring} onPick={drawAt} activeIndex={drawn} spicy={spicy} />
+              <DonutRing ring={ring} onPick={drawAt} activeIndex={picked ? drawnIndex : -1}
+                spicy={spicy} dimmed={picked} />
             )}
-            {card ? (
-              <PlayingCard card={card} flipped={flipped} showBack={showBack} compact={layout === 'donut'}
+            {layout === 'donut' && !picked && (
+              <p className="relative z-10 max-w-[9rem] text-center text-sm font-black leading-snug text-[#a8437c]">
+                すきなドーナツを<br />ひとつ えらんでね 🍩
+              </p>
+            )}
+            {(layout === 'flip' || picked) && (card ? (
+              <PlayingCard card={card} flipped={flipped} showBack={showBack}
                 onTap={() => {
                   if (!flipped) { setFlipped(true); return }
                   if (!showBack) { setShowBack(true); return }
+                  // ドーナツに戻るときは切り直す。切らないと同じ12枚しか引けない
+                  if (layout === 'donut') { setSeed((value) => value + 1); setPicked(false); return }
                   next()
                 }} />
             ) : (
               <p className="font-bold text-[#a8437c]">この条件のカードがありません</p>
-            )}
+            ))}
           </div>
 
           <div className="relative space-y-3 px-4 pb-6 pt-2">
@@ -225,21 +233,18 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 }
 
 // 本物のトランプに寄せた 1 枚。タップで Y 軸に 3D 回転して表になる。
-function PlayingCard({ card, flipped, showBack, onTap, compact }:
-  { card: Card; flipped: boolean; showBack: boolean; onTap: () => void; compact?: boolean }) {
+function PlayingCard({ card, flipped, showBack, onTap }:
+  { card: Card; flipped: boolean; showBack: boolean; onTap: () => void }) {
   const red = isRedSuit(card.suit)
   const ink = red ? '#e0407a' : '#4b3f72'
 
   return (
     <button onClick={onTap} aria-label="カードをめくる"
-      className={`relative z-10 active:scale-[0.98] ${compact
-        ? 'h-[34vh] max-h-[260px] w-[44vw] max-w-[190px]'
-        : 'h-[62vh] max-h-[520px] w-[76vw] max-w-[340px]'}`}
+      className="relative z-10 h-[62vh] max-h-[520px] w-[76vw] max-w-[340px] active:scale-[0.98]"
       style={{ perspective: '1400px' }}>
       <div className="ttc-inner relative h-full w-full"
         style={{
           transformStyle: 'preserve-3d',
-          transition: 'transform .7s cubic-bezier(.4,.2,.2,1)',
           transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}>
 
@@ -261,11 +266,11 @@ function PlayingCard({ card, flipped, showBack, onTap, compact }:
           style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
           <CornerIndex card={card} color={ink} />
 
-          <div className="flex flex-1 items-center justify-center overflow-hidden px-1">
+          <div className="flex flex-1 items-center justify-center overflow-y-auto px-1">
             {!showBack ? (
               <div className="ttc-pop flex flex-col items-center gap-3 text-center">
                 <span className="ttc-sparkle text-3xl">{card.spicy ? '🌶' : DEPTH_EMOJI[card.depth]}</span>
-                <p className={`font-black leading-snug text-[#3a2f4d] ${compact ? 'text-[15px]' : 'text-[25px]'}`}>{card.theme}</p>
+                <p className="break-words text-[25px] font-black leading-snug text-[#3a2f4d]">{card.theme}</p>
                 <span className="rounded-full px-3 py-1 text-[11px] font-bold"
                   style={{ background: card.spicy ? '#ffe0e6' : red ? '#ffe4ef' : '#eae6ff', color: card.spicy ? '#d63b5e' : ink }}>
                   {card.spicy ? 'ぶっこみ' : DEPTH_LABEL[card.depth]}
@@ -306,15 +311,15 @@ function CornerIndex({ card, color, bottom }: { card: Card; color: string; botto
 
 // ドーナツ型の札を円形に並べる。好きな1枚をタップすると、そのカードが中央で開く。
 // 1枚1枚が穴あきのドーナツ(外側の輪＋中央の穴)になっていて、指で押しやすい大きさにしてある。
-function DonutRing({ ring, onPick, activeIndex, spicy }:
-  { ring: number[]; onPick: (index: number) => void; activeIndex: number; spicy: boolean }) {
+function DonutRing({ ring, onPick, activeIndex, spicy, dimmed }:
+  { ring: number[]; onPick: (index: number) => void; activeIndex: number; spicy: boolean; dimmed: boolean }) {
   const glaze = spicy
     ? ['#ff7aa2', '#ff5c8a', '#ff9ab4', '#ff6f9c']
     : ['#ffb3d6', '#ffc9e3', '#f7c6ff', '#ffd7ea']
   const sprinkleColors = ['#fff', '#ffe066', '#8ee6c8', '#9ec7ff']
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
+    <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${dimmed ? 'opacity-30' : 'opacity-100'}`}>
       <div className="relative h-[min(88vw,400px)] w-[min(88vw,400px)]">
         {ring.map((index) => {
           const angle = (360 / ring.length) * index
