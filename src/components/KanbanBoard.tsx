@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import type { DropResult } from '@hello-pangea/dnd'
 
@@ -33,6 +33,10 @@ const COLUMNS = [
 
 type ViewMode = 'board' | 'tab'
 
+// 「川村 卓也」と「川村卓也」のように、スペースの有無だけが違う表記を同一人物として扱う。
+// Backlog の担当者名とアプリの表示名で空白の入れ方が揃っていないため。
+const withoutSpaces = (name: string) => name.replace(/[\s\u3000]/g, '')
+
 export default function KanbanBoard({
   tasks,
   onTaskMoved,
@@ -45,6 +49,9 @@ export default function KanbanBoard({
   onUrlChanged,
   onAssigneeChanged,
   onFlagChanged,
+  workspaceId,
+  currentUserName,
+  isAdmin,
 }: {
   tasks: BLTask[]
   onTaskMoved: (taskId: number, newStatusId: number) => void
@@ -57,6 +64,9 @@ export default function KanbanBoard({
   onUrlChanged?: (taskId: number, url: string) => void
   onAssigneeChanged?: (taskId: number, name: string) => void
   onFlagChanged?: (taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => void
+  workspaceId?: number | null
+  currentUserName?: string | null
+  isAdmin?: boolean
 }) {
   const [editingMemo, setEditingMemo] = useState<Record<number, string>>({})
   const [editingSummary, setEditingSummary] = useState<Record<number, string>>({})
@@ -66,6 +76,8 @@ export default function KanbanBoard({
   const [activeTab, setActiveTab] = useState(1) // 未対応をデフォルト
   const [search, setSearch] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
+  // 担当者フィルタを初期化済みのワークスペース。タブを切り替えたら本人に振り直す
+  const initializedWorkspaceId = useRef<number | null>(null)
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
   const updateMemo = (taskId: number, value: string) => {
@@ -97,6 +109,21 @@ export default function KanbanBoard({
 
   // 担当者セレクトの選択肢: 固定2名 + assignees の残り（重複除去）
   const assigneeOptions = [...new Set(['西野 鷹也', '川村卓也', ...assignees])]
+
+  // 担当者フィルタの初期値は本人。管理者は全体を見る立場なので「全担当者」のまま。
+  // 初期化はワークスペースごとに1回だけなので、そのあと手で切り替えた選択は保たれる。
+  useEffect(() => {
+    if (workspaceId == null || initializedWorkspaceId.current === workspaceId) return
+    if (assignees.length === 0) return // タスク読み込み前
+
+    initializedWorkspaceId.current = workspaceId
+    if (isAdmin || !currentUserName) {
+      setAssigneeFilter('all')
+      return
+    }
+    const mine = assignees.find((name) => withoutSpaces(name) === withoutSpaces(currentUserName))
+    setAssigneeFilter(mine ?? 'all')
+  }, [workspaceId, assignees, isAdmin, currentUserName])
 
   // 検索 + 担当者フィルタ
   const q = search.toLowerCase()

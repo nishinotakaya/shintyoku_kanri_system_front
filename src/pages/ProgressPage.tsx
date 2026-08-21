@@ -74,9 +74,14 @@ export default function ProgressPage() {
     } catch (e: any) { setWorkspaceMsg(e?.response?.data?.error ?? 'ワークスペース削除に失敗しました') }
   }
   // 自分の progress_sheet_url を初期ロード (西野はデフォあり、川村はなし)
+  // 表示名と admin かどうかは、担当者フィルタの初期値(本人 or 全担当者)を決めるのに使う
+  const [me, setMe] = useState<{ display_name?: string | null; admin?: boolean }>({})
   useEffect(() => {
-    api.get<{ progress_sheet_url?: string | null }>('/me')
-      .then((r) => { if (r.data.progress_sheet_url) setSheetUrl(r.data.progress_sheet_url) })
+    api.get<{ progress_sheet_url?: string | null; display_name?: string | null; admin?: boolean }>('/me')
+      .then((r) => {
+        if (r.data.progress_sheet_url) setSheetUrl(r.data.progress_sheet_url)
+        setMe({ display_name: r.data.display_name, admin: r.data.admin })
+      })
       .catch(() => {})
   }, [])
   // sheetUrl を DB に保存 (書き出し時呼ぶ)
@@ -397,6 +402,9 @@ export default function ProgressPage() {
         onUrlChanged={handleUrlChanged}
         onAssigneeChanged={handleAssigneeChanged}
         onFlagChanged={handleFlagChanged}
+        workspaceId={selectedWorkspaceId}
+        currentUserName={me.display_name}
+        isAdmin={me.admin}
       />
     </div>
   )
