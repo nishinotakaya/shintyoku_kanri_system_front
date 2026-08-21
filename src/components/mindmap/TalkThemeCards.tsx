@@ -13,37 +13,62 @@ type MindNode = {
 
 type Card = {
   id: number
-  suit: string        // ♥ ♦ ♣ ♠ / 🃏
-  rank: string        // A 2〜10 J Q K / ①②
-  theme: string       // お題
-  back: string        // 予備のお題・振り方・盛り上げ・NG
+  suit: string          // ♥ ♦ ♣ ♠ / 🃏
+  rank: string          // A 2〜10 J Q K / ①②
+  theme: string         // お題
+  playNotes: string     // 予備のお題・振り方・盛り上げ・NG
   depth: 'light' | 'mid' | 'deep'
-  spicy: boolean     // 🌶 ぶっこみデッキの札か
+  fromSpicyDeck: boolean // 🌶 ぶっこみデッキの札か
 }
 
 const SUITS = ['♥', '♦', '♣', '♠'] as const
+const FACE_RANKS = ['J', 'Q', 'K'] as const
 const DEPTH_LABEL: Record<Card['depth'], string> = { light: 'ゆるっと', mid: 'ふつう', deep: 'ふかい' }
 const DEPTH_EMOJI: Record<Card['depth'], string> = { light: '🍬', mid: '🌸', deep: '💗' }
 
-// ランクを踏み込む深さに変換する。A〜5=軽い / 6〜9=ふつう / 10〜K=深い。
+// 一度伏せてから回すための待ち時間。すぐ true にすると回転が始まらない
+const FLIP_RESTART_DELAY_MS = 60
+// ドーナツに並べる伏せ札の上限(多すぎると潰れてタップできない)
+const MAX_DONUT_CARDS = 12
+
+// 背景にふわふわ浮かぶ飾り。モード別の絵文字と位置を1件ずつ組にして持つ
+const FLOATING_DECOR = [
+  { calm: '💕', spicy: '🌶', leftPercent: 8, topPercent: 14 },
+  { calm: '✨', spicy: '💋', leftPercent: 82, topPercent: 10 },
+  { calm: '🌸', spicy: '🔥', leftPercent: 20, topPercent: 74 },
+  { calm: '💗', spicy: '💄', leftPercent: 70, topPercent: 66 },
+  { calm: '🎀', spicy: '🍒', leftPercent: 45, topPercent: 6 },
+  { calm: '⭐️', spicy: '💘', leftPercent: 90, topPercent: 44 },
+  { calm: '🩷', spicy: '🥂', leftPercent: 12, topPercent: 40 },
+  { calm: '🫧', spicy: '✨', leftPercent: 60, topPercent: 86 },
+] as const
+
+// ランクを踏み込む深さに変換する。A〜5=ゆるっと / 6〜9=ふつう / 10〜K=ふかい。
 const depthOf = (rank: string): Card['depth'] => {
-  if (['J', 'Q', 'K', '10'].includes(rank)) return 'deep'
-  const num = rank === 'A' ? 1 : Number(rank)
-  if (!Number.isFinite(num)) return 'light'
-  return num <= 5 ? 'light' : 'mid'
+  const rankNumber = rank === 'A' ? 1 : Number(rank)
+  // 絵札は数値にならない。それ以外で数値にできないランクは、深い話に流れないよう一番軽い扱いにする
+  if (!Number.isFinite(rankNumber)) return FACE_RANKS.includes(rank as typeof FACE_RANKS[number]) ? 'deep' : 'light'
+  if (rankNumber <= 5) return 'light'
+  if (rankNumber <= 9) return 'mid'
+  return 'deep'
 }
 
 // 「♥7｜今までで一番きゅんとした瞬間」→ suit/rank/theme に分解する。形式が違う行は山札に入れない。
-function parseCard(node: MindNode, back: string): Card | null {
-  const spicy = node.text.startsWith('🌶')
-  const text = spicy ? node.text.slice('🌶'.length) : node.text
+function parseCard(node: MindNode, playNotes: string): Card | null {
+  const fromSpicyDeck = node.text.startsWith('🌶')
+  const text = fromSpicyDeck ? node.text.slice('🌶'.length) : node.text
+
   const matched = text.match(/^([♥♦♣♠])(A|K|Q|J|10|[2-9])｜(.+)$/)
   if (matched) {
     const [, suit, rank, theme] = matched
-    return { id: node.id, suit, rank, theme: theme.trim(), back, depth: depthOf(rank), spicy }
+    return { id: node.id, suit, rank, theme: theme.trim(), playNotes, depth: depthOf(rank), fromSpicyDeck }
   }
-  const joker = text.match(/^🃏\s*ジョーカー(.)｜(.+)$/)
-  if (joker) return { id: node.id, suit: '🃏', rank: joker[1], theme: joker[2].trim(), back, depth: 'light', spicy }
+
+  const jokerMatched = text.match(/^🃏\s*ジョーカー(.)｜(.+)$/)
+  if (jokerMatched) {
+    const [, rank, theme] = jokerMatched
+    return { id: node.id, suit: '🃏', rank, theme: theme.trim(), playNotes, depth: 'light', fromSpicyDeck }
+  }
   return null
 }
 
@@ -69,12 +94,12 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
   const [suitFilter, setSuitFilter] = useState<string | null>(null)
   const [depthFilter, setDepthFilter] = useState<Card['depth'] | null>(null)
   const [layout, setLayout] = useState<'flip' | 'donut'>('flip')
-  const [drawn, setDrawn] = useState(0)       // 山札の何枚目か
+  const [requestedIndex, setRequestedIndex] = useState(0) // 山札の何枚目を引きたいか(丸める前)
   const [flipped, setFlipped] = useState(false)
-  const [showBack, setShowBack] = useState(false) // 振り方・盛り上げ方の面
-  const [picked, setPicked] = useState(false) // ドーナツで1枚選んだか
-  const [spicy, setSpicy] = useState(false) // 🌶 ぶっこみモード
-  const [seed, setSeed] = useState(0)
+  const [showPlayNotes, setShowPlayNotes] = useState(false) // 表面を振り方・盛り上げ方に差し替えるか
+  const [hasPicked, setHasPicked] = useState(false)        // ドーナツで1枚選んだか
+  const [spicyMode, setSpicyMode] = useState(false)        // 🌶 ぶっこみモード
+  const [shuffleSeed, setShuffleSeed] = useState(0)
   const flipTimer = useRef<number | null>(null)
 
   // 閉じた直後に setFlipped が走らないよう、めくり待ちのタイマーを片付ける
@@ -95,60 +120,73 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 
   const deck = useMemo(() => {
     const filtered = allCards.filter((card) => {
-      if (card.spicy !== spicy) return false
+      if (card.fromSpicyDeck !== spicyMode) return false
       if (suitFilter && card.suit !== suitFilter) return false
       if (depthFilter && card.depth !== depthFilter) return false
       return true
     })
     return shuffled(filtered)
+    // shuffleSeed は式では使わないが、値を進めると山札を切り直せるので依存に入れている
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCards, suitFilter, depthFilter, spicy, seed])
+  }, [allCards, suitFilter, depthFilter, spicyMode, shuffleSeed])
 
   // 取込やフィルタで山札が縮んでも範囲外を指さないよう、常に丸めてから引く
-  const drawnIndex = deck.length ? Math.min(drawn, deck.length - 1) : 0
-  const card = deck[drawnIndex] ?? null
-  const remaining = Math.max(deck.length - drawnIndex - 1, 0)
+  const currentIndex = deck.length ? Math.min(requestedIndex, deck.length - 1) : 0
+  const card = deck[currentIndex] ?? null
+  const remaining = Math.max(deck.length - currentIndex - 1, 0)
 
-  const reset = () => { setDrawn(0); setFlipped(false); setShowBack(false); setPicked(false) }
+  const reset = () => { setRequestedIndex(0); setFlipped(false); setShowPlayNotes(false); setHasPicked(false) }
+
   const drawAt = (index: number) => {
-    setShowBack(false)
+    setShowPlayNotes(false)
     setFlipped(false)
-    setPicked(true)
-    setDrawn(index)
-    // 一度伏せてから回す。すぐ true にすると回転が始まらない
+    setHasPicked(true)
+    setRequestedIndex(index)
     if (flipTimer.current !== null) window.clearTimeout(flipTimer.current)
-    flipTimer.current = window.setTimeout(() => setFlipped(true), 60)
+    flipTimer.current = window.setTimeout(() => setFlipped(true), FLIP_RESTART_DELAY_MS)
   }
-  const next = () => drawAt(drawnIndex + 1 >= deck.length ? 0 : drawnIndex + 1)
-  const changeFilter = (apply: () => void) => { apply(); reset() }
 
-  // ドーナツに並べる伏せ札(多すぎると潰れるので12枚まで)
-  const ringSize = Math.min(deck.length, 12)
-  const ring = Array.from({ length: ringSize }, (_, index) => index)
+  const next = () => drawAt(currentIndex + 1 >= deck.length ? 0 : currentIndex + 1)
+
+  // タップ1回で1段進む: 伏せ → 表(お題) → 振り方・盛り上げ方 → 次の札(ドーナツなら選び直し)
+  const advanceCard = () => {
+    if (!flipped) { setFlipped(true); return }
+    if (!showPlayNotes) { setShowPlayNotes(true); return }
+    // ドーナツに戻るときは切り直す。切らないと同じ12枚しか引けない
+    if (layout === 'donut') { setShuffleSeed((value) => value + 1); setHasPicked(false); return }
+    next()
+  }
+
+  const selectSuit = (suit: string | null) => { setSuitFilter(suit); reset() }
+  const selectDepth = (depth: Card['depth'] | null) => { setDepthFilter(depth); reset() }
+  const shuffleDeck = () => { setShuffleSeed((value) => value + 1); reset() }
+  const changeLayout = (nextLayout: 'flip' | 'donut') => { setLayout(nextLayout); reset() }
+
+  const donutCount = Math.min(deck.length, MAX_DONUT_CARDS)
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden"
-      style={{ background: spicy
+      style={{ background: spicyMode
         ? 'radial-gradient(120% 90% at 50% 0%, #ffd9e4 0%, #ffb7cf 35%, #ff9ec0 70%, #e6789f 100%)'
         : 'radial-gradient(120% 90% at 50% 0%, #ffe6f3 0%, #ffd9ec 35%, #efd9ff 70%, #e3dbff 100%)' }}>
       {/* ふわふわ浮かぶ背景の飾り */}
       <div aria-hidden className="pointer-events-none absolute inset-0 select-none">
-        {(spicy ? ['🌶', '💋', '🔥', '💄', '🍒', '💘', '🥂', '✨'] : ['💕', '✨', '🌸', '💗', '🎀', '⭐️', '🩷', '🫧']).map((emoji, index) => (
+        {FLOATING_DECOR.map((decor, index) => (
           <span key={index} className="ttc-float absolute text-2xl opacity-60"
             style={{
-              left: `${[8, 82, 20, 70, 45, 90, 12, 60][index]}%`,
-              top: `${[14, 10, 74, 66, 6, 44, 40, 86][index]}%`,
+              left: `${decor.leftPercent}%`,
+              top: `${decor.topPercent}%`,
               animationDelay: `${index * 0.6}s`,
-            }}>{emoji}</span>
+            }}>{spicyMode ? decor.spicy : decor.calm}</span>
         ))}
       </div>
 
       <div className="relative flex items-center justify-between px-4 py-3">
         <span className="text-sm font-black tracking-wide text-[#c2438a] drop-shadow-sm">🃏 トークテーマトランプ</span>
         <div className="flex items-center gap-2">
-          <button onClick={() => { setSpicy((on) => !on); reset() }} aria-pressed={spicy}
-            className={`rounded-full px-4 py-1.5 text-sm font-black shadow-md transition-transform active:scale-95 ${spicy ? 'bg-gradient-to-r from-rose-500 to-red-500 text-white shadow-red-400/50' : 'border-2 border-white/80 bg-white/70 text-[#c2438a] backdrop-blur'}`}>
-            🌶 ぶっこみ {spicy ? 'ON' : 'OFF'}
+          <button onClick={() => { setSpicyMode((on) => !on); reset() }} aria-pressed={spicyMode}
+            className={`rounded-full px-4 py-1.5 text-sm font-black shadow-md transition-transform active:scale-95 ${spicyMode ? 'bg-gradient-to-r from-rose-500 to-red-500 text-white shadow-red-400/50' : 'border-2 border-white/80 bg-white/70 text-[#c2438a] backdrop-blur'}`}>
+            🌶 ぶっこみ {spicyMode ? 'ON' : 'OFF'}
           </button>
           <button onClick={onClose} aria-label="閉じる"
             className="rounded-full border-2 border-white/80 bg-white/70 px-3 py-1 text-sm font-bold text-[#c2438a] shadow-sm backdrop-blur hover:bg-white">
@@ -170,23 +208,16 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
           <div className="relative flex flex-1 items-center justify-center px-4">
             {/* ドーナツは「選ぶ面」。1つ選ぶまではカードを出さないので、札が隠れず全部タップできる */}
             {layout === 'donut' && (
-              <DonutRing ring={ring} onPick={drawAt} activeIndex={picked ? drawnIndex : -1}
-                spicy={spicy} dimmed={picked} />
+              <DonutRing count={donutCount} onPick={drawAt} activeIndex={hasPicked ? currentIndex : null}
+                spicyMode={spicyMode} dimmed={hasPicked} />
             )}
-            {layout === 'donut' && !picked && (
+            {layout === 'donut' && !hasPicked && (
               <p className="relative z-10 max-w-[9rem] text-center text-sm font-black leading-snug text-[#a8437c]">
                 すきなドーナツを<br />ひとつ えらんでね 🍩
               </p>
             )}
-            {(layout === 'flip' || picked) && (card ? (
-              <PlayingCard card={card} flipped={flipped} showBack={showBack}
-                onTap={() => {
-                  if (!flipped) { setFlipped(true); return }
-                  if (!showBack) { setShowBack(true); return }
-                  // ドーナツに戻るときは切り直す。切らないと同じ12枚しか引けない
-                  if (layout === 'donut') { setSeed((value) => value + 1); setPicked(false); return }
-                  next()
-                }} />
+            {(layout === 'flip' || hasPicked) && (card ? (
+              <PlayingCard card={card} flipped={flipped} showPlayNotes={showPlayNotes} onTap={advanceCard} />
             ) : (
               <p className="font-bold text-[#a8437c]">この条件のカードがありません</p>
             ))}
@@ -198,29 +229,29 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
                 className="rounded-full bg-gradient-to-r from-pink-400 to-fuchsia-500 px-8 py-3 text-base font-black text-white shadow-lg shadow-pink-300/50 active:scale-95">
                 つぎのカード 💫
               </button>
-              <button onClick={() => { setSeed((value) => value + 1); reset() }}
+              <button onClick={shuffleDeck}
                 className="rounded-full border-2 border-white/80 bg-white/70 px-4 py-3 text-sm font-bold text-[#c2438a] shadow-sm backdrop-blur">
                 🔀 まぜる
               </button>
             </div>
 
             <div className="flex items-center justify-center gap-2">
-              <LayoutTab active={layout === 'flip'} onClick={() => { setLayout('flip'); reset() }}>🂠 めくり</LayoutTab>
-              <LayoutTab active={layout === 'donut'} onClick={() => { setLayout('donut'); reset() }}>🍩 ドーナツ</LayoutTab>
+              <LayoutTab active={layout === 'flip'} onClick={() => changeLayout('flip')}>🂠 めくり</LayoutTab>
+              <LayoutTab active={layout === 'donut'} onClick={() => changeLayout('donut')}>🍩 ドーナツ</LayoutTab>
               <span className="ml-1 text-xs font-bold text-[#b4568f]">のこり {remaining} まい</span>
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-1.5">
-              <Chip active={suitFilter === null} onClick={() => changeFilter(() => setSuitFilter(null))}>ぜんぶ</Chip>
+              <Chip active={suitFilter === null} onClick={() => selectSuit(null)}>ぜんぶ</Chip>
               {SUITS.map((suit) => (
-                <Chip key={suit} active={suitFilter === suit} onClick={() => changeFilter(() => setSuitFilter(suit))}>
+                <Chip key={suit} active={suitFilter === suit} onClick={() => selectSuit(suit)}>
                   <span className={isRedSuit(suit) ? 'text-rose-500' : 'text-slate-700'}>{suit}</span>
                 </Chip>
               ))}
               <span className="mx-1 text-[#e3a9c8]">|</span>
-              <Chip active={depthFilter === null} onClick={() => changeFilter(() => setDepthFilter(null))}>ふかさ自由</Chip>
+              <Chip active={depthFilter === null} onClick={() => selectDepth(null)}>ふかさ自由</Chip>
               {(['light', 'mid', 'deep'] as const).map((depth) => (
-                <Chip key={depth} active={depthFilter === depth} onClick={() => changeFilter(() => setDepthFilter(depth))}>
+                <Chip key={depth} active={depthFilter === depth} onClick={() => selectDepth(depth)}>
                   {DEPTH_EMOJI[depth]} {DEPTH_LABEL[depth]}
                 </Chip>
               ))}
@@ -233,13 +264,14 @@ export default function TalkThemeCards({ nodes, onClose, onImport, importing }: 
 }
 
 // 本物のトランプに寄せた 1 枚。タップで Y 軸に 3D 回転して表になる。
-function PlayingCard({ card, flipped, showBack, onTap }:
-  { card: Card; flipped: boolean; showBack: boolean; onTap: () => void }) {
+function PlayingCard({ card, flipped, showPlayNotes, onTap }:
+  { card: Card; flipped: boolean; showPlayNotes: boolean; onTap: () => void }) {
   const red = isRedSuit(card.suit)
   const ink = red ? '#e0407a' : '#4b3f72'
+  const tapHint = showPlayNotes ? 'タップでつぎのカードへ 💫' : 'タップで振り方・盛り上げ方 🎀'
 
   return (
-    <button onClick={onTap} aria-label="カードをめくる"
+    <button onClick={onTap} aria-label={flipped ? tapHint : 'カードをめくる'}
       className="relative z-10 h-[62vh] max-h-[520px] w-[76vw] max-w-[340px] active:scale-[0.98]"
       style={{ perspective: '1400px' }}>
       <div className="ttc-inner relative h-full w-full"
@@ -267,20 +299,20 @@ function PlayingCard({ card, flipped, showBack, onTap }:
           <CornerIndex card={card} color={ink} />
 
           <div className="flex flex-1 items-center justify-center overflow-y-auto px-1">
-            {!showBack ? (
+            {!showPlayNotes ? (
               <div className="ttc-pop flex flex-col items-center gap-3 text-center">
-                <span className="ttc-sparkle text-3xl">{card.spicy ? '🌶' : DEPTH_EMOJI[card.depth]}</span>
+                <span className="ttc-sparkle text-3xl">{card.fromSpicyDeck ? '🌶' : DEPTH_EMOJI[card.depth]}</span>
                 <p className="break-words text-[25px] font-black leading-snug text-[#3a2f4d]">{card.theme}</p>
                 <span className="rounded-full px-3 py-1 text-[11px] font-bold"
-                  style={{ background: card.spicy ? '#ffe0e6' : red ? '#ffe4ef' : '#eae6ff', color: card.spicy ? '#d63b5e' : ink }}>
-                  {card.spicy ? 'ぶっこみ' : DEPTH_LABEL[card.depth]}
+                  style={{ background: card.fromSpicyDeck ? '#ffe0e6' : red ? '#ffe4ef' : '#eae6ff', color: card.fromSpicyDeck ? '#d63b5e' : ink }}>
+                  {card.fromSpicyDeck ? 'ぶっこみ' : DEPTH_LABEL[card.depth]}
                 </span>
               </div>
             ) : (
               <div className="h-full w-full overflow-y-auto pt-1">
                 <p className="mb-2 text-center text-[15px] font-black text-[#3a2f4d]">{card.theme}</p>
                 <div className="space-y-1.5 text-[14px] leading-relaxed text-[#544a66]">
-                  {card.back.split('\n').map((line, index) => <p key={index}>{line}</p>)}
+                  {card.playNotes.split('\n').map((line, index) => <p key={index}>{line}</p>)}
                 </div>
               </div>
             )}
@@ -288,7 +320,7 @@ function PlayingCard({ card, flipped, showBack, onTap }:
 
           <CornerIndex card={card} color={ink} bottom />
           <p className="mt-1 text-center text-[10px] font-bold" style={{ color: red ? '#f0a8c4' : '#b6aede' }}>
-            {showBack ? 'タップでつぎのカードへ 💫' : 'タップで振り方・盛り上げ方 🎀'}
+            {tapHint}
           </p>
         </div>
       </div>
@@ -311,9 +343,9 @@ function CornerIndex({ card, color, bottom }: { card: Card; color: string; botto
 
 // ドーナツ型の札を円形に並べる。好きな1枚をタップすると、そのカードが中央で開く。
 // 1枚1枚が穴あきのドーナツ(外側の輪＋中央の穴)になっていて、指で押しやすい大きさにしてある。
-function DonutRing({ ring, onPick, activeIndex, spicy, dimmed }:
-  { ring: number[]; onPick: (index: number) => void; activeIndex: number; spicy: boolean; dimmed: boolean }) {
-  const glaze = spicy
+function DonutRing({ count, onPick, activeIndex, spicyMode, dimmed }:
+  { count: number; onPick: (index: number) => void; activeIndex: number | null; spicyMode: boolean; dimmed: boolean }) {
+  const glaze = spicyMode
     ? ['#ff7aa2', '#ff5c8a', '#ff9ab4', '#ff6f9c']
     : ['#ffb3d6', '#ffc9e3', '#f7c6ff', '#ffd7ea']
   const sprinkleColors = ['#fff', '#ffe066', '#8ee6c8', '#9ec7ff']
@@ -321,8 +353,8 @@ function DonutRing({ ring, onPick, activeIndex, spicy, dimmed }:
   return (
     <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${dimmed ? 'opacity-30' : 'opacity-100'}`}>
       <div className="relative h-[min(88vw,400px)] w-[min(88vw,400px)]">
-        {ring.map((index) => {
-          const angle = (360 / ring.length) * index
+        {Array.from({ length: count }, (_, index) => {
+          const angle = (360 / count) * index
           const picked = index === activeIndex
           return (
             <button key={index} onClick={() => onPick(index)} aria-label={`${index + 1}枚目のドーナツを引く`}
@@ -343,7 +375,7 @@ function DonutRing({ ring, onPick, activeIndex, spicy, dimmed }:
                     transform: `rotate(${dot * 61 + index * 17}deg) translateY(-22px) rotate(${dot * 40}deg)`,
                   }} />
               ))}
-              {picked && <span className="relative text-sm">{spicy ? '🌶' : '💗'}</span>}
+              {picked && <span className="relative text-sm">{spicyMode ? '🌶' : '💗'}</span>}
             </button>
           )
         })}
