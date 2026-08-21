@@ -415,8 +415,15 @@ export default function DayDetailModal({
   const [allTasks, setAllTasks] = useState<BacklogTask[]>([])
   const [detailTask, setDetailTask] = useState<BacklogTask | null>(null)
   const [meInfo, setMeInfo] = useState<{ display_name?: string | null; backlog_user_id?: number | null }>({})
+  // 閲覧できるデータソース。権限が無いタブは描かず、取得もしない
+  const [viewableSources, setViewableSources] = useState<string[]>([])
+  const canViewNotion = viewableSources.includes('notion')
+  const canViewTrello = viewableSources.includes('trello')
   useEffect(() => {
-    api.get<{ display_name?: string }>('/me').then((r) => setMeInfo((p) => ({ ...p, display_name: r.data.display_name }))).catch(() => {})
+    api.get<{ display_name?: string; viewable_data_sources?: string[] }>('/me').then((r) => {
+      setMeInfo((p) => ({ ...p, display_name: r.data.display_name }))
+      setViewableSources(r.data.viewable_data_sources ?? [])
+    }).catch(() => {})
     api.get<{ user_backlog_id?: number }>('/backlog/setting').then((r) => setMeInfo((p) => ({ ...p, backlog_user_id: r.data.user_backlog_id }))).catch(() => {})
   }, [])
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -495,7 +502,7 @@ export default function DayDetailModal({
       setNotionTasksByAssignee({ '西野': [], '川村': [] })
     }
   }
-  useEffect(() => { reloadNotion() }, [date])
+  useEffect(() => { if (canViewNotion) reloadNotion() }, [date, canViewNotion])
   const handleNotionSync = async () => {
     if (notionSyncing) return
     setNotionSyncing(true); setNotionSyncMsg(null)
@@ -544,7 +551,7 @@ export default function DayDetailModal({
       setTrelloTasks({})
     }
   }
-  useEffect(() => { reloadTrello() }, [date])
+  useEffect(() => { if (canViewTrello) reloadTrello() }, [date, canViewTrello])
   const handleTrelloSync = async () => {
     if (trelloSyncing) return
     setTrelloSyncing(true); setTrelloSyncMsg(null)
@@ -1176,19 +1183,23 @@ export default function DayDetailModal({
             >
               タマ
             </button>
-            <button
-              onClick={() => setTaskTab('living')}
-              className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'living' ? 'bg-fuchsia-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
-            >
-              リビング
-            </button>
-            <button
-              onClick={() => setTaskTab('trello')}
-              className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'trello' ? 'bg-sky-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
-            >
-              テックリーダー
-            </button>
-            {taskTab === 'living' && (
+            {canViewNotion && (
+              <button
+                onClick={() => setTaskTab('living')}
+                className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'living' ? 'bg-fuchsia-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
+              >
+                リビング
+              </button>
+            )}
+            {canViewTrello && (
+              <button
+                onClick={() => setTaskTab('trello')}
+                className={`rounded-t px-3 py-1 text-[11px] font-semibold transition ${taskTab === 'trello' ? 'bg-sky-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50'}`}
+              >
+                テックリーダー
+              </button>
+            )}
+            {taskTab === 'living' && canViewNotion && (
               <>
                 <button
                   onClick={handleNotionSync}
@@ -1201,7 +1212,7 @@ export default function DayDetailModal({
                 {notionSyncMsg && <span className="text-[10px] text-[var(--color-text-sub)]">{notionSyncMsg}</span>}
               </>
             )}
-            {taskTab === 'trello' && (
+            {taskTab === 'trello' && canViewTrello && (
               <>
                 <button
                   onClick={handleTrelloSync}
@@ -1215,7 +1226,7 @@ export default function DayDetailModal({
               </>
             )}
           </div>
-          {taskTab === 'living' ? (
+          {taskTab === 'living' && canViewNotion ? (
             <div className="mt-1 grid gap-2 md:grid-cols-2">
               {(['西野', '川村'] as const).map((person) => {
                 const tasks = notionTasksByAssignee[person] ?? []
@@ -1320,7 +1331,7 @@ export default function DayDetailModal({
                 )
               })}
             </div>
-          ) : taskTab === 'trello' ? (
+          ) : taskTab === 'trello' && canViewTrello ? (
             <div className="mt-1 space-y-2">
               {Object.keys(trelloTasks).length === 0 ? (
                 <div className="text-[11px] text-[var(--color-text-sub)]">該当なし（Trello 同期 で取得）</div>

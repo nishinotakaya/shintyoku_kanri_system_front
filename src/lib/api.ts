@@ -89,6 +89,8 @@ export type Me = {
   can_use_mote_qa_mindmap?: boolean
   can_use_love_youtube_mindmap?: boolean
   can_use_talk_cards_mindmap?: boolean
+  viewable_data_sources?: string[]
+  writable_data_sources?: string[]
   sub_admin?: boolean
   gender?: 'male' | 'female' | null
 }

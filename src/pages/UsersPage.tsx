@@ -11,7 +11,23 @@ type AdminUser = {
   feature_flags: Record<string, boolean>
   sub_admin: boolean
   managee_ids: number[]
+  data_source_permissions: DataSourcePermission[]
 }
+
+type DataSourcePermission = {
+  source_type: string
+  can_view: boolean
+  can_sync: boolean
+  can_write: boolean
+  credential_owner_id: number | null
+}
+
+// 進捗管理の外部データソース。admin はレコード無しで全許可、一般ユーザーは明示的に許可した分だけ。
+const DATA_SOURCES: { key: string; label: string }[] = [
+  { key: 'backlog', label: 'Wing（Backlog）' },
+  { key: 'notion', label: 'リビング（Notion）' },
+  { key: 'trello', label: 'テックリーダーズ（Trello）' },
+]
 
 export default function UsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -20,6 +36,7 @@ export default function UsersPage() {
   const [meId, setMeId] = useState<number | null>(null)
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
   const [editingFeatures, setEditingFeatures] = useState<number | null>(null)
+  const [editingSources, setEditingSources] = useState<number | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -73,6 +90,21 @@ export default function UsersPage() {
     return enabled.map((f) => f.label).join('、')
   }
 
+  const permissionOf = (u: AdminUser, sourceKey: string): DataSourcePermission =>
+    u.data_source_permissions?.find((p) => p.source_type === sourceKey)
+      ?? { source_type: sourceKey, can_view: false, can_sync: false, can_write: false, credential_owner_id: null }
+
+  const patchSource = (u: AdminUser, sourceKey: string, patch: Partial<DataSourcePermission>) => {
+    const current = permissionOf(u, sourceKey)
+    patchUser(u.id, { data_source_permission: { ...current, ...patch, source_type: sourceKey } })
+  }
+
+  const sourceSummary = (u: AdminUser) => {
+    if (u.admin) return '全ソース（管理者）'
+    const viewable = DATA_SOURCES.filter((s) => permissionOf(u, s.key).can_view)
+    return viewable.length === 0 ? 'なし' : viewable.map((s) => s.label).join('、')
+  }
+
   const toggleManagee = (manager: AdminUser, manageeId: number) => {
     const next = manager.managee_ids.includes(manageeId)
       ? manager.managee_ids.filter((i) => i !== manageeId)
@@ -102,15 +134,16 @@ export default function UsersPage() {
               <th className="px-4 py-2">メール</th>
               <th className="px-4 py-2 w-24 text-center">権限</th>
               <th className="px-4 py-2 w-48">閲覧できる画面</th>
+              <th className="px-4 py-2 w-56">案件データ（進捗）</th>
               <th className="px-4 py-2 w-56">管理対象（サブ管理者）</th>
               <th className="px-4 py-2 w-36 text-center">操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg)] align-top">
                 <td className="px-4 py-2 text-xs font-medium text-[var(--color-text)] whitespace-nowrap">{u.display_name || '—'}</td>
@@ -137,6 +170,17 @@ export default function UsersPage() {
                         </label>
                       ))}
                     </div>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <div className="text-[11px] text-[var(--color-text)] break-words">{sourceSummary(u)}</div>
+                  {!u.admin && (
+                    <button onClick={() => setEditingSources(editingSources === u.id ? null : u.id)}
+                      className="mt-1 text-[10px] text-indigo-600">{editingSources === u.id ? '閉じる' : '案件データを編集'}</button>
+                  )}
+                  {editingSources === u.id && !u.admin && (
+                    <DataSourcePermissionEditor user={u} lenderCandidates={users.filter((other) => other.id !== u.id)}
+                      permissionOf={permissionOf} onChange={patchSource} />
                   )}
                 </td>
                 <td className="px-4 py-2">
@@ -176,6 +220,60 @@ export default function UsersPage() {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// 1ユーザー分のデータソース権限エディタ。ソースごとに 閲覧/取込/書込 と、Backlog だけ「キーの借り元」を選ぶ。
+// 閲覧が外れている間は取込・書込を触れなくする(サーバ側も閲覧falseなら両方falseに倒す)。
+function DataSourcePermissionEditor({ user, lenderCandidates, permissionOf, onChange }: {
+  user: AdminUser
+  lenderCandidates: AdminUser[]
+  permissionOf: (user: AdminUser, sourceKey: string) => DataSourcePermission
+  onChange: (user: AdminUser, sourceKey: string, patch: Partial<DataSourcePermission>) => void
+}) {
+  return (
+    <div className="mt-1 space-y-2 rounded-md border border-[var(--color-border)] p-2">
+      {DATA_SOURCES.map((source) => {
+        const permission = permissionOf(user, source.key)
+        const toggle = (field: 'can_view' | 'can_sync' | 'can_write') =>
+          onChange(user, source.key, { [field]: !permission[field] })
+
+        return (
+          <div key={source.key} className="space-y-1">
+            <div className="text-[11px] font-semibold text-[var(--color-text)]">{source.label}</div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={permission.can_view} onChange={() => toggle('can_view')} />
+                閲覧
+              </label>
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={permission.can_sync} disabled={!permission.can_view}
+                  onChange={() => toggle('can_sync')} />
+                取込
+              </label>
+              <label className="flex items-center gap-1" title="Backlog などの外部サービス側へ書き込む">
+                <input type="checkbox" checked={permission.can_write} disabled={!permission.can_view}
+                  onChange={() => toggle('can_write')} />
+                書込
+              </label>
+            </div>
+            {source.key === 'backlog' && permission.can_view && (
+              <label className="flex flex-col items-start gap-0.5 text-[10px] text-[var(--color-text-sub)]">
+                <span className="whitespace-nowrap">キーの借り元</span>
+                <select value={permission.credential_owner_id ?? ''}
+                  onChange={(e) => onChange(user, source.key, { credential_owner_id: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full rounded border border-[var(--color-border)] bg-white px-1 py-0.5 text-[10px]">
+                  <option value="">自分のキー</option>
+                  {lenderCandidates.map((lender) => (
+                    <option key={lender.id} value={lender.id}>{lender.display_name || lender.email}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
