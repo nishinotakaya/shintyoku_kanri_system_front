@@ -236,6 +236,7 @@ export default function CalendarPage() {
         onCreateTeamSchedule={createTeamSchedule}
         canEditPerson={canEditPerson}
         currentSurname={viewingSurname}
+        visiblePersons={me?.calendar_persons}
       />
 
       {openDate && (

@@ -19,11 +19,6 @@ const STATUS_OPTIONS = [
   'TL@押上',
 ]
 
-// 常に行を出す基本メンバー(スプレッドシートに列がある人)。
-// シート取込で新しい人物・ステータスが入った場合は、このリストに無くても
-// 取込データから動的に行・選択肢へ追加される(下の persons / statusOptions)。
-const BASE_PERSONS = ['西野', '川村', '大隅', '土倉']
-
 type Props = {
   year: number
   month: number
@@ -35,6 +30,7 @@ type Props = {
   onCreateTeamSchedule?: (date: string, person: string, status: string) => void
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
+  visiblePersons?: string[]
 }
 
 // 1日のステータス → { living, tama } 予定時間
@@ -66,7 +62,7 @@ function statusClass(status: string) {
   return 'bg-amber-100 text-amber-700'
 }
 
-export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname }: Props) {
+export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, visiblePersons }: Props) {
   const teamMap = useMemo(() => {
     const map = new Map<string, TeamScheduleEntry[]>()
     teamSchedules.forEach((entry) => {
@@ -77,12 +73,10 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     return map
   }, [teamSchedules])
 
-  // 表示する人物行: 基本メンバー + 取込データに現れた人物（シートに新メンバーが増えても行が出る）
-  const persons = useMemo(() => {
-    const set = new Set<string>(BASE_PERSONS)
-    teamSchedules.forEach((entry) => { if (entry.person) set.add(entry.person) })
-    return [...set]
-  }, [teamSchedules])
+  // 表示する人物行: 管理者が設定した「見える人」だけを出す。
+  // 未取得(undefined)のうちは1人も出さない。既定リストを先に描くと、見えてはいけない人が
+  // 一瞬表示されてしまうため。取込データから動的に足すこともしない(設定で隠せなくなる)。
+  const persons = visiblePersons ?? []
 
   // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）
   const statusOptions = useMemo(() => {

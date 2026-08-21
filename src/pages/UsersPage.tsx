@@ -12,6 +12,7 @@ type AdminUser = {
   sub_admin: boolean
   managee_ids: number[]
   data_source_permissions: DataSourcePermission[]
+  calendar_persons: string[]
 }
 
 type DataSourcePermission = {
@@ -37,12 +38,14 @@ export default function UsersPage() {
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
   const [editingFeatures, setEditingFeatures] = useState<number | null>(null)
   const [editingSources, setEditingSources] = useState<number | null>(null)
+  const [editingCalendarPersons, setEditingCalendarPersons] = useState<number | null>(null)
+  const [calendarPersonCandidates, setCalendarPersonCandidates] = useState<string[]>([])
   const navigate = useNavigate()
 
   useEffect(() => {
     api.get('/me').then((r) => setMeId(r.data.id))
-    api.get<AdminUser[]>('/admin/users')
-      .then((r) => setUsers(r.data))
+    api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
+      .then((r) => { setUsers(r.data.users); setCalendarPersonCandidates(r.data.calendar_person_candidates) })
       .catch((e) => setErr(e?.response?.data?.error ?? e?.message ?? '取得失敗'))
       .finally(() => setLoading(false))
   }, [])
@@ -105,6 +108,14 @@ export default function UsersPage() {
     return viewable.length === 0 ? 'なし' : viewable.map((s) => s.label).join('、')
   }
 
+  // カレンダーに予定行を出す人物。1人も選ばれていない状態は「既定メンバー」に戻る
+  const toggleCalendarPerson = (user: AdminUser, person: string) => {
+    const next = user.calendar_persons.includes(person)
+      ? user.calendar_persons.filter((name) => name !== person)
+      : [...user.calendar_persons, person]
+    patchUser(user.id, { calendar_persons: next })
+  }
+
   const toggleManagee = (manager: AdminUser, manageeId: number) => {
     const next = manager.managee_ids.includes(manageeId)
       ? manager.managee_ids.filter((i) => i !== manageeId)
@@ -135,15 +146,16 @@ export default function UsersPage() {
               <th className="px-4 py-2 w-24 text-center">権限</th>
               <th className="px-4 py-2 w-48">閲覧できる画面</th>
               <th className="px-4 py-2 w-56">案件データ（進捗）</th>
+              <th className="px-4 py-2 w-48">カレンダーで見える人</th>
               <th className="px-4 py-2 w-56">管理対象（サブ管理者）</th>
               <th className="px-4 py-2 w-36 text-center">操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg)] align-top">
                 <td className="px-4 py-2 text-xs font-medium text-[var(--color-text)] whitespace-nowrap">{u.display_name || '—'}</td>
@@ -181,6 +193,22 @@ export default function UsersPage() {
                   {editingSources === u.id && !u.admin && (
                     <DataSourcePermissionEditor user={u} lenderCandidates={users.filter((other) => other.id !== u.id)}
                       permissionOf={permissionOf} onChange={patchSource} />
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <div className="text-[11px] text-[var(--color-text)] break-words">{u.calendar_persons.join('、')}</div>
+                  <button onClick={() => setEditingCalendarPersons(editingCalendarPersons === u.id ? null : u.id)}
+                    className="mt-1 text-[10px] text-indigo-600">{editingCalendarPersons === u.id ? '閉じる' : '見える人を編集'}</button>
+                  {editingCalendarPersons === u.id && (
+                    <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
+                      {calendarPersonCandidates.map((person) => (
+                        <label key={person} className="flex items-center gap-1.5 text-[11px]">
+                          <input type="checkbox" checked={u.calendar_persons.includes(person)}
+                            onChange={() => toggleCalendarPerson(u, person)} />
+                          {person}
+                        </label>
+                      ))}
+                    </div>
                   )}
                 </td>
                 <td className="px-4 py-2">
