@@ -491,8 +491,12 @@ export default function BusinessExpensesPage() {
   const [deduction, setDeduction] = useState(650000)
   const [adviceQuestion, setAdviceQuestion] = useState('') // 経理についての自由質問(空なら全体分析)
   const downloadTaxCsv = async (kind: 'summary' | 'details') => {
-    const r = await api.get('/tax_reports/export_csv', { params: { year, kind }, responseType: 'blob' })
-    downloadBlob(r.data as Blob, kind === 'details' ? `経費明細_${year}年.csv` : `青色申告集計_${year}年.csv`)
+    try {
+      const r = await api.get('/tax_reports/export_csv', { params: { year, kind }, responseType: 'blob' })
+      downloadBlob(r.data as Blob, kind === 'details' ? `経費明細_${year}年.csv` : `青色申告集計_${year}年.csv`)
+    } catch (e: any) {
+      setMsg(`CSVのダウンロードに失敗しました(${e?.response?.status ?? e?.message ?? '不明'})。時間をおいて再度お試しください`)
+    }
   }
   // 質問テキストがあればその質問への回答、空なら今の経費データ全体へのアドバイス
   const loadAdvice = async () => {
@@ -505,9 +509,21 @@ export default function BusinessExpensesPage() {
     } finally { setAdviceLoading(false) }
   }
 
+  // PDFは保存ではなく別タブで開いて中身を確認できるようにする。
+  // 生成に数秒かかり、await後の window.open はポップアップブロックされるため、クリック直後に空タブを確保しておく。
   const downloadTaxPdf = async (doc: 'kessansho' | 'shinkokusho' | 'shohi') => {
-    const r = await api.get('/tax_reports/export_pdf', { params: { year, deduction, doc }, responseType: 'blob' })
-    downloadBlob(r.data as Blob, doc === 'shinkokusho' ? `確定申告書第一表_${year}年分.pdf` : doc === 'shohi' ? `消費税申告書_${year}年分.pdf` : `青色申告決算書_${year}年分.pdf`)
+    const label = doc === 'shinkokusho' ? '確定申告書 第一表' : doc === 'shohi' ? '消費税申告書' : '青色申告決算書'
+    const tab = window.open('', '_blank')
+    if (tab) tab.document.body.textContent = `${label}（${year}年分）を生成しています…`
+    try {
+      const r = await api.get('/tax_reports/export_pdf', { params: { year, deduction, doc }, responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([r.data as Blob], { type: 'application/pdf' }))
+      if (tab) tab.location.href = url
+      else window.open(url, '_blank')
+    } catch (e: any) {
+      tab?.close()
+      setMsg(`${label}の生成に失敗しました(${e?.response?.status ?? e?.message ?? '不明'})。時間をおいて1つずつお試しください`)
+    }
   }
 
   const filtered = useMemo(() => (catFilter ? items.filter((it) => it.account_category === catFilter) : items), [items, catFilter])
