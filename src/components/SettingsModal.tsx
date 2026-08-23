@@ -110,7 +110,7 @@ export default function SettingsModal({
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   // 確定申告・消費税申告書の宛先（所轄税務署・納税地）
-  const [taxInfo, setTaxInfo] = useState({ tax_office: '', address: '' })
+  const [taxInfo, setTaxInfo] = useState({ tax_office: '', address: '', name_kana: '' })
 
   useEffect(() => {
     if (!open) return
@@ -136,7 +136,7 @@ export default function SettingsModal({
       setRoutes(r.data.transit_routes ?? [])
       setCommuteDays(r.data.commute_days ?? [1, 2, 3, 4, 5])
       setScheduleUrl(r.data.attendance_schedule_url ?? '')
-      setTaxInfo({ tax_office: r.data.tax_office ?? '', address: r.data.address ?? '' })
+      setTaxInfo({ tax_office: r.data.tax_office ?? '', address: r.data.address ?? '', name_kana: r.data.name_kana ?? '' })
       setIsAdmin(!!r.data.admin)
     })
     api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
@@ -166,6 +166,7 @@ export default function SettingsModal({
         attendance_schedule_url: scheduleUrl,
         tax_office: taxInfo.tax_office,
         address: taxInfo.address,
+        name_kana: taxInfo.name_kana,
       }
       if (apiKey) payload.openai_api_key = apiKey
       if (heygenKey) payload.heygen_api_key = heygenKey
@@ -449,6 +450,14 @@ export default function SettingsModal({
                   onChange={(e) => setTaxInfo({ ...taxInfo, address: e.target.value })}
                   placeholder="納税地の住所 (未入力なら請求書設定の住所を使用)"
                   className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
+                />
+              </div>
+              <div className="mt-2">
+                <input
+                  value={taxInfo.name_kana}
+                  onChange={(e) => setTaxInfo({ ...taxInfo, name_kana: e.target.value })}
+                  placeholder="氏名フリガナ (例: ニシノ タカヤ) — 申告書のフリガナ欄に印字"
+                  className="w-72 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
                 />
               </div>
             </div>
