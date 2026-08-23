@@ -1,36 +1,20 @@
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import KanbanBoard from '../components/KanbanBoard'
 import WorkspaceTabs from '../components/progress/WorkspaceTabs'
 import type { ProgressWorkspace } from '../components/progress/WorkspaceTabs'
+import { sortTasks } from '../components/progress/board'
+import type { BLTask } from '../components/progress/board'
 
-type BLTask = {
-  id: number
-  issue_key: string
-  summary: string
-  status_id: number
-  status_name: string
-  progress: number
-  created_on: string | null
-  completed_on: string | null
-  due_date: string | null
-  memo: string | null
-  deploy_date: string | null
-  deploy_note: string | null
-  source: string | null
-  assignee_name: string | null
-  assignee_id: number | null
-  url: string | null
-  did_previous: boolean
-  do_today: boolean
-  trello_list_name: string | null
-}
+// 読み込み前に毎回新しい配列を渡すとカンバン側の再計算が無駄に走るので固定する。
+const NO_TASKS: BLTask[] = []
 
 export default function ProgressPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [addingTask, setAddingTask] = useState(false)
   const [newTask, setNewTask] = useState({ summary: '', memo: '', deploy_note: '', due_date: '', assignee_name: '' })
   const [sheetUrl, setSheetUrl] = useState('')
 
@@ -92,13 +76,55 @@ export default function ProgressPage() {
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  // 楽観更新は画面を先に進めるので、保存が落ちたことは明示しないと気付けない。
+  const [saveError, setSaveError] = useState<string | null>(null)
 
+
+  const queryClient = useQueryClient()
+  const tasksQueryKey = useMemo(() => ['backlog_tasks', selectedWorkspaceId], [selectedWorkspaceId])
 
   const tasksQ = useQuery({
-    queryKey: ['backlog_tasks', selectedWorkspaceId],
+    queryKey: tasksQueryKey,
     queryFn: async () => (await api.get<BLTask[]>('/backlog/tasks', { params: { workspace_id: selectedWorkspaceId } })).data,
     enabled: selectedWorkspaceId != null,
   })
+
+  // 保存のたびに一覧を取り直していたので、ドラッグも入力も往復2回ぶん待たされていた。
+  // 画面はキャッシュを先に書き換えて即座に動かし、サーバ応答は後から突き合わせる。
+  const updateCachedTasks = useCallback((update: (tasks: BLTask[]) => BLTask[]) => {
+    queryClient.setQueryData<BLTask[]>(tasksQueryKey, (cached) => (cached ? sortTasks(update(cached)) : cached))
+  }, [queryClient, tasksQueryKey])
+
+  const mergeCachedTask = useCallback((taskId: number, patch: Partial<BLTask>) => {
+    updateCachedTasks((tasks) => tasks.map((task) => (task.id === taskId ? { ...task, ...patch } : task)))
+  }, [updateCachedTasks])
+
+  // 保存に失敗したときは楽観更新を捨ててサーバの状態に戻し、黙って無かったことにしない。
+  const recoverFromSaveFailure = useCallback(() => {
+    setSaveError('保存に失敗しました。通信状態を確認してください')
+    queryClient.invalidateQueries({ queryKey: tasksQueryKey })
+  }, [queryClient, tasksQueryKey])
+
+  // 先に画面へ反映し、そのあと保存する。
+  // 応答は丸ごと取り込まず、サーバ側でしか決まらない値だけを拾う。
+  // 全部マージすると、後から届いた古い応答が編集中の備考などを画面から消してしまう。
+  const saveTask = useCallback(async (
+    taskId: number,
+    payload: Record<string, unknown>,
+    shownImmediately: Partial<BLTask>,
+    { takeServerStatus = false }: { takeServerStatus?: boolean } = {},
+  ) => {
+    mergeCachedTask(taskId, shownImmediately)
+    try {
+      const { data } = await api.patch<BLTask>(`/backlog/tasks/${taskId}`, payload)
+      setSaveError(null)
+      if (takeServerStatus) {
+        mergeCachedTask(taskId, { status_name: data.status_name, progress: data.progress, completed_on: data.completed_on })
+      }
+    } catch {
+      recoverFromSaveFailure()
+    }
+  }, [mergeCachedTask, recoverFromSaveFailure])
 
   const sync = async () => {
     setSyncing(true); setSyncMsg(null)
@@ -141,57 +167,83 @@ export default function ProgressPage() {
     finally { setSyncing(false) }
   }
 
-  const handleTaskMoved = async (taskId: number, newStatusId: number) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { status_id: newStatusId })
-    tasksQ.refetch()
-  }
-  const handleMemoChanged = async (taskId: number, memo: string) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { memo })
-  }
-  const handleReorder = async (_: number, orderedIds: number[]) => {
-    await api.post('/backlog/reorder', { ids: orderedIds })
-    tasksQ.refetch()
-  }
-  const handleProgressChanged = async (taskId: number, progress: number) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { progress_value: progress })
-    tasksQ.refetch()
-  }
-  const handleDeployChanged = async (taskId: number, deploy_date: string, deploy_note: string) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { deploy_date, deploy_note })
-  }
-  const addTask = async () => {
-    if (!newTask.summary.trim()) return
-    await api.post('/backlog/tasks', { ...newTask, workspace_id: selectedWorkspaceId })
-    setNewTask({ summary: '', memo: '', deploy_note: '', due_date: '', assignee_name: '' })
-    setShowAddForm(false)
-    tasksQ.refetch()
-  }
-  const deleteTask = async (id: number) => {
-    await api.delete(`/backlog/tasks/${id}`)
-    tasksQ.refetch()
-  }
+  // ステータスは進捗率・完了日もサーバ側で決まるので、応答を取り込んで揃える。
+  const handleTaskMoved = useCallback((taskId: number, newStatusId: number) => {
+    saveTask(taskId, { status_id: newStatusId }, { status_id: newStatusId }, { takeServerStatus: true })
+  }, [saveTask])
 
-  const handleSummaryChanged = async (taskId: number, summary: string) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { summary })
+  const handleMemoChanged = useCallback((taskId: number, memo: string) => {
+    saveTask(taskId, { memo }, { memo })
+  }, [saveTask])
+
+  // サーバは受け取った id に position を 0..n-1 で振り直すので、画面側も同じ規則で持たせる。
+  // (KanbanBoard から渡ってくるのは、絞り込みで隠れている分も含めたその列の全 id)
+  const handleReorder = useCallback(async (_statusId: number, orderedIds: number[]) => {
+    const positionOf = new Map(orderedIds.map((id, index) => [id, index]))
+    updateCachedTasks((tasks) => tasks.map((task) => {
+      const position = positionOf.get(task.id)
+      return position === undefined ? task : { ...task, position }
+    }))
+    try {
+      await api.post('/backlog/reorder', { ids: orderedIds })
+      setSaveError(null)
+    } catch {
+      recoverFromSaveFailure()
+    }
+  }, [updateCachedTasks, recoverFromSaveFailure])
+
+  const handleProgressChanged = useCallback((taskId: number, progress: number) => {
+    saveTask(taskId, { progress_value: progress }, { progress })
+  }, [saveTask])
+
+  const handleDeployChanged = useCallback((taskId: number, patch: { deploy_date?: string; deploy_note?: string }) => {
+    saveTask(taskId, patch, patch)
+  }, [saveTask])
+  // 送信中はボタンを塞ぐ。塞がないとレスポンスが返るまで画面が変わらないので、
+  // 連打された分だけ Todo が増える(=Googleカレンダーにも同じ予定が増える)。
+  const addTask = async () => {
+    if (addingTask || !newTask.summary.trim()) return
+    setAddingTask(true)
+    try {
+      await api.post('/backlog/tasks', { ...newTask, workspace_id: selectedWorkspaceId })
+      setNewTask({ summary: '', memo: '', deploy_note: '', due_date: '', assignee_name: '' })
+      setShowAddForm(false)
+      tasksQ.refetch()
+    } finally {
+      setAddingTask(false)
+    }
   }
-  const handleUrlChanged = async (taskId: number, url: string) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { url })
-    tasksQ.refetch()
-  }
-  const handleAssigneeChanged = async (taskId: number, name: string) => {
-    await api.patch(`/backlog/tasks/${taskId}`, { assignee_name: name })
-    tasksQ.refetch()
-  }
-  const handleFlagChanged = async (taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => {
-    await api.patch(`/backlog/tasks/${taskId}`, patch)
-    tasksQ.refetch()
-  }
+  const deleteTask = useCallback(async (id: number) => {
+    updateCachedTasks((tasks) => tasks.filter((task) => task.id !== id))
+    try {
+      await api.delete(`/backlog/tasks/${id}`)
+    } catch {
+      recoverFromSaveFailure()
+    }
+  }, [updateCachedTasks, recoverFromSaveFailure])
+
+  const handleSummaryChanged = useCallback((taskId: number, summary: string) => {
+    saveTask(taskId, { summary }, { summary })
+  }, [saveTask])
+
+  const handleUrlChanged = useCallback((taskId: number, url: string) => {
+    saveTask(taskId, { url }, { url })
+  }, [saveTask])
+
+  const handleAssigneeChanged = useCallback((taskId: number, name: string) => {
+    saveTask(taskId, { assignee_name: name }, { assignee_name: name })
+  }, [saveTask])
+
+  const handleFlagChanged = useCallback((taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => {
+    saveTask(taskId, patch, patch)
+  }, [saveTask])
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="whitespace-nowrap text-xl font-semibold tracking-tight text-[var(--color-text)] sm:text-2xl">進捗管理</div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {saveError && <span className="text-sm font-semibold text-red-600">{saveError}</span>}
           {syncMsg && <span className="text-sm text-emerald-600">{syncMsg}</span>}
           <button onClick={() => setShowAddForm(!showAddForm)} className="whitespace-nowrap rounded-xl bg-[var(--color-primary)] px-3 py-2 text-xs font-semibold text-white shadow-md sm:px-5 sm:py-2.5 sm:text-sm">
             ＋ タスク追加
@@ -250,7 +302,7 @@ export default function ProgressPage() {
               <option value="西野 鷹也">西野 鷹也</option>
               <option value="川村卓也">川村卓也</option>
             </select>
-            <button onClick={addTask} disabled={!newTask.summary.trim()} className="col-span-1 rounded-lg bg-[var(--color-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-40">追加</button>
+            <button onClick={addTask} disabled={addingTask || !newTask.summary.trim()} className="col-span-1 rounded-lg bg-[var(--color-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-40">{addingTask ? '追加中…' : '追加'}</button>
           </div>
         </div>
       )}
@@ -391,7 +443,7 @@ export default function ProgressPage() {
 
       {/* カンバンボード */}
       <KanbanBoard
-        tasks={tasksQ.data ?? []}
+        tasks={tasksQ.data ?? NO_TASKS}
         onTaskMoved={handleTaskMoved}
         onMemoChanged={handleMemoChanged}
         onReorder={handleReorder}

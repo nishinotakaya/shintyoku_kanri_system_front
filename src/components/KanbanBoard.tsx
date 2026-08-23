@@ -1,37 +1,20 @@
-import { useState, useRef, useEffect } from 'react'
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { DragDropContext, Droppable } from '@hello-pangea/dnd'
 import type { DropResult } from '@hello-pangea/dnd'
-
-type BLTask = {
-  id: number
-  issue_key: string
-  summary: string
-  status_id: number
-  status_name: string
-  progress: number
-  created_on: string | null
-  completed_on: string | null
-  due_date: string | null
-  memo: string | null
-  deploy_date: string | null
-  deploy_note: string | null
-  source: string | null
-  assignee_name: string | null
-  assignee_id: number | null
-  url: string | null
-  did_previous: boolean
-  do_today: boolean
-  trello_list_name: string | null
-}
-
-const COLUMNS = [
-  { id: 1, label: '未対応', color: 'border-t-gray-400', bg: 'bg-gray-50', badge: 'bg-gray-200 text-gray-700', tabActive: 'bg-gray-500 text-white', tabInactive: 'text-gray-500' },
-  { id: 2, label: '処理中', color: 'border-t-blue-500', bg: 'bg-blue-50/50', badge: 'bg-blue-100 text-blue-700', tabActive: 'bg-blue-500 text-white', tabInactive: 'text-blue-500' },
-  { id: 3, label: '処理済', color: 'border-t-amber-500', bg: 'bg-amber-50/50', badge: 'bg-amber-100 text-amber-700', tabActive: 'bg-amber-500 text-white', tabInactive: 'text-amber-600' },
-  { id: 4, label: '完了', color: 'border-t-emerald-500', bg: 'bg-emerald-50/50', badge: 'bg-emerald-100 text-emerald-700', tabActive: 'bg-emerald-500 text-white', tabInactive: 'text-emerald-600' },
-]
+import TaskCard from './progress/TaskCard'
+import type { TaskCardHandlers } from './progress/TaskCard'
+import { COLUMNS, COMPLETED_STATUS_ID, wholeColumnOrder } from './progress/board'
+import type { BLTask } from './progress/board'
 
 type ViewMode = 'board' | 'tab'
+
+// 担当者セレクトに必ず出す固定メンバー。
+const DEFAULT_ASSIGNEES = ['西野 鷹也', '川村卓也']
+
+// 完了列の初期表示件数。完了は 9 割近くが「もう触らない過去ぶん」で、
+// 全部描くと数百枚のカードが常に DOM に居座り、入力もドラッグも詰まる。
+// (本番のテックリーダーズは 311 件中 278 件が完了だった)
+const COMPLETED_PAGE_SIZE = 20
 
 // 「川村 卓也」と「川村卓也」のように、スペースの有無だけが違う表記を同一人物として扱う。
 // Backlog の担当者名とアプリの表示名で空白の入れ方が揃っていないため。
@@ -39,84 +22,43 @@ const withoutSpaces = (name: string) => name.replace(/[\s\u3000]/g, '')
 
 export default function KanbanBoard({
   tasks,
-  onTaskMoved,
-  onMemoChanged,
   onReorder,
-  onProgressChanged,
-  onDeployChanged,
-  onDelete,
-  onSummaryChanged,
-  onUrlChanged,
-  onAssigneeChanged,
-  onFlagChanged,
   workspaceId,
   currentUserName,
   isAdmin,
-}: {
+  ...taskHandlers
+}: TaskCardHandlers & {
   tasks: BLTask[]
-  onTaskMoved: (taskId: number, newStatusId: number) => void
-  onMemoChanged: (taskId: number, memo: string) => void
   onReorder: (statusId: number, orderedIds: number[]) => void
-  onProgressChanged: (taskId: number, progress: number) => void
-  onDeployChanged: (taskId: number, deploy_date: string, deploy_note: string) => void
-  onDelete?: (taskId: number) => void
-  onSummaryChanged?: (taskId: number, summary: string) => void
-  onUrlChanged?: (taskId: number, url: string) => void
-  onAssigneeChanged?: (taskId: number, name: string) => void
-  onFlagChanged?: (taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => void
   workspaceId?: number | null
   currentUserName?: string | null
   isAdmin?: boolean
 }) {
-  const [editingMemo, setEditingMemo] = useState<Record<number, string>>({})
-  const [editingSummary, setEditingSummary] = useState<Record<number, string>>({})
-  const [editingUrl, setEditingUrl] = useState<Record<number, string>>({})
-  const [editingDeploy, setEditingDeploy] = useState<Record<number, { date: string; note: string }>>({})
   const [viewMode, setViewMode] = useState<ViewMode>('board')
   const [activeTab, setActiveTab] = useState(1) // 未対応をデフォルト
   const [search, setSearch] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
-  // 担当者フィルタを初期化済みのワークスペース。タブを切り替えたら本人に振り直す
-  const initializedWorkspaceId = useRef<number | null>(null)
-  const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
+  const [completedLimit, setCompletedLimit] = useState(COMPLETED_PAGE_SIZE)
+  // 担当者フィルタを初期化済みのワークスペース。一度触ったタブに戻っても選択を巻き戻さない
+  const initializedWorkspaceIds = useRef<Set<number>>(new Set())
 
-  const updateMemo = (taskId: number, value: string) => {
-    setEditingMemo((prev) => ({ ...prev, [taskId]: value }))
-    if (timers.current[taskId]) clearTimeout(timers.current[taskId])
-    timers.current[taskId] = setTimeout(() => onMemoChanged(taskId, value), 500)
-  }
-
-  const onDragEnd = (result: DropResult) => {
-    if (!result.destination) return
-    const srcStatusId = Number(result.source.droppableId)
-    const dstStatusId = Number(result.destination.droppableId)
-    const taskId = Number(result.draggableId)
-
-    if (srcStatusId !== dstStatusId) {
-      // 列間移動 → ステータス変更
-      onTaskMoved(taskId, dstStatusId)
-    } else {
-      // 同一列内の並び替え
-      const colTasks = [...sortedTasks(dstStatusId)]
-      const [moved] = colTasks.splice(result.source.index, 1)
-      colTasks.splice(result.destination.index, 0, moved)
-      onReorder(dstStatusId, colTasks.map((t) => t.id))
-    }
-  }
-
-  // 担当者一覧
-  const assignees = [...new Map(tasks.filter((t) => t.assignee_name).map((t) => [t.assignee_name!, t.assignee_name!])).values()]
-
-  // 担当者セレクトの選択肢: 固定2名 + assignees の残り（重複除去）
-  const assigneeOptions = [...new Set(['西野 鷹也', '川村卓也', ...assignees])]
+  // 担当者の顔ぶれ。文字列キーで持つのは、タスクが1件更新されるたびに
+  // 配列の同一性が変わって全カードが再描画されるのを避けるため。
+  const assigneeNamesKey = useMemo(() => {
+    const names = new Set<string>()
+    tasks.forEach((task) => { if (task.assignee_name) names.add(task.assignee_name) })
+    return [...names].join('\u0000') // 氏名に現れない区切り。改行や中黒だと名前を割ってしまう
+  }, [tasks])
+  const assignees = useMemo(() => (assigneeNamesKey ? assigneeNamesKey.split('\u0000') : []), [assigneeNamesKey])
+  const assigneeOptions = useMemo(() => [...new Set([...DEFAULT_ASSIGNEES, ...assignees])], [assignees])
 
   // 担当者フィルタの初期値は本人。管理者は全体を見る立場なので「全担当者」のまま。
   // 初期化はワークスペースごとに1回だけなので、そのあと手で切り替えた選択は保たれる。
   useEffect(() => {
-    if (workspaceId == null || initializedWorkspaceId.current === workspaceId) return
+    if (workspaceId == null || initializedWorkspaceIds.current.has(workspaceId)) return
     if (assignees.length === 0) return // タスク読み込み前
 
-    initializedWorkspaceId.current = workspaceId
+    initializedWorkspaceIds.current.add(workspaceId)
     if (isAdmin || !currentUserName) {
       setAssigneeFilter('all')
       return
@@ -125,259 +67,56 @@ export default function KanbanBoard({
     setAssigneeFilter(mine ?? 'all')
   }, [workspaceId, assignees, isAdmin, currentUserName])
 
-  // 検索 + 担当者フィルタ
-  const q = search.toLowerCase()
-  let filteredTasks = tasks
-  if (assigneeFilter !== 'all') {
-    filteredTasks = filteredTasks.filter((t) => (t.assignee_name ?? '') === assigneeFilter)
-  }
-  if (q) {
-    filteredTasks = filteredTasks.filter((t) =>
-      t.issue_key.toLowerCase().includes(q) ||
-      t.summary.toLowerCase().includes(q) ||
-      (editingMemo[t.id] ?? t.memo ?? '').toLowerCase().includes(q)
-    )
-  }
-
-  // ソート: 完了は completed_on 降順、それ以外はそのまま
-  const sortedTasks = (statusId: number) => {
-    const col = filteredTasks.filter((t) => t.status_id === statusId)
-    if (statusId === 4) {
-      return col.sort((a, b) => (b.completed_on ?? '').localeCompare(a.completed_on ?? ''))
+  // 検索 + 担当者フィルタ → ステータス列ごとに仕分け。
+  // 完了列だけ completed_on の新しい順に並べ、既定では直近ぶんだけ描く。
+  // 検索中は件数が絞られているので、古い完了も含めて全部出す(検索が素通りしないように)。
+  const tasksByStatus = useMemo(() => {
+    const keyword = search.toLowerCase()
+    let visibleTasks = tasks
+    if (assigneeFilter !== 'all') {
+      visibleTasks = visibleTasks.filter((task) => (task.assignee_name ?? '') === assigneeFilter)
     }
-    return col
-  }
+    if (keyword) {
+      visibleTasks = visibleTasks.filter((task) =>
+        task.issue_key.toLowerCase().includes(keyword) ||
+        task.summary.toLowerCase().includes(keyword) ||
+        (task.memo ?? '').toLowerCase().includes(keyword)
+      )
+    }
+    return new Map<number, { shown: BLTask[]; total: number }>(COLUMNS.map((column) => {
+      const columnTasks = visibleTasks.filter((task) => task.status_id === column.id)
+      if (column.id !== COMPLETED_STATUS_ID) return [column.id, { shown: columnTasks, total: columnTasks.length }]
 
+      columnTasks.sort((left, right) => (right.completed_on ?? '').localeCompare(left.completed_on ?? ''))
+      const shown = keyword ? columnTasks : columnTasks.slice(0, completedLimit)
+      return [column.id, { shown, total: columnTasks.length }]
+    }))
+  }, [tasks, search, assigneeFilter, completedLimit])
 
-  const FlagCheckboxes = ({ t }: { t: BLTask }) => (
-    <div
-      className="mt-1.5 inline-flex items-center gap-3 text-[11px]"
-      onMouseDown={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <label className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={!!t.do_today}
-          onChange={(e) => onFlagChanged?.(t.id, { do_today: e.target.checked })}
-          onClick={(e) => e.stopPropagation()}
-          className="accent-amber-500"
-        />
-        <span className={`font-semibold ${t.do_today ? 'text-amber-600' : 'text-[var(--color-text-sub)]'}`}>本日行う</span>
-      </label>
-      <label className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={!!t.did_previous}
-          onChange={(e) => onFlagChanged?.(t.id, { did_previous: e.target.checked })}
-          onClick={(e) => e.stopPropagation()}
-          className="accent-sky-500"
-        />
-        <span className={`font-semibold ${t.did_previous ? 'text-sky-600' : 'text-[var(--color-text-sub)]'}`}>前回行った</span>
-      </label>
-    </div>
-  )
+  const columnTasksOf = (statusId: number) => tasksByStatus.get(statusId)?.shown ?? []
+  const columnTotalOf = (statusId: number) => tasksByStatus.get(statusId)?.total ?? 0
+  const hiddenCompletedCount = columnTotalOf(COMPLETED_STATUS_ID) - columnTasksOf(COMPLETED_STATUS_ID).length
 
-  const renderCard = (t: BLTask, index: number) => {
-    const dueDiff = t.due_date ? Math.ceil((new Date(t.due_date).getTime() - Date.now()) / 86400000) : null
-    const overdue = dueDiff !== null && dueDiff < 0
-    const urgent = dueDiff !== null && dueDiff >= 0 && dueDiff <= 3
-    return (
-      <Draggable key={t.id} draggableId={String(t.id)} index={index}>
-        {(prov, snap) => (
-          <div
-            ref={prov.innerRef}
-            {...prov.draggableProps}
-            {...prov.dragHandleProps}
-            className={`rounded-xl bg-white p-4 shadow-sm border border-[var(--color-border)] cursor-grab active:cursor-grabbing transition ${
-              snap.isDragging ? 'shadow-xl ring-2 ring-[var(--color-primary)]/30 rotate-1 scale-105' : 'hover:shadow-md'
-            } ${overdue ? 'border-l-4 border-l-red-500' : urgent ? 'border-l-4 border-l-amber-400' : ''}`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              {t.source !== 'backlog' ? (
-                (editingUrl[t.id] ?? t.url) ? (
-                  <a href={editingUrl[t.id] ?? t.url!} target="_blank" rel="noreferrer"
-                    className="text-sm font-mono font-semibold text-[var(--color-primary)] hover:underline cursor-pointer"
-                    onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                    {(t.summary || t.issue_key).length > 20 ? (t.summary || t.issue_key).slice(0, 20) + '...' : (t.summary || t.issue_key)}
-                  </a>
-                ) : (
-                  <span className="text-sm font-semibold text-[var(--color-text-sub)]">{(t.summary || t.issue_key).length > 20 ? (t.summary || t.issue_key).slice(0, 20) + '...' : (t.summary || t.issue_key)}</span>
-                )
-              ) : (
-                <a href={`https://tamahome.backlog.com/view/${t.issue_key}`} target="_blank" rel="noreferrer"
-                  className="text-sm font-mono font-semibold text-[var(--color-primary)] hover:underline cursor-pointer"
-                  onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                  {t.issue_key}
-                </a>
-              )}
-              {overdue && <span className="whitespace-nowrap rounded-lg bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white animate-pulse">⚠{Math.abs(dueDiff!)}日超過</span>}
-              {urgent && !overdue && <span className="whitespace-nowrap rounded-lg bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-white">🔥あと{dueDiff}日</span>}
-            </div>
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) return
+    const sourceStatusId = Number(result.source.droppableId)
+    const destinationStatusId = Number(result.destination.droppableId)
+    const taskId = Number(result.draggableId)
 
-            {t.source === 'trello' && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">📋 Trello</span>
-                {t.trello_list_name && (
-                  <span className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">{t.trello_list_name}</span>
-                )}
-              </div>
-            )}
+    const visibleOrderedIds = columnTasksOf(destinationStatusId).map((task) => task.id)
+    if (sourceStatusId === destinationStatusId) {
+      const [moved] = visibleOrderedIds.splice(result.source.index, 1)
+      visibleOrderedIds.splice(result.destination.index, 0, moved)
+    } else {
+      taskHandlers.onTaskMoved(taskId, destinationStatusId)
+      visibleOrderedIds.splice(result.destination.index, 0, taskId)
+    }
 
-            {t.source !== 'backlog' && onSummaryChanged ? (
-              <input
-                value={editingSummary[t.id] ?? t.summary}
-                onChange={(e) => {
-                  e.stopPropagation()
-                  setEditingSummary((p) => ({ ...p, [t.id]: e.target.value }))
-                  if (timers.current[t.id + 80000]) clearTimeout(timers.current[t.id + 80000])
-                  timers.current[t.id + 80000] = setTimeout(() => onSummaryChanged!(t.id, e.target.value), 500)
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                onClick={(e) => e.stopPropagation()}
-                className="mt-2 w-full rounded-lg bg-transparent px-1 py-0.5 text-sm font-medium text-[var(--color-text)] outline-none focus:bg-[var(--color-bg)]"
-              />
-            ) : (
-              <div className="mt-2 text-sm font-medium text-[var(--color-text)] leading-snug break-words">
-                {t.summary}
-              </div>
-            )}
+    // 完了列は completed_on の新しい順に並べ直して表示するので、手で並べても効かない。
+    if (destinationStatusId === COMPLETED_STATUS_ID) return
 
-            {/* ローカルタスク: URL 編集 */}
-            {t.source !== 'backlog' && (
-              <input
-                value={editingUrl[t.id] ?? t.url ?? ''}
-                onChange={(e) => {
-                  e.stopPropagation()
-                  setEditingUrl((p) => ({ ...p, [t.id]: e.target.value }))
-                  if (timers.current[t.id + 70000]) clearTimeout(timers.current[t.id + 70000])
-                  timers.current[t.id + 70000] = setTimeout(() => onUrlChanged?.(t.id, e.target.value), 500)
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="URL を入力..."
-                className="mt-1 w-full rounded-lg bg-transparent px-1 py-0.5 text-xs text-[var(--color-primary)] outline-none focus:bg-[var(--color-bg)] placeholder-gray-400"
-              />
-            )}
-
-            {t.due_date && !overdue && !urgent && (
-              <div className="mt-2 text-xs text-[var(--color-text-sub)]">期限: {t.due_date}</div>
-            )}
-
-            <FlagCheckboxes t={t} />
-
-            {/* 進捗率 */}
-            <div className="mt-3 flex items-center gap-2">
-              <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] transition-all" style={{ width: `${(t.progress ?? 0) * 100}%` }} />
-              </div>
-              <select
-                value={Math.round((t.progress ?? 0) * 100)}
-                onChange={(e) => { e.stopPropagation(); onProgressChanged(t.id, Number(e.target.value) / 100) }}
-                onClick={(e) => e.stopPropagation()}
-                className="rounded border border-[var(--color-border)] bg-white px-1 py-0.5 text-[11px] text-[var(--color-text)]"
-              >
-                {[
-                  { v: 0, l: '0%' },
-                  { v: 20, l: '20% 調査中' },
-                  { v: 40, l: '40% 実装中' },
-                  { v: 60, l: '60% 実装完了' },
-                  { v: 80, l: '80% エビデンス完了' },
-                  { v: 100, l: '100% 完了' },
-                ].map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-              </select>
-            </div>
-
-            <textarea
-              value={editingMemo[t.id] ?? t.memo ?? ''}
-              onChange={(e) => {
-                updateMemo(t.id, e.target.value)
-                e.target.style.height = 'auto'
-                e.target.style.height = e.target.scrollHeight + 'px'
-              }}
-              ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="備考…"
-              rows={2}
-              className="mt-2 w-full min-h-[40px] overflow-hidden resize-none rounded-lg bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-text)] placeholder-gray-400 outline-none focus:ring-1 focus:ring-[var(--color-primary)]/30"
-            />
-
-            {/* 適用予定 */}
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[10px] text-[var(--color-text-sub)] whitespace-nowrap">適用予定:</span>
-              <input
-                type="date"
-                value={editingDeploy[t.id]?.date ?? t.deploy_date ?? ''}
-                onChange={(e) => {
-                  e.stopPropagation()
-                  const d = { date: e.target.value, note: editingDeploy[t.id]?.note ?? t.deploy_note ?? '' }
-                  setEditingDeploy((p) => ({ ...p, [t.id]: d }))
-                  onDeployChanged(t.id, d.date, d.note)
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[11px] text-[var(--color-text)]"
-              />
-              <input
-                value={editingDeploy[t.id]?.note ?? t.deploy_note ?? ''}
-                onChange={(e) => {
-                  e.stopPropagation()
-                  const d = { date: editingDeploy[t.id]?.date ?? t.deploy_date ?? '', note: e.target.value }
-                  setEditingDeploy((p) => ({ ...p, [t.id]: d }))
-                  if (timers.current[t.id + 90000]) clearTimeout(timers.current[t.id + 90000])
-                  timers.current[t.id + 90000] = setTimeout(() => onDeployChanged(t.id, d.date, d.note), 500)
-                }}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="例: 4/14夜適用"
-                className="flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] text-[var(--color-text)] placeholder-gray-400"
-              />
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--color-text-sub)]">
-              {t.source === 'trello' ? (
-                <span className="font-semibold">👤 {t.assignee_name ?? '担当なし'}</span>
-              ) : (
-                <select value={t.assignee_name ?? ''} onChange={(e) => { e.stopPropagation(); onAssigneeChanged?.(t.id, e.target.value) }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="rounded bg-[var(--color-bg)] px-1 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] border-none outline-none">
-                  <option value="">担当</option>
-                  {assigneeOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-              )}
-              {t.due_date && <span>完了予定: {t.due_date.slice(5)}</span>}
-              <span>作成: {t.created_on?.slice(5) ?? '—'}</span>
-              {t.completed_on && <span className="text-emerald-600 font-semibold">完了: {t.completed_on.slice(5)}</span>}
-              {t.created_on && (() => {
-                const days = Math.floor((Date.now() - new Date(t.created_on).getTime()) / 86400000)
-                return (
-                  <span className={`rounded px-1.5 py-0.5 font-semibold ${
-                    days > 30 ? 'bg-red-100 text-red-600' : days > 14 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-600'
-                  }`}>{days}日経過</span>
-                )
-              })()}
-            </div>
-
-            {/* 削除ボタン (ローカルタスクのみ) */}
-            {onDelete && t.source !== 'backlog' && (
-              <button onClick={(e) => { e.stopPropagation(); onDelete(t.id) }} className="mt-1 text-[10px] text-gray-400 hover:text-red-500">🗑 削除</button>
-            )}
-
-            {/* タブモード時: ステータス変更ドロップダウン */}
-            {viewMode === 'tab' && (
-              <select
-                value={t.status_id}
-                onChange={(e) => {
-                  e.stopPropagation()
-                  onTaskMoved(t.id, Number(e.target.value))
-                }}
-                className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-xs text-[var(--color-text)]"
-              >
-                {COLUMNS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
-            )}
-          </div>
-        )}
-      </Draggable>
-    )
+    const droppedInTaskId = sourceStatusId === destinationStatusId ? undefined : taskId
+    onReorder(destinationStatusId, wholeColumnOrder(tasks, destinationStatusId, visibleOrderedIds, droppedInTaskId))
   }
 
   return (
@@ -404,7 +143,7 @@ export default function KanbanBoard({
           <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}
             className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)]">
             <option value="all">全担当者</option>
-            {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
+            {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         )}
         <div className="ml-auto relative">
@@ -423,245 +162,93 @@ export default function KanbanBoard({
       <DragDropContext onDragEnd={onDragEnd}>
         {viewMode === 'board' ? (
           /* ===== ボードモード: 横4列 ===== */
-          <div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
-              {COLUMNS.map((col) => {
-                const colTasks = sortedTasks(col.id)
-                return (
-                  <div key={col.id} className={`rounded-2xl border-t-4 ${col.color} ${col.bg} p-2 sm:p-3 max-h-[80vh] flex flex-col`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold sm:px-3 sm:text-sm ${col.badge}`}>{col.label}</span>
-                      <span className="text-sm font-semibold text-[var(--color-text-sub)]">{colTasks.length}</span>
-                    </div>
-                    <Droppable droppableId={String(col.id)}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className={`space-y-3 min-h-[60vh] overflow-y-auto rounded-xl p-1 transition ${
-                            snapshot.isDraggingOver ? 'bg-[var(--color-primary)]/10 ring-2 ring-[var(--color-primary)]/20' : ''
-                          }`}
-                        >
-                          {colTasks.map((t, i) => renderCard(t, i))}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+            {COLUMNS.map((column) => {
+              const columnTasks = columnTasksOf(column.id)
+              return (
+                <div key={column.id} className={`rounded-2xl border-t-4 ${column.color} ${column.bg} p-2 sm:p-3 max-h-[80vh] flex flex-col`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold sm:px-3 sm:text-sm ${column.badge}`}>{column.label}</span>
+                    <span className="text-sm font-semibold text-[var(--color-text-sub)]">
+                      {columnTasks.length < columnTotalOf(column.id) ? `${columnTasks.length} / ${columnTotalOf(column.id)}` : columnTasks.length}
+                    </span>
                   </div>
-                )
-              })}
-            </div>
+                  <Droppable droppableId={String(column.id)}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`space-y-3 min-h-[60vh] overflow-y-auto rounded-xl p-1 transition ${
+                          snapshot.isDraggingOver ? 'bg-[var(--color-primary)]/10 ring-2 ring-[var(--color-primary)]/20' : ''
+                        }`}
+                      >
+                        {columnTasks.map((task, index) => (
+                          <TaskCard key={task.id} task={task} index={index} layout="board"
+                            assigneeOptions={assigneeOptions} {...taskHandlers} />
+                        ))}
+                        {provided.placeholder}
+                        {column.id === COMPLETED_STATUS_ID && hiddenCompletedCount > 0 && (
+                          <button onClick={() => setCompletedLimit((shown) => shown + COMPLETED_PAGE_SIZE)}
+                            className="w-full rounded-lg border border-[var(--color-border)] bg-white py-2 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">
+                            過去の完了をさらに {Math.min(hiddenCompletedCount, COMPLETED_PAGE_SIZE)} 件表示（残り {hiddenCompletedCount} 件）
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </Droppable>
+                </div>
+              )
+            })}
           </div>
         ) : (
           /* ===== タブモード: 横長1列 ===== */
           <div>
             {/* タブヘッダ (sticky + ドロップターゲット) */}
             <div className="sticky top-[105px] z-10 bg-[var(--color-bg)] flex gap-1 border-b border-[var(--color-border)] pb-0">
-              {COLUMNS.map((col) => {
-                const count = sortedTasks(col.id).length
-                return (
-                  <Droppable key={col.id} droppableId={String(col.id)} direction="horizontal">
-                    {(provided, snapshot) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps} className="relative">
-                        <button
-                          onClick={() => setActiveTab(col.id)}
-                          className={`whitespace-nowrap rounded-t-xl px-3 py-2.5 text-xs font-bold transition sm:px-6 sm:py-3 sm:text-sm ${
-                            activeTab === col.id ? col.tabActive : `bg-[var(--color-bg)] ${col.tabInactive} hover:bg-gray-100`
-                          } ${snapshot.isDraggingOver ? 'ring-2 ring-[var(--color-primary)] scale-105' : ''}`}
-                        >
-                          {col.label} ({count})
-                        </button>
-                        <div className="hidden">{provided.placeholder}</div>
-                      </div>
-                    )}
-                  </Droppable>
-                )
-              })}
+              {COLUMNS.map((column) => (
+                <Droppable key={column.id} droppableId={String(column.id)} direction="horizontal">
+                  {(provided, snapshot) => (
+                    <div ref={provided.innerRef} {...provided.droppableProps} className="relative">
+                      <button
+                        onClick={() => setActiveTab(column.id)}
+                        className={`whitespace-nowrap rounded-t-xl px-3 py-2.5 text-xs font-bold transition sm:px-6 sm:py-3 sm:text-sm ${
+                          activeTab === column.id ? column.tabActive : `bg-[var(--color-bg)] ${column.tabInactive} hover:bg-gray-100`
+                        } ${snapshot.isDraggingOver ? 'ring-2 ring-[var(--color-primary)] scale-105' : ''}`}
+                      >
+                        {column.label} ({columnTotalOf(column.id)})
+                      </button>
+                      <div className="hidden">{provided.placeholder}</div>
+                    </div>
+                  )}
+                </Droppable>
+              ))}
             </div>
 
             {/* タブ内容: 横1列リスト */}
-            {COLUMNS.filter((c) => c.id === activeTab).map((col) => {
-              const colTasks = sortedTasks(col.id)
+            {COLUMNS.filter((column) => column.id === activeTab).map((column) => {
+              const columnTasks = columnTasksOf(column.id)
               return (
-                <Droppable key={col.id} droppableId={String(col.id)}>
+                <Droppable key={column.id} droppableId={String(column.id)}>
                   {(provided) => (
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`rounded-b-2xl ${col.bg} p-4 min-h-[60vh]`}
+                      className={`rounded-b-2xl ${column.bg} p-4 min-h-[60vh]`}
                     >
                       <div className="space-y-2">
-                        {colTasks.map((t, i) => {
-                          const dueDiff = t.due_date ? Math.ceil((new Date(t.due_date).getTime() - Date.now()) / 86400000) : null
-                          const overdue = dueDiff !== null && dueDiff < 0
-                          const urgent = dueDiff !== null && dueDiff >= 0 && dueDiff <= 3
-                          return (
-                            <Draggable key={t.id} draggableId={String(t.id)} index={i}>
-                              {(prov, snap) => (
-                                <div
-                                  ref={prov.innerRef}
-                                  {...prov.draggableProps}
-                                  {...prov.dragHandleProps}
-                                  className={`rounded-xl bg-white px-5 py-4 shadow-sm border border-[var(--color-border)] cursor-grab active:cursor-grabbing transition ${
-                                    snap.isDragging ? 'shadow-xl ring-2 ring-[var(--color-primary)]/30' : 'hover:shadow-md'
-                                  } ${overdue ? 'border-l-4 border-l-red-500' : urgent ? 'border-l-4 border-l-amber-400' : ''}`}
-                                >
-                                  {/* 上段: チケット + タイトル + 期限 + ステータス + 削除 */}
-                                  <div className="flex items-start gap-4">
-                                    {t.source !== 'backlog' ? (
-                                      (editingUrl[t.id] ?? t.url) ? (
-                                        <a href={editingUrl[t.id] ?? t.url!} target="_blank" rel="noreferrer"
-                                          className="flex-shrink-0 text-sm font-semibold text-[var(--color-primary)] hover:underline cursor-pointer truncate max-w-[200px]"
-                                          onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                                          {(t.summary || t.issue_key).length > 20 ? (t.summary || t.issue_key).slice(0, 20) + '...' : (t.summary || t.issue_key)}</a>
-                                      ) : (
-                                        <span className="flex-shrink-0 text-sm font-semibold text-[var(--color-text-sub)]">{(t.summary || t.issue_key).length > 20 ? (t.summary || t.issue_key).slice(0, 20) + '...' : (t.summary || t.issue_key)}</span>
-                                      )
-                                    ) : (
-                                      <a href={`https://tamahome.backlog.com/view/${t.issue_key}`} target="_blank" rel="noreferrer"
-                                        className="flex-shrink-0 text-sm font-mono font-semibold text-[var(--color-primary)] hover:underline cursor-pointer"
-                                        onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                                        {t.issue_key}</a>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      {t.source !== 'backlog' && onSummaryChanged ? (
-                                        <>
-                                          <input
-                                            value={editingSummary[t.id] ?? t.summary}
-                                            onChange={(e) => {
-                                              e.stopPropagation()
-                                              setEditingSummary((p) => ({ ...p, [t.id]: e.target.value }))
-                                              if (timers.current[t.id + 80000]) clearTimeout(timers.current[t.id + 80000])
-                                              timers.current[t.id + 80000] = setTimeout(() => onSummaryChanged!(t.id, e.target.value), 500)
-                                            }}
-                                            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                                            onClick={(e) => e.stopPropagation()}
-                                            placeholder="タイトル"
-                                            className="w-full rounded-lg bg-transparent px-1 py-0.5 text-sm font-medium text-[var(--color-text)] outline-none focus:bg-[var(--color-bg)]"
-                                          />
-                                          <input
-                                            value={editingUrl[t.id] ?? t.url ?? ''}
-                                            onChange={(e) => {
-                                              e.stopPropagation()
-                                              setEditingUrl((p) => ({ ...p, [t.id]: e.target.value }))
-                                              if (timers.current[t.id + 70000]) clearTimeout(timers.current[t.id + 70000])
-                                              timers.current[t.id + 70000] = setTimeout(() => onUrlChanged?.(t.id, e.target.value), 500)
-                                            }}
-                                            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                                            onClick={(e) => e.stopPropagation()}
-                                            placeholder="URL を入力..."
-                                            className="mt-1 w-full rounded-lg bg-transparent px-1 py-0.5 text-xs text-[var(--color-primary)] outline-none focus:bg-[var(--color-bg)] placeholder-gray-400"
-                                          />
-                                        </>
-                                      ) : (
-                                        <div className="text-sm font-medium text-[var(--color-text)] leading-snug break-words">{t.summary}</div>
-                                      )}
-                                    </div>
-                                    <div className="flex-shrink-0 flex items-center gap-2">
-                                      {overdue && <span className="whitespace-nowrap rounded-lg bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white animate-pulse">⚠{t.due_date}({Math.abs(dueDiff!)}日超過)</span>}
-                                      {urgent && !overdue && <span className="whitespace-nowrap rounded-lg bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-white">🔥{t.due_date}(あと{dueDiff}日)</span>}
-                                      {t.due_date && !overdue && !urgent && <span className="text-xs text-[var(--color-text-sub)] whitespace-nowrap">期限: {t.due_date}</span>}
-                                      <select
-                                        value={t.status_id}
-                                        onChange={(e) => { e.stopPropagation(); onTaskMoved(t.id, Number(e.target.value)) }}
-                                        className="rounded-lg border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
-                                      >
-                                        {COLUMNS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                                      </select>
-                                      {onDelete && t.source !== 'backlog' && (
-                                        <button onClick={(e) => { e.stopPropagation(); onDelete(t.id) }}
-                                          className="text-xs text-gray-400 hover:text-red-500">🗑</button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {/* 情報行 + 経過日数 */}
-                                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--color-text-sub)]">
-                                    <span>作成: {t.created_on ?? '—'}</span>
-                                    {t.completed_on && <span className="text-emerald-600 font-semibold">完了: {t.completed_on}</span>}
-                                    {t.created_on && (() => {
-                                      const days = Math.floor((Date.now() - new Date(t.created_on).getTime()) / 86400000)
-                                      return (
-                                        <span className={`rounded px-1.5 py-0.5 font-semibold ${
-                                          days > 30 ? 'bg-red-100 text-red-600' : days > 14 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-600'
-                                        }`}>
-                                          {days}日経過
-                                        </span>
-                                      )
-                                    })()}
-                                    <FlagCheckboxes t={t} />
-                                  </div>
-                                  {/* 進捗率 */}
-                                  <div className="mt-2 flex items-center gap-2">
-                                    <div className="flex-1 h-2.5 rounded-full bg-gray-100 overflow-hidden">
-                                      <div className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] transition-all" style={{ width: `${(t.progress ?? 0) * 100}%` }} />
-                                    </div>
-                                    <select
-                                      value={Math.round((t.progress ?? 0) * 100)}
-                                      onChange={(e) => { e.stopPropagation(); onProgressChanged(t.id, Number(e.target.value) / 100) }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
-                                    >
-                                      {[
-                  { v: 0, l: '0%' },
-                  { v: 20, l: '20% 調査中' },
-                  { v: 40, l: '40% 実装中' },
-                  { v: 60, l: '60% 実装完了' },
-                  { v: 80, l: '80% エビデンス完了' },
-                  { v: 100, l: '100% 完了' },
-                ].map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-                                    </select>
-                                  </div>
-                                  {/* 適用予定 */}
-                                  <div className="mt-2 flex items-center gap-2">
-                                    <span className="text-xs text-[var(--color-text-sub)] whitespace-nowrap">適用予定:</span>
-                                    <input
-                                      type="date"
-                                      value={editingDeploy[t.id]?.date ?? t.deploy_date ?? ''}
-                                      onChange={(e) => {
-                                        e.stopPropagation()
-                                        const d = { date: e.target.value, note: editingDeploy[t.id]?.note ?? t.deploy_note ?? '' }
-                                        setEditingDeploy((p) => ({ ...p, [t.id]: d }))
-                                        onDeployChanged(t.id, d.date, d.note)
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
-                                    />
-                                    <input
-                                      value={editingDeploy[t.id]?.note ?? t.deploy_note ?? ''}
-                                      onChange={(e) => {
-                                        e.stopPropagation()
-                                        const d = { date: editingDeploy[t.id]?.date ?? t.deploy_date ?? '', note: e.target.value }
-                                        setEditingDeploy((p) => ({ ...p, [t.id]: d }))
-                                        if (timers.current[t.id + 90000]) clearTimeout(timers.current[t.id + 90000])
-                                        timers.current[t.id + 90000] = setTimeout(() => onDeployChanged(t.id, d.date, d.note), 500)
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      placeholder="例: 4/14夜適用"
-                                      className="flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)] placeholder-gray-400"
-                                    />
-                                  </div>
-                                  {/* 下段: 備考（横幅いっぱい） */}
-                                  <textarea
-                                    value={editingMemo[t.id] ?? t.memo ?? ''}
-                                    onChange={(e) => {
-                                      updateMemo(t.id, e.target.value)
-                                      e.target.style.height = 'auto'
-                                      e.target.style.height = e.target.scrollHeight + 'px'
-                                    }}
-                                    ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    placeholder="備考…"
-                                    rows={2}
-                                    className="mt-3 w-full min-h-[60px] overflow-hidden resize-none rounded-lg bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:ring-1 focus:ring-[var(--color-primary)]/30"
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          )
-                        })}
+                        {columnTasks.map((task, index) => (
+                          <TaskCard key={task.id} task={task} index={index} layout="row"
+                            assigneeOptions={assigneeOptions} {...taskHandlers} />
+                        ))}
                       </div>
-                      {colTasks.length === 0 && (
+                      {columnTasks.length === 0 && (
                         <div className="py-16 text-center text-[var(--color-text-sub)]">タスクなし</div>
+                      )}
+                      {column.id === COMPLETED_STATUS_ID && hiddenCompletedCount > 0 && (
+                        <button onClick={() => setCompletedLimit((shown) => shown + COMPLETED_PAGE_SIZE)}
+                          className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-white py-2 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">
+                          過去の完了をさらに {Math.min(hiddenCompletedCount, COMPLETED_PAGE_SIZE)} 件表示（残り {hiddenCompletedCount} 件）
+                        </button>
                       )}
                       {provided.placeholder}
                     </div>
