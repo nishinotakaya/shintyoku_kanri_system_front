@@ -8,6 +8,7 @@ type InvoiceSetting = {
   subject: string
   item_label: string
   unit_price: number
+  merged_unit_price: number | null // 統合請求書(ラボップ宛)でこの人の稼働に掛ける時給。支払時給とは別
   tax_rate: number
   payment_due_days: number
   payment_due_type: string
@@ -593,6 +594,21 @@ export default function SettingsModal({
               {fld('件名', 'subject')}
               {fld('品目ラベル', 'item_label', 'text', 'col-span-1')}
               {fld('単価 (円/h)', 'unit_price', 'number', 'col-span-1')}
+              <label className="block col-span-1">
+                <span className="text-[11px] text-[var(--color-text-sub)]">統合請求の時給 (円/h)</span>
+                <input
+                  type="number"
+                  value={inv?.merged_unit_price ?? ''}
+                  placeholder="未設定なら 3,750 円"
+                  onChange={(e) =>
+                    setInv((p) => p && { ...p, merged_unit_price: e.target.value === '' ? null : Number(e.target.value) })
+                  }
+                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+                />
+                <span className="mt-1 block text-[10px] leading-tight text-[var(--color-text-sub)]">
+                  ラボップ宛の統合請求書に使う時給。上の「単価」は支払う側の時給で別物です
+                </span>
+              </label>
               {fld('消費税率 (%)', 'tax_rate', 'number', 'col-span-1')}
               <label className="block col-span-1">
                 <span className="text-[11px] text-[var(--color-text-sub)]">支払期限</span>
