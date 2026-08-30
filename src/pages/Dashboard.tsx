@@ -364,7 +364,9 @@ export default function Dashboard() {
               <select
                 value={linkPoId}
                 onChange={(e) => setLinkPoId(e.target.value === '' ? '' : Number(e.target.value))}
-                className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs"
+                /* option の文字列("ORD-… ／ 件名 ／ 氏名 ／ 金額")が長く、
+                   放っておくと select が中身の幅まで伸びてページごと横に溢れる */
+                className="min-w-0 max-w-full flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs"
               >
                 <option value="">選択してください ({linkCandidates.length} 件)</option>
                 {linkCandidates.map((p) => (
