@@ -254,24 +254,24 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-y-2">
         <div className="flex items-center gap-2">
-          <button onClick={() => monthShift(-1)} className="rounded-md bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">
+          <button onClick={() => monthShift(-1)} className="shrink-0 rounded-md bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">
             ←
           </button>
           <div>
-            <div className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{year}年 {month}月分</div>
+            <div className="text-lg font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">{year}年 {month}月分</div>
             {period && (
-              <div className="text-[11px] text-[var(--color-text-sub)]">
+              <div className="text-[11px] text-[var(--color-text-sub)] whitespace-nowrap">
                 期間: {period.from} 〜 {period.to}
               </div>
             )}
           </div>
-          <button onClick={() => monthShift(1)} className="rounded-md bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">
+          <button onClick={() => monthShift(1)} className="shrink-0 rounded-md bg-[var(--color-bg)] px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">
             →
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isAdmin && pickableUsers.length > 0 && (
             <select
               value={asUserId ?? me?.id ?? 0}

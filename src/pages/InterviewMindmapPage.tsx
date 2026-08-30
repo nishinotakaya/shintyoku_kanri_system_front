@@ -28,6 +28,10 @@ type Target = { id: number; display_name: string; email: string }
 const ZOOM_LEVELS = [70, 80, 90, 100, 120, 150, 200]
 const ZOOM_STORAGE_KEY = 'mindmapZoomPercent'
 
+// モード切替タブの共通クラス。狭い画面で折り返すと「面/談」のように
+// 文字が縦積みになるため、縮まず改行もしない（親が横スクロールを受け持つ）
+const MODE_TAB = 'shrink-0 whitespace-nowrap rounded-lg px-3 py-1 text-xs font-semibold'
+
 const KIND_STYLE: Record<string, { label: string; cls: string }> = {
   root: { label: '起点', cls: 'bg-gray-100 text-gray-700' },
   question: { label: 'Q', cls: 'bg-fuchsia-100 text-fuchsia-700' },
@@ -424,29 +428,31 @@ export default function InterviewMindmapPage() {
             <span className="text-[10px] text-[var(--color-text-sub)]">{showControls ? '▼' : '▶'}</span>
             <span>{isTalkCards ? '🃏 トークテーマトランプ' : isYoutube ? '🎬 YouTubeインタビューマインドマップ' : isLoveYoutube ? '❤️ 恋愛系YouTubeマインドマップ' : isMoteQa ? '❓ モテ質問Q&Aマインドマップ' : isMote ? '💬 モテ会話マインドマップ' : '🧠 面談対策マインドマップ'}</span>
           </button>
+          {/* モードは最大6つ。狭い画面では折り返さず横スクロールさせる
+              (折り返すとボタンの文字が「面/談」のように縦積みになるため) */}
           {(canYoutube || canMote || canMoteQa || canLoveYoutube || canTalkCards) && (
-            <div className="flex items-center gap-1">
+            <div className="-mx-1 flex items-center gap-1 overflow-x-auto px-1">
               <button onClick={() => setMode('interview')}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold ${mode === 'interview' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>面談</button>
+                className={`${MODE_TAB} ${mode === 'interview' ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>面談</button>
               {canYoutube && (
                 <button onClick={() => setMode('youtube')}
-                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isYoutube ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>▶ YouTube</button>
+                  className={`${MODE_TAB} ${isYoutube ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>▶ YouTube</button>
               )}
               {canMote && (
                 <button onClick={() => setMode('mote')}
-                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isMote ? 'bg-pink-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>💬 モテ</button>
+                  className={`${MODE_TAB} ${isMote ? 'bg-pink-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>💬 モテ</button>
               )}
               {canMoteQa && (
                 <button onClick={() => setMode('mote_qa')}
-                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isMoteQa ? 'bg-rose-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❓ モテQ&A</button>
+                  className={`${MODE_TAB} ${isMoteQa ? 'bg-rose-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❓ モテQ&A</button>
               )}
               {canTalkCards && (
                 <button onClick={() => setMode('talk_cards')}
-                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isTalkCards ? 'bg-violet-600 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🃏 トランプ</button>
+                  className={`${MODE_TAB} ${isTalkCards ? 'bg-violet-600 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🃏 トランプ</button>
               )}
               {canLoveYoutube && (
                 <button onClick={() => setMode('love_youtube')}
-                  className={`rounded-lg px-3 py-1 text-xs font-semibold ${isLoveYoutube ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❤️ 恋愛YT</button>
+                  className={`${MODE_TAB} ${isLoveYoutube ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>❤️ 恋愛YT</button>
               )}
             </div>
           )}
@@ -581,12 +587,13 @@ export default function InterviewMindmapPage() {
                       className={`rounded px-2 py-0.5 text-[10px] font-semibold ${graphVideo ? 'bg-red-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>🎬 動画用</button>
                   )}
                 </div>
+                {/* 狭い画面ではラベルが1文字ずつ縦積みになるので nowrap + 行を折り返す */}
                 {(mapView === 'list' || mapView === 'kanpe') && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-[var(--color-text-sub)]">🔍 表示サイズ</span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="whitespace-nowrap text-[10px] text-[var(--color-text-sub)]">🔍 表示サイズ</span>
                     {ZOOM_LEVELS.map((percent) => (
                       <button key={percent} onClick={() => changeZoom(percent)} title={`表示サイズ ${percent}%`}
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${zoomPercent === percent ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)] hover:text-fuchsia-600'}`}>
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${zoomPercent === percent ? 'bg-fuchsia-500 text-white' : 'border border-[var(--color-border)] text-[var(--color-text-sub)] hover:text-fuchsia-600'}`}>
                         {percent}%
                       </button>
                     ))}

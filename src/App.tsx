@@ -29,10 +29,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 // 各画面の閲覧権限 (admin は常に全部見れる)。値は users.feature_flags のキー。
-export type FeatureKey = 'attendance' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
+export type FeatureKey = 'attendance' | 'calendar' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
 type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; feature?: FeatureKey; tabTitle?: string }
 const NAV: NavItem[] = [
-  { to: '/calendar', label: 'カレンダー', icon: '📅', feature: 'attendance', tabTitle: 'カレンダー' },
+  { to: '/calendar', label: 'カレンダー', icon: '📅', feature: 'calendar', tabTitle: 'カレンダー' },
   { to: '/progress', label: '進捗管理', icon: '📊', feature: 'progress', tabTitle: '進捗' },
   { to: '/git', label: 'Git', icon: '🌿', feature: 'backlog_activities', tabTitle: 'Git' },
   { to: '/attendance', label: '勤怠', icon: '🕒', feature: 'attendance', tabTitle: '勤怠' },
@@ -112,6 +112,12 @@ function Layout({ children }: { children: React.ReactNode }) {
     localStorage.setItem('sidebarOpen', String(sidebarOpen))
   }, [sidebarOpen])
 
+  // スマホは遷移したらサイドバーを閉じる（重なったまま残ると本文が読めない）。
+  // md以上は常設なので閉じない。
+  useEffect(() => {
+    if (window.innerWidth < 768) setSidebarOpen(false)
+  }, [loc.pathname])
+
   // ページ遷移ごとにブラウザタブのタイトルを切替。
   // /attendance (Dashboard) は page 側で年月を追記するので、ここでは初期値だけ入れる。
   useEffect(() => {
@@ -174,10 +180,25 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
+      {/* スマホでサイドバーを開いている間の背景。タップで閉じる */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="サイドバーを閉じる"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+        />
+      )}
+
+      {/* Sidebar
+          スマホ: 本文の上に重ねる(fixed)。幅を取らないので本文が潰れない。
+          md以上: 従来どおり本文の左に並べる(sticky)。 */}
       <aside
-        className={`shrink-0 bg-white flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-out overflow-hidden ${
-          sidebarOpen ? 'w-56 border-r border-[var(--color-border)]' : 'w-0 border-r-0'
+        className={`bg-white flex flex-col h-screen overflow-hidden z-40 fixed top-0 left-0 transition-transform duration-200 ease-out
+          md:sticky md:z-auto md:shrink-0 md:translate-x-0 md:transition-[width] ${
+          sidebarOpen
+            ? 'w-56 border-r border-[var(--color-border)] translate-x-0'
+            : 'w-56 -translate-x-full md:w-0 md:border-r-0'
         }`}
         aria-hidden={!sidebarOpen}
       >
@@ -387,7 +408,7 @@ export default function App() {
         path="/calendar"
         element={
           <RequireAuth>
-            <RequireFeature feature="attendance">
+            <RequireFeature feature="calendar">
               <Layout>
                 <CalendarPage />
               </Layout>

@@ -164,25 +164,26 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-3">
+      {/* 狭い画面ではラベルが1文字ずつ縦積みになるので nowrap + 行の折り返しを許可 */}
       {me?.attendance_schedule_url && (
-        <div className="text-[11px] text-[var(--color-text-sub)] flex items-center gap-2">
-          <span>連動スプレッドシート:</span>
+        <div className="text-[11px] text-[var(--color-text-sub)] flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="whitespace-nowrap">連動スプレッドシート:</span>
           <a
             href={me.attendance_schedule_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-fuchsia-600 underline decoration-dotted hover:text-fuchsia-500 truncate max-w-md"
+            className="text-fuchsia-600 underline decoration-dotted hover:text-fuchsia-500 truncate max-w-full sm:max-w-md"
           >
             {me.attendance_schedule_url}
           </a>
-          <span className="text-gray-400">URL の修正は ⚙ 設定 から</span>
+          <span className="whitespace-nowrap text-gray-400">URL の修正は ⚙ 設定 から</span>
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <button onClick={() => monthShift(-1)} className="rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">←</button>
+          <button onClick={() => monthShift(-1)} className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">←</button>
           <div>
-            <div className="text-lg font-semibold tracking-tight text-[var(--color-text)]">{year}年 {month}月分</div>
+            <div className="text-lg font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">{year}年 {month}月分</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
               締日(25日)：{month === 1 ? year - 1 : year}年{month === 1 ? 12 : month - 1}月26日 〜 {year}年{month}月25日
             </div>

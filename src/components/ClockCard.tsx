@@ -44,9 +44,10 @@ export default function ClockCard({
   return (
     <div className="glass rounded-2xl p-4 shadow-md">
       <div className="text-[10px] uppercase tracking-widest text-[var(--color-text-sub)]">本日</div>
-      <div className="mt-1 flex items-baseline justify-between">
-        <div className="text-base font-medium text-[var(--color-text)]">{fmtDate(now)}</div>
-        <div className="font-mono tabular-nums text-2xl text-[var(--color-text)]">{now.toTimeString().slice(0, 8)}</div>
+      {/* 狭い画面で日付と時計がくっつかないよう gap を空け、時計側は縮めない */}
+      <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div className="text-sm font-medium text-[var(--color-text)] sm:text-base">{fmtDate(now)}</div>
+        <div className="shrink-0 font-mono tabular-nums text-xl text-[var(--color-text)] sm:text-2xl">{now.toTimeString().slice(0, 8)}</div>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
