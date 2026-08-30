@@ -352,8 +352,11 @@ export default function Dashboard() {
       </div>
 
       <div className="glass rounded-2xl p-4 shadow-md">
-        <div className="flex items-center justify-between">
-          <div>
+        {/* 狭い画面では見出し側と操作ボタン側を上下に積む。
+            min-w-0 が無いと flex アイテムが縮まず、中の長い文字列の幅まで
+            カードが広がってページ全体が横に溢れる */}
+        <div className="flex flex-wrap items-center justify-between gap-y-2">
+          <div className="min-w-0 flex-1">
             <div className="text-[10px] uppercase tracking-widest text-[var(--color-text-sub)]">請求書プレビュー — {({ wings: 'Wings', living: 'リビング', techleaders: 'テックリーダーズ', resystems: 'REシステムズ' } as const)[category]}</div>
             <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
               {invoiceQ.data?.invoice_no && <>請求番号: {invoiceQ.data.invoice_no} ／ </>}
