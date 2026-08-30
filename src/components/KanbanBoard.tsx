@@ -146,12 +146,13 @@ export default function KanbanBoard({
             {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         )}
-        <div className="ml-auto relative">
+        {/* 検索欄は狭い画面で幅いっぱい、sm以上で従来の固定幅(288px) */}
+        <div className="relative w-full sm:ml-auto sm:w-auto">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="🔍 チケット・タイトル・備考で検索"
-            className="w-72 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-[var(--color-primary)]/60"
+            className="w-full rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-sm text-[var(--color-text)] placeholder-gray-400 outline-none focus:border-[var(--color-primary)]/60 sm:w-72"
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-sub)] hover:text-[var(--color-text)]">×</button>

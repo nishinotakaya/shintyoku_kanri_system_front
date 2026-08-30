@@ -597,8 +597,8 @@ function SummaryView({
         </div>
       </div>
 
-      <div className="w-fit max-w-full rounded-xl border border-slate-300 shadow-sm">
-        <table className="min-w-full text-sm border-collapse">
+      <div className="max-w-full overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
+        <table className="min-w-max text-sm border-collapse">
           <thead>
             <tr className="bg-slate-100 text-slate-600 text-left text-xs">
               <SortTh label="月" k="month" sort={sort} onSort={toggleSort} className={FZ_HEAD[0]} />
@@ -804,8 +804,8 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
   const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 
   return (
-    <div className="w-fit max-w-full rounded-xl border border-slate-300 shadow-sm">
-      <table className="min-w-full text-sm border-collapse">
+    <div className="max-w-full overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
+      <table className="min-w-max text-sm border-collapse">
         <thead>
           <tr className="bg-slate-100 text-slate-600 text-left text-xs">
             <SortTh label="担当" k="assignee_name" sort={sort} onSort={toggleSort} className={FZ_HEAD[0]} />
