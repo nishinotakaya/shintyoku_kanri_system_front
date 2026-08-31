@@ -39,7 +39,8 @@ export default function CalendarPage() {
     }).catch(() => {})
   }, [didAlignToBilling])
 
-  const isAdmin = (me?.display_name ?? '').includes('西野')
+  // 苗字「西野」で判定すると同姓の一般ユーザーも管理者UIになるので、サーバの admin 判定を使う
+  const isAdmin = !!me?.admin
   const isOsumi = (me?.display_name ?? '').includes('大隅')
   const myCurrentSurname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
 
@@ -249,7 +250,7 @@ export default function CalendarPage() {
           teamSchedules={teamSchedules}
           onChanged={invalidateReports}
           canEditPerson={canEditPerson}
-          currentSurname={viewingSurname}
+          isAdmin={isAdmin}
           asUserId={asUserId}
           onExportSchedule={exportTeam}
           canExport={!isOsumi}

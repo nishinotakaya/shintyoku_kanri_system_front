@@ -356,7 +356,7 @@ export default function DayDetailModal({
   teamSchedules,
   onChanged,
   canEditPerson,
-  currentSurname,
+  isAdmin: isAdminProp,
   asUserId,
   onExportSchedule,
   canExport,
@@ -368,14 +368,15 @@ export default function DayDetailModal({
   teamSchedules: TeamScheduleEntry[]
   onChanged?: () => void
   canEditPerson?: (person: string) => boolean
-  currentSurname?: string
+  /** 管理者か(サーバの admin 判定)。苗字「西野」で判定すると同姓の一般ユーザーも管理者UIになるため親から渡す */
+  isAdmin?: boolean
   asUserId?: number | null
   onExportSchedule?: () => Promise<void> | void
   canExport?: boolean
 }) {
   const asUserParam = asUserId ? { as_user_id: asUserId } : {}
   const allowEdit = (person: string) => (canEditPerson ? canEditPerson(person) : true)
-  const isAdmin = (currentSurname ?? '').includes('西野')
+  const isAdmin = !!isAdminProp
   const [exporting, setExporting] = useState(false)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const handleExport = async () => {
