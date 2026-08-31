@@ -57,21 +57,29 @@ export default function ProgressPage() {
       if (selectedWorkspaceId === workspaceId) selectWorkspace(remainingWorkspaces[0]?.id ?? 0)
     } catch (e: any) { setWorkspaceMsg(e?.response?.data?.error ?? 'ワークスペース削除に失敗しました') }
   }
-  // 自分の progress_sheet_url を初期ロード (西野はデフォあり、川村はなし)
   // 表示名と admin かどうかは、担当者フィルタの初期値(本人 or 全担当者)を決めるのに使う
   const [me, setMe] = useState<{ display_name?: string | null; admin?: boolean }>({})
   useEffect(() => {
-    api.get<{ progress_sheet_url?: string | null; display_name?: string | null; admin?: boolean }>('/me')
-      .then((r) => {
-        if (r.data.progress_sheet_url) setSheetUrl(r.data.progress_sheet_url)
-        setMe({ display_name: r.data.display_name, admin: r.data.admin })
-      })
+    api.get<{ display_name?: string | null; admin?: boolean }>('/me')
+      .then((r) => setMe({ display_name: r.data.display_name, admin: r.data.admin }))
       .catch(() => {})
   }, [])
-  // sheetUrl を DB に保存 (書き出し時呼ぶ)
+
+  // スプレッドシートは Wing とリビングで別物なので、ワークスペースごとに持つ。
+  // タブを切り替えたら、そのワークスペースに保存されたURLへ入れ替える。
+  useEffect(() => {
+    setSheetUrl(selectedWorkspace?.sheet_url ?? '')
+  }, [selectedWorkspaceId, selectedWorkspace?.sheet_url])
+
+  // sheetUrl を選択中のワークスペースへ保存 (書き出し時に呼ぶ)
   const persistSheetUrl = async (url: string) => {
-    try { await api.patch('/me', { user: { progress_sheet_url: url } }) }
-    catch {}
+    if (!selectedWorkspaceId) return
+    try {
+      await api.patch(`/progress_workspaces/${selectedWorkspaceId}`, { sheet_url: url })
+      setWorkspaces((current) =>
+        current.map((workspace) => (workspace.id === selectedWorkspaceId ? { ...workspace, sheet_url: url } : workspace)),
+      )
+    } catch { /* 保存に失敗しても書き出し自体は成功しているので黙って続ける */ }
   }
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
@@ -307,13 +315,21 @@ export default function ProgressPage() {
         </div>
       )}
 
-      {/* スプレッドシート連携（Backlogタブのみ） */}
-      {selectedWorkspace?.source_type === 'backlog' && (
+      {/* スプレッドシート連携。Wing / リビングなど案件ごとに別シートを使うので、
+          タブを切り替えると URL もそのワークスペースのものに入れ替わる */}
+      {selectedWorkspace && selectedWorkspace.source_type !== 'trello' && (
       <div className="glass rounded-2xl p-5 shadow-md">
-        <div className="text-sm font-semibold text-[var(--color-text)]">Google スプレッドシート連携</div>
-        <div className="text-xs text-[var(--color-text-sub)]">書き出し: DB → シート / インポート: シート → DB（A列idで更新、無ければ追加）</div>
+        <div className="text-sm font-semibold text-[var(--color-text)]">
+          Google スプレッドシート連携（{selectedWorkspace.name}）
+        </div>
+        <div className="text-xs text-[var(--color-text-sub)]">
+          書き出し: DB → シート / インポート: シート → DB（A列のチェックが「本日行う」。J列のidで更新、無ければ追加）
+        </div>
+        <div className="text-[11px] text-[var(--color-text-sub)]">
+          このURLは「{selectedWorkspace.name}」専用に保存され、{selectedWorkspace.name}のタスクだけを書き出します
+        </div>
         <div className="mt-3 flex gap-2">
-          <input value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} placeholder="スプレッドシートの URL"
+          <input value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} placeholder={`${selectedWorkspace.name} のスプレッドシート URL`}
             className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5 text-sm text-[var(--color-text)] placeholder-gray-400" />
           <a
             href={sheetUrl || '#'}
@@ -330,7 +346,7 @@ export default function ProgressPage() {
           <button onClick={async () => {
             setExporting(true); setImportMsg(null)
             try {
-              const { data } = await api.post('/backlog/export_sheet', { spreadsheet_url: sheetUrl })
+              const { data } = await api.post('/backlog/export_sheet', { spreadsheet_url: sheetUrl, workspace_id: selectedWorkspaceId })
               await persistSheetUrl(sheetUrl)  // 書き出し成功 → DB に URL 保存
               setImportMsg(`書き出し完了: 現在のタスク ${data.active} 件 / 完了タスク ${data.completed} 件`)
             } catch (e: any) { setImportMsg(e?.response?.data?.error ?? '書き出し失敗') }
@@ -342,7 +358,8 @@ export default function ProgressPage() {
           <button onClick={async () => {
             setImporting(true); setImportMsg(null)
             try {
-              const { data } = await api.post('/backlog/import_sheet', { spreadsheet_url: sheetUrl })
+              const { data } = await api.post('/backlog/import_sheet', { spreadsheet_url: sheetUrl, workspace_id: selectedWorkspaceId })
+              await persistSheetUrl(sheetUrl)  // 取込成功 → このワークスペースのURLとして保存
               setImportMsg(`${data.imported} 件インポートしました`)
               window.location.reload()
             } catch (e: any) { setImportMsg(e?.response?.data?.error ?? 'インポート失敗') }
@@ -354,7 +371,7 @@ export default function ProgressPage() {
           <button onClick={async () => {
             setExporting(true); setImportMsg(null)
             try {
-              const { data } = await api.post('/backlog/export_sheet', { spreadsheet_url: sheetUrl, only_flagged: true })
+              const { data } = await api.post('/backlog/export_sheet', { spreadsheet_url: sheetUrl, only_flagged: true, workspace_id: selectedWorkspaceId })
               await persistSheetUrl(sheetUrl)
               setImportMsg(`前回/今日 書き出し完了: ${data.active} 件`)
             } catch (e: any) { setImportMsg(e?.response?.data?.error ?? '書き出し失敗') }
@@ -367,7 +384,7 @@ export default function ProgressPage() {
           <button onClick={async () => {
             setImporting(true); setImportMsg(null)
             try {
-              const { data } = await api.post('/backlog/import_sheet', { spreadsheet_url: sheetUrl, only_flagged: true })
+              const { data } = await api.post('/backlog/import_sheet', { spreadsheet_url: sheetUrl, only_flagged: true, workspace_id: selectedWorkspaceId })
               setImportMsg(`前回/今日 ${data.imported} 件インポートしました`)
               window.location.reload()
             } catch (e: any) { setImportMsg(e?.response?.data?.error ?? 'インポート失敗') }

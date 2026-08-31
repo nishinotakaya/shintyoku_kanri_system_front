@@ -6,6 +6,8 @@ export type ProgressWorkspace = {
   source_type: 'backlog' | 'notion' | 'trello' | 'manual'
   builtin: boolean
   position: number
+  /** 取込/書き出しに使う Google スプレッドシート。Wing とリビングで別のシートを使うため案件ごとに持つ */
+  sheet_url?: string | null
 }
 
 const SOURCE_TYPE_ICON: Record<ProgressWorkspace['source_type'], string> = {
