@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me, PickableUser } from '../lib/api'
+import { openPdfWindow, showPdf } from '../lib/openPdf'
 import PurchaseOrderMailModal from './PurchaseOrderMailModal'
 import PurchaseOrderItemsTable from './PurchaseOrderItemsTable'
 
@@ -295,14 +296,12 @@ export default function PurchaseOrderForm({ me, category, position = 0, onRemove
     setPreviewUrl(null); setPreviewLoading(false)
   }
   const downloadDirectly = async () => {
+    const pdfWindow = openPdfWindow()
     try {
       const spec = await purchaseOrderFetchSpec()
-      const url = URL.createObjectURL(spec.blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = spec.filename
-      document.body.appendChild(a); a.click(); a.remove()
-      URL.revokeObjectURL(url)
+      showPdf(pdfWindow, spec.blob, spec.filename)
     } catch (e: any) {
+      pdfWindow?.close()
       setErr(e?.message ?? 'ダウンロード失敗')
     }
   }

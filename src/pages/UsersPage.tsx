@@ -62,7 +62,8 @@ export default function UsersPage() {
   }
 
   const FEATURES: { key: string; label: string }[] = [
-    { key: 'attendance', label: '勤怠/カレンダー' },
+    { key: 'calendar', label: 'カレンダー' },
+    { key: 'attendance', label: '勤怠' },
     { key: 'progress', label: '進捗' },
     { key: 'purchase_orders', label: '注文書' },
     { key: 'invoices', label: '請求書' },
