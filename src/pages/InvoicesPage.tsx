@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { api } from '../lib/api'
 import type { Me, PickableUser } from '../lib/api'
+import { isWorkCategory, visibleWorkCategories } from '../lib/workCategories'
 import { fetchExportBlob } from '../components/FolderSaveButtons'
-import { openPdfWindow, showPdf } from '../lib/openPdf'
+import { showPdf } from '../lib/openPdf'
 import LabopMailModal from '../components/LabopMailModal'
 import Modal from '../components/Modal'
 import { LabeledField, fieldInputCls } from '../components/InvoiceFormFields'
@@ -59,6 +60,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   living: 'タマリビング',
   techleaders: 'テックリーダーズ',
   resystems: 'REシステムズ',
+  transport: '運送',
   video: '動画編集',
 }
 const KIND_LABELS: Record<string, string> = {
@@ -223,12 +225,10 @@ export default function InvoicesPage() {
     catch (e: any) { alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
   }
   const downloadIssuedPdf = async (p: IssuedPdf) => {
-    const pdfWindow = openPdfWindow()
     try {
       const res = await api.get(`/issued_invoice_pdfs/${p.id}/download`, { responseType: 'blob' })
-      showPdf(pdfWindow, res.data as Blob, p.filename)
+      showPdf(res.data as Blob, p.filename)
     } catch (e: any) {
-      pdfWindow?.close()
       alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
   }
@@ -513,7 +513,6 @@ export default function InvoicesPage() {
   // 統合 + DB 保存 + 同時にローカル DL（save=1 を立てて呼ぶ）
   const saveMergedToDb = async (m: any, format: 'pdf' | 'xlsx' = 'pdf') => {
     const busyKey = format === 'xlsx' ? `${m.key}-save-xlsx` : `${m.key}-save`
-    const pdfWindow = format === 'pdf' ? openPdfWindow() : null
     setMergeBusy(busyKey)
     try {
       const path = m.kind === 'merged_expense'
@@ -532,7 +531,7 @@ export default function InvoicesPage() {
         ? `立替金_${surnames}_${cat}_${ym}.${format}`
         : `${surnames}_請求書_${cat}_${ym}.${format}`
       if (format === 'pdf') {
-        showPdf(pdfWindow, res.data as Blob, filename)
+        showPdf(res.data as Blob, filename)
       } else {
         const url = URL.createObjectURL(res.data as Blob)
         const a = document.createElement('a')
@@ -541,7 +540,6 @@ export default function InvoicesPage() {
       }
       await load()
     } catch (e: any) {
-      pdfWindow?.close()
       alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setMergeBusy(null) }
   }
@@ -608,7 +606,6 @@ export default function InvoicesPage() {
   }
   const downloadMerged = async (m: any, format: 'pdf' | 'xlsx') => {
     const busyKey = `${(m as any).key ?? m.ids.join(',')}-${format}`
-    const pdfWindow = format === 'pdf' ? openPdfWindow() : null
     setMergeBusy(busyKey)
     try {
       const blob = await fetchMergedBlob(m, format)
@@ -618,7 +615,7 @@ export default function InvoicesPage() {
       const ext = format
       const filename = m.kind === 'merged_expense' ? `立替金_${surnames}_${cat}_${ym}.${ext}` : `${surnames}_請求書_${cat}_${ym}.${ext}`
       if (format === 'pdf') {
-        showPdf(pdfWindow, blob, filename)
+        showPdf(blob, filename)
       } else {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -626,7 +623,6 @@ export default function InvoicesPage() {
         URL.revokeObjectURL(url)
       }
     } catch (e: any) {
-      pdfWindow?.close()
       alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setMergeBusy(null) }
   }
@@ -766,7 +762,6 @@ export default function InvoicesPage() {
   }
 
   const downloadInvoice = async (s: Submission, target: 'self' | 'labop') => {
-    const pdfWindow = openPdfWindow()
     setBusyId(`${s.kind}-${s.id}`)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
@@ -779,9 +774,8 @@ export default function InvoicesPage() {
       const targetSuffix = target === 'labop' ? '_株式会社ラボップ' : ''
       const filename = `${surname}_${kindLabel}_${s.year}年_${s.month}月分${targetSuffix}.pdf`
       const { blob, filename: fn } = await fetchExportBlob(path, params, filename)
-      showPdf(pdfWindow, blob, fn)
+      showPdf(blob, fn)
     } catch (e: any) {
-      pdfWindow?.close()
       alert(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
       setBusyId(null)
@@ -1263,8 +1257,12 @@ export default function InvoicesPage() {
         <div className="flex items-center gap-2">
           {me && (
             <button onClick={() => {
-                // 非admin(須崎さん等)は「動画編集」をデフォルトに。明細はデフォルトで1行出す。
-                setCreateForm((f) => ({ ...f, category: me.admin ? f.category : 'video' }))
+                // 非admin(須崎さん等)は「動画編集」をデフォルトに。work_categories を設定されたユーザー(運送の雄太郎等)は
+                // その先頭カテゴリをデフォルトにする。明細はデフォルトで1行出す。
+                setCreateForm((f) => ({
+                  ...f,
+                  category: me.admin ? f.category : (me.work_categories?.length ? visibleWorkCategories(me)[0] : 'video'),
+                }))
                 setCreateItems((items) => (items.length > 0 ? items : [{ label: '', qty: 1, unit: '式', unit_price: 0, amount: 0 }]))
                 setCreating(true)
               }}
@@ -1822,16 +1820,10 @@ export default function InvoicesPage() {
                         await downloadMerged(previewMergeContext, 'pdf')
                       } finally { setPreviewSaveBusy(false) }
                     } else {
-                      // 単一: 取得済みの PDF を別タブで開く（個別 submission は元々 DB にある）
-                      const pdfWindow = openPdfWindow()
-                      if (pdfWindow) {
-                        pdfWindow.location.href = previewUrl
-                      } else {
-                        const a = document.createElement('a')
-                        a.href = previewUrl
-                        a.download = `${previewSub!.user_display_name}_${previewSub!.kind === 'expense' ? '立替金' : '請求書'}_${previewSub!.year}年_${previewSub!.month}月分.pdf`
-                        document.body.appendChild(a); a.click(); a.remove()
-                      }
+                      // 単一: 取得済みの PDF をモーダルで表示（個別 submission は元々 DB にある）
+                      const filename = `${previewSub!.user_display_name}_${previewSub!.kind === 'expense' ? '立替金' : '請求書'}_${previewSub!.year}年_${previewSub!.month}月分.pdf`
+                      const blob = await fetch(previewUrl).then((r) => r.blob())
+                      showPdf(blob, filename)
                     }
                   }}
                   disabled={previewSaveBusy}
@@ -1924,7 +1916,11 @@ export default function InvoicesPage() {
                 </LabeledField>
                 <LabeledField label="カテゴリ">
                   <select value={createForm.category} onChange={(e) => setCreateForm({ ...createForm, category: e.target.value })} className={fieldInputCls}>
-                    {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    {Object.entries(CATEGORY_LABELS)
+                      // 勤怠カテゴリ(wings/living/techleaders/resystems/transport)は自分の見える範囲だけに絞る。
+                      // video 等それ以外のカテゴリは従来どおり常に選べる。
+                      .filter(([key]) => (isWorkCategory(key) ? visibleWorkCategories(me).includes(key) : true))
+                      .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </LabeledField>
                 <LabeledField label="種別">

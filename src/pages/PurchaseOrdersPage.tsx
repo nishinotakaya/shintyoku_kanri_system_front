@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me, PickableUser, IssuedPurchaseOrderSetting } from '../lib/api'
 import { buildDeliveryDeadline } from '../lib/purchaseOrderPeriod'
-import { openPdfWindow, showPdf } from '../lib/openPdf'
+import { showPdf } from '../lib/openPdf'
 import Modal from '../components/Modal'
 import RowActions from '../components/RowActions'
 import PurchaseOrderBulkMailModal from '../components/PurchaseOrderBulkMailModal'
@@ -428,7 +428,6 @@ export default function PurchaseOrdersPage() {
   }
 
   const downloadPdf = async (po: PO) => {
-    const pdfWindow = openPdfWindow()
     try {
       if (po.kind === 'issued') {
         // PurchaseOrderSetting からその場で payload を組み立てて /exports/purchase_order.pdf へ
@@ -451,13 +450,12 @@ export default function PurchaseOrdersPage() {
           items: s.items ?? [{ description: s.subject ?? '', qty: 1, unit: '式', unit_price: subtotal, amount: subtotal }],
         }
         const res = await api.post('/exports/purchase_order.pdf', payload, { responseType: 'blob' })
-        showPdf(pdfWindow, res.data as Blob, `発注書_${po.subject ?? po.category}_${po.period_start ?? ''}.pdf`)
+        showPdf(res.data as Blob, `発注書_${po.subject ?? po.category}_${po.period_start ?? ''}.pdf`)
         return
       }
       const res = await api.get(`/received_purchase_orders/${po.id}/download`, { responseType: 'blob' })
-      showPdf(pdfWindow, res.data as Blob, po.filename ?? `発注書_${po.order_no}.pdf`)
+      showPdf(res.data as Blob, po.filename ?? `発注書_${po.order_no}.pdf`)
     } catch (e: any) {
-      pdfWindow?.close()
       alert(`PDF DL 失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { fetchExportBlob } from './FolderSaveButtons'
-import { openPdfWindow, showPdf } from '../lib/openPdf'
+import { showPdf } from '../lib/openPdf'
 import LabopMailModal from './LabopMailModal'
 import InvoiceSubmitConfirmModal from './InvoiceSubmitConfirmModal'
 import InvoiceItemsEditor, { applyInvoiceItemPatch, emptyInvoiceItem } from './InvoiceItemsEditor'
@@ -359,7 +359,6 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
 
   // 申請者本人の PDF DL (admin 視点で as_user_id 使う)
   const downloadAsApplicant = async (s: Submission) => {
-    const pdfWindow = openPdfWindow()
     setBusy(true); setMsg(null)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
@@ -371,10 +370,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
         category: s.category,
         as_user_id: s.user_id,
       }, filename)
-      showPdf(pdfWindow, blob, fn)
+      showPdf(blob, fn)
       setMsg('ダウンロードしました')
     } catch (e: any) {
-      pdfWindow?.close()
       setMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
       setBusy(false)
@@ -382,9 +380,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
   }
 
   // ラボップ宛 DL (admin 限定。submission に保存された override が PDF に反映)
-  // pdfWindow: 呼び出し側 (labop モーダルの保存ボタン) が saveLabop の await をまたぐ前に
-  // クリックハンドラの先頭で同期的に確保したタブを渡す。未指定ならここで確保する。
-  const downloadAsLabop = async (s: Submission, pdfWindow: Window | null = null) => {
+  const downloadAsLabop = async (s: Submission) => {
     setLabopSaving(true); setLabopMsg(null)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
@@ -394,10 +390,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
         category: s.category,
         invoice_submission_id: s.id,
       }, filename)
-      showPdf(pdfWindow, blob, fn)
+      showPdf(blob, fn)
       setLabopMsg('ダウンロードしました')
     } catch (e: any) {
-      pdfWindow?.close()
       setLabopMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
       setLabopSaving(false)
@@ -406,7 +401,6 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
 
   // ラボップ宛 立替金 DL (PDF or Excel)。承認済の expense submission ID を渡す
   const downloadExpenseAsLabop = async (s: Submission, ext: 'pdf' | 'xlsx') => {
-    const pdfWindow = ext === 'pdf' ? openPdfWindow() : null
     setBusy(true); setMsg(null)
     try {
       const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
@@ -419,13 +413,12 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
         invoice_submission_id: s.id,
       }, fallback)
       if (ext === 'pdf') {
-        showPdf(pdfWindow, blob, fn)
+        showPdf(blob, fn)
       } else {
         downloadBlob(blob, fn)
       }
       setMsg('ダウンロードしました')
     } catch (e: any) {
-      pdfWindow?.close()
       setMsg(`DL失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
       setBusy(false)
@@ -965,12 +958,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                 </button>
                 <button
                   onClick={async () => {
-                    const pdfWindow = openPdfWindow()
                     const updated = await saveLabop(labopModalFor)
                     if (updated) {
-                      await downloadAsLabop(updated, pdfWindow)
-                    } else {
-                      pdfWindow?.close()
+                      await downloadAsLabop(updated)
                     }
                   }}
                   disabled={labopSaving}
