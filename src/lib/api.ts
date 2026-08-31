@@ -162,6 +162,10 @@ export type SkillSheet = {
   spreadsheet_url: string | null
   spreadsheet_id: string | null
   gid: string | null
+  /** 書き出しテンプレート。engineer=版面ごと生成 / creator=既存テンプレのタブへ値だけ流し込む */
+  template_type: 'engineer' | 'creator'
+  /** creator のときに値を流し込む先のタブ(gid) */
+  export_gid: string | null
   engineer_name: string | null
   age: string | null
   gender: string | null

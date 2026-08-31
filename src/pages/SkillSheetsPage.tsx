@@ -43,6 +43,23 @@ export default function SkillSheetsPage() {
   const [openProjects, setOpenProjects] = useState<Record<number, boolean>>({}) // 案件アコーディオンの開閉
   const dragIndex = useRef<number | null>(null) // 案件 DnD 並び替えのドラッグ元
   const [autoSavedAt, setAutoSavedAt] = useState<Date | null>(null) // 自動保存の最終時刻
+  // 書き出し先タブの選択肢。creator テンプレートは既存テンプレの入ったタブへ値を流し込むため、
+  // どのタブに書くかを選べないと「テンプレの無い空シートに書いて失敗」する。
+  type SheetTab = { gid: string; title: string; columns: number; creator_ready: boolean }
+  const [sheetTabs, setSheetTabs] = useState<SheetTab[]>([])
+  const [tabsLoading, setTabsLoading] = useState(false)
+
+  const loadSheetTabs = async (sheetId: number) => {
+    setTabsLoading(true)
+    try {
+      const r = await api.get<{ tabs: SheetTab[] }>(`/skill_sheets/${sheetId}/sheet_tabs`)
+      setSheetTabs(r.data.tabs)
+    } catch (e: any) {
+      setErr(e?.response?.data?.error ?? 'タブ一覧を取得できませんでした')
+    } finally {
+      setTabsLoading(false)
+    }
+  }
   const [profileTab, setProfileTab] = useState<'normal' | 'youtube'>('normal') // 自己PR: 通常 / YouTube用 切替
   const lastSavedRef = useRef<string | null>(null) // 最後に保存した payload(JSON) — 自動保存の差分判定
   const lastSheetIdRef = useRef<number | null>(null) // 読み込んだシートID — 切替検知
@@ -336,6 +353,8 @@ export default function SkillSheetsPage() {
   function toPayload(s: SkillSheet) {
     return {
       spreadsheet_url: url || s.spreadsheet_url,
+      template_type: s.template_type,
+      export_gid: s.export_gid,
       engineer_name: s.engineer_name, age: s.age, gender: s.gender,
       address: s.address, start_date: s.start_date, nearest_station: s.nearest_station,
       specialties: s.specialties, skills: s.skills, duties: s.duties, self_pr: s.self_pr,
@@ -448,6 +467,73 @@ export default function SkillSheetsPage() {
             {busy === 'import' ? '読み込み中…' : '📥 読み込み'}
           </button>
         </div>
+        {/* 書き出しテンプレートの選択。
+            engineer = 版面ごと組み立てる / creator = 既存テンプレのタブへ値だけ流し込む。
+            creator は書き出し先タブを間違えるとテンプレの無い空シートに書いて失敗するので、
+            タブを一覧から選べるようにする。 */}
+        {sheet && (
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+            <div className="text-xs font-semibold text-[var(--color-text)]">書き出しテンプレート</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {([
+                { key: 'engineer', label: '🧑‍💻 エンジニア用', hint: '版面ごと自動で組み立てます' },
+                { key: 'creator', label: '🎨 クリエイター用', hint: '既存テンプレートのタブへ値だけ入れます' },
+              ] as const).map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => setSheet((current) => (current ? { ...current, template_type: option.key } : current))}
+                  title={option.hint}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                    sheet.template_type === option.key
+                      ? 'bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white shadow'
+                      : 'border border-[var(--color-border)] bg-white text-[var(--color-text-sub)]'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <span className="text-[11px] text-[var(--color-text-sub)]">
+                {sheet.template_type === 'creator'
+                  ? 'デザイン・動画編集など。テンプレートを入れたタブを下で選んでください'
+                  : 'エンジニア。タブの版面はシステムが作り直します'}
+              </span>
+            </div>
+
+            {sheet.template_type === 'creator' && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-[var(--color-text-sub)]">書き出し先タブ:</span>
+                <select
+                  value={sheet.export_gid ?? ''}
+                  onChange={(e) =>
+                    setSheet((current) => (current ? { ...current, export_gid: e.target.value || null } : current))
+                  }
+                  className="min-w-0 max-w-full flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs"
+                >
+                  <option value="">（未選択）</option>
+                  {sheetTabs.map((tab) => (
+                    <option key={tab.gid} value={tab.gid}>
+                      {tab.title}{tab.creator_ready ? '' : `（テンプレ未設定・${tab.columns}列）`}
+                    </option>
+                  ))}
+                  {/* 一覧に無い保存済みの値も選択肢として残す(取得前でも今の設定が見えるように) */}
+                  {sheet.export_gid && !sheetTabs.some((tab) => tab.gid === sheet.export_gid) && (
+                    <option value={sheet.export_gid}>gid={sheet.export_gid}（このシートに無いタブ）</option>
+                  )}
+                </select>
+                <button onClick={() => loadSheetTabs(sheet.id)} disabled={tabsLoading}
+                  className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] disabled:opacity-50">
+                  {tabsLoading ? '取得中…' : '🔄 タブを取得'}
+                </button>
+                {sheetTabs.length > 0 && !sheetTabs.some((tab) => tab.gid === sheet.export_gid) && (
+                  <span className="text-[11px] font-semibold text-rose-600">
+                    ⚠ 選択中のタブがこのスプレッドシートにありません。書き出すと失敗します
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2 flex-wrap">
           {canGenerate && (
             <button onClick={doGenerate} disabled={!!busy}
