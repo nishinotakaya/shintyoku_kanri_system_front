@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
+import { DEFAULT_WORK_CATEGORIES, WORK_CATEGORY_LABELS, visibleWorkCategories } from '../lib/workCategories'
+import type { WorkCategory } from '../lib/workCategories'
 import ClockCard from '../components/ClockCard'
 import WorkReportTable from '../components/WorkReportTable'
 import ExpenseTable from '../components/ExpenseTable'
@@ -16,6 +18,15 @@ import { billingMonthForToday } from '../lib/billingMonth'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
+// work_categories が未設定なら、従来どおり admin=全4カテゴリ／非admin=Wings・リビングのみ という見え方を維持する。
+// work_categories が設定されているユーザー(例: 運送の雄太郎)は admin/非admin に関わらずその設定に従う。
+const visibleCategoriesFor = (me: Me | null): WorkCategory[] => {
+  const legacyCategories = me?.admin
+    ? DEFAULT_WORK_CATEGORIES
+    : DEFAULT_WORK_CATEGORIES.filter((key) => key === 'wings' || key === 'living')
+  return me?.work_categories?.length ? visibleWorkCategories(me) : legacyCategories
+}
+
 export default function Dashboard() {
   // 締日基準で今日が含まれる請求月を初期表示（closing_day=25 既定）
   const initial = billingMonthForToday(25)
@@ -25,7 +36,7 @@ export default function Dashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'account' | 'invoice'>('account')
   const [defaultTransit, setDefaultTransit] = useState<{ section: string; fee: number } | null>(null)
-  const [category, setCategory] = useState<'wings' | 'living' | 'techleaders' | 'resystems'>('wings')
+  const [category, setCategory] = useState<WorkCategory>('wings')
   const [me, setMe] = useState<Me | null>(null)
 
   // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
@@ -156,6 +167,11 @@ export default function Dashboard() {
     document.title = `勤怠 ${year}年${month}月 — 進捗管理システム`
     api.get('/me').then((r) => {
       setMe(r.data as Me)
+      // 見えないカテゴリを選んだままにしない（見える範囲が変わった/初回ロード時の補正）
+      const categoriesForFetchedMe = visibleCategoriesFor(r.data)
+      if (!categoriesForFetchedMe.includes(category)) {
+        setCategory(categoriesForFetchedMe[0])
+      }
       if (r.data.default_transit_from && r.data.default_transit_fee) {
         setDefaultTransit({ section: `${r.data.default_transit_from} ~ ${r.data.default_transit_to}`, fee: r.data.default_transit_fee })
       }
@@ -166,6 +182,7 @@ export default function Dashboard() {
       }
       setDidAlignToBilling(true)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, didAlignToBilling])
 
   const refetchAll = () => {
@@ -285,16 +302,12 @@ export default function Dashboard() {
             </select>
           )}
           <div className="flex gap-1">
-            {(() => {
-              const allCategories = [['wings', 'Wings'], ['living', 'リビング'], ['techleaders', 'テックリーダーズ'], ['resystems', 'REシステムズ']] as const
-              const visibleCategories = isAdmin ? allCategories : allCategories.filter(([key]) => key === 'wings' || key === 'living')
-              return visibleCategories.map(([key, label]) => (
-                <button key={key} onClick={() => setCategory(key)}
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    category === key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] border border-[var(--color-border)]'
-                  }`}>{label}</button>
-              ))
-            })()}
+            {visibleCategoriesFor(me).map((key) => (
+              <button key={key} onClick={() => setCategory(key)}
+                className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                  category === key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] border border-[var(--color-border)]'
+                }`}>{WORK_CATEGORY_LABELS[key]}</button>
+            ))}
           </div>
           <button
             onClick={() => { setSettingsTab('account'); setSettingsOpen(true) }}
@@ -357,7 +370,7 @@ export default function Dashboard() {
             カードが広がってページ全体が横に溢れる */}
         <div className="flex flex-wrap items-center justify-between gap-y-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] uppercase tracking-widest text-[var(--color-text-sub)]">請求書プレビュー — {({ wings: 'Wings', living: 'リビング', techleaders: 'テックリーダーズ', resystems: 'REシステムズ' } as const)[category]}</div>
+            <div className="text-[10px] uppercase tracking-widest text-[var(--color-text-sub)]">請求書プレビュー — {WORK_CATEGORY_LABELS[category]}</div>
             <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
               {invoiceQ.data?.invoice_no && <>請求番号: {invoiceQ.data.invoice_no} ／ </>}
               発行日 {invoiceQ.data?.issue_date ?? '—'} ／ 支払期限 {invoiceQ.data?.due_date ?? '—'}
@@ -452,7 +465,8 @@ export default function Dashboard() {
         <div className={`text-right text-[10px] ${expenseRegMsg.startsWith('✅') ? 'text-emerald-600' : 'text-red-500'}`}>{expenseRegMsg}</div>
       )}
 
-      {me?.can_issue_orders && <PurchaseOrderList me={me} category={category} />}
+      {/* 注文書(PurchaseOrderList)は wings/living/techleaders/resystems 専用。運送(transport)には対象の注文書が無い */}
+      {me?.can_issue_orders && category !== 'transport' && <PurchaseOrderList me={me} category={category} />}
 
       {selfMailOpen && (
         <SelfInvoiceMailModal year={year} month={month} category={category} onClose={() => setSelfMailOpen(false)} />

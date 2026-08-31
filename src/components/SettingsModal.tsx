@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import type { Me } from '../lib/api'
+import { visibleWorkCategories, WORK_CATEGORY_LABELS } from '../lib/workCategories'
+import type { WorkCategory } from '../lib/workCategories'
 import DocumentFolderSync from './DocumentFolderSync'
 
 type InvoiceSetting = {
@@ -47,6 +50,7 @@ export default function SettingsModal({
   }, [open, initialTab])
 
   const [isAdmin, setIsAdmin] = useState(false)
+  const [me, setMe] = useState<Me | null>(null)
 
   // === admin: ユーザー管理 ===
   type AdminUser = { id: number; email: string; display_name: string | null; admin: boolean; has_google: boolean; created_at: string | null }
@@ -97,7 +101,7 @@ export default function SettingsModal({
   const [routes, setRoutes] = useState<{ from: string; to: string; fee: number; line: string }[]>([])
   const [commuteDays, setCommuteDays] = useState<number[]>([1, 2, 3, 4, 5])
   const [inv, setInv] = useState<InvoiceSetting | null>(null)
-  const [invCat, setInvCat] = useState<'wings' | 'living' | 'techleaders' | 'resystems'>('wings')
+  const [invCat, setInvCat] = useState<WorkCategory>('wings')
   useEffect(() => {
     if (!open) return
     api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
@@ -121,6 +125,12 @@ export default function SettingsModal({
     setTrelloKey('')
     setTrelloToken('')
     api.get('/me').then((r) => {
+      setMe(r.data as Me)
+      // 見えないカテゴリを選んだままにしない（見える範囲が変わった/初回ロード時の補正）
+      const categoriesForFetchedMe = visibleWorkCategories(r.data)
+      if (!categoriesForFetchedMe.includes(invCat)) {
+        setInvCat(categoriesForFetchedMe[0])
+      }
       setKeySet(!!r.data.openai_api_key_set)
       setHeygenKeySet(!!r.data.heygen_api_key_set)
       setTrelloKeySet(!!r.data.trello_api_key_set)
@@ -569,11 +579,11 @@ export default function SettingsModal({
         {tab === 'invoice' && inv && (
           <div className="mt-5">
             <div className="flex gap-2 mb-4">
-              {([['wings', 'Wings'], ['living', 'リビング'], ['techleaders', 'テックリーダーズ'], ['resystems', 'REシステムズ']] as const).map(([key, label]) => (
+              {visibleWorkCategories(me).map((key) => (
                 <button key={key} onClick={() => setInvCat(key)}
                   className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
                     invCat === key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)]'
-                  }`}>{label}</button>
+                  }`}>{WORK_CATEGORY_LABELS[key]}</button>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-3">

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
 import { api } from '../lib/api'
 import type { Period, WorkReport } from '../lib/api'
+import { fieldLabel } from '../lib/workCategories'
+import type { WorkCategory } from '../lib/workCategories'
 import FolderSaveButtons, { fetchExportBlob } from './FolderSaveButtons'
 
 const wd = '日月火水木金土'
@@ -54,7 +56,7 @@ export default function WorkReportTable({
   reports: WorkReport[]
   onChanged: () => void
   defaultTransit?: { section: string; fee: number } | null
-  category?: string
+  category?: WorkCategory
   asUserId?: number | null
 }) {
   const asUserParam = asUserId ? { as_user_id: asUserId } : {}
@@ -169,10 +171,10 @@ export default function WorkReportTable({
           <thead className="sticky top-0 bg-gray-50 backdrop-blur">
             <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)]">
               <th className="px-4 py-1.5 w-32">日付</th>
-              <th className="px-2 py-1.5">作業内容</th>
+              <th className="px-2 py-1.5">{fieldLabel(category, 'content')}</th>
               <th className="px-2 py-1.5 w-20 text-right">時間</th>
-              {category !== 'living' && <th className="px-2 py-1.5 w-32">乗車区間</th>}
-              {category !== 'living' && <th className="px-2 py-1.5 w-24 text-right">交通費</th>}
+              {category !== 'living' && <th className="px-2 py-1.5 w-32">{fieldLabel(category, 'transit_section')}</th>}
+              {category !== 'living' && <th className="px-2 py-1.5 w-24 text-right">{fieldLabel(category, 'transit_fee')}</th>}
               <th className="px-2 py-1.5 w-10"></th>
             </tr>
           </thead>

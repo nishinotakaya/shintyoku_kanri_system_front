@@ -1,11 +1,15 @@
 import axios from 'axios'
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  ? `${import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '')}/api/v1`
-  : '/api/v1'
+// VITE_API_BASE_URL 未設定時は同一オリジンの /api/v1 を使う。
+// 認証あり api と、契約書の公開ページ用 publicApi (src/lib/contracts.ts) の両方で共有する。
+export function resolveApiBaseUrl(): string {
+  return import.meta.env.VITE_API_BASE_URL
+    ? `${import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '')}/api/v1`
+    : '/api/v1'
+}
 
 export const api = axios.create({
-  baseURL: apiBaseUrl,
+  baseURL: resolveApiBaseUrl(),
 })
 
 api.interceptors.request.use((config) => {
@@ -94,6 +98,7 @@ export type Me = {
   writable_data_sources?: string[]
   sub_admin?: boolean
   gender?: 'male' | 'female' | null
+  work_categories?: string[] | null
 }
 
 // スキルシート

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { WORK_CATEGORY_KEYS, WORK_CATEGORY_LABELS, visibleWorkCategories } from '../lib/workCategories'
+import type { WorkCategory } from '../lib/workCategories'
 
 type AdminUser = {
   id: number
@@ -13,6 +15,8 @@ type AdminUser = {
   managee_ids: number[]
   data_source_permissions: DataSourcePermission[]
   calendar_persons: string[]
+  // 見える勤怠カテゴリ。null = 従来どおり全カテゴリ(wings/living/techleaders/resystems)
+  work_categories: string[] | null
 }
 
 type DataSourcePermission = {
@@ -37,6 +41,7 @@ export default function UsersPage() {
   const [meId, setMeId] = useState<number | null>(null)
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
   const [editingFeatures, setEditingFeatures] = useState<number | null>(null)
+  const [editingWorkCategories, setEditingWorkCategories] = useState<number | null>(null)
   const [editingSources, setEditingSources] = useState<number | null>(null)
   const [editingCalendarPersons, setEditingCalendarPersons] = useState<number | null>(null)
   const [calendarPersonCandidates, setCalendarPersonCandidates] = useState<string[]>([])
@@ -67,6 +72,7 @@ export default function UsersPage() {
     { key: 'progress', label: '進捗' },
     { key: 'purchase_orders', label: '注文書' },
     { key: 'invoices', label: '請求書' },
+    { key: 'contracts', label: '契約書' },
     { key: 'skill_sheet', label: 'スキルシート' },
     { key: 'skill_sheet_generate', label: '実績から生成' },
     { key: 'interview_mindmap', label: '面談対策' },
@@ -92,6 +98,22 @@ export default function UsersPage() {
     if (enabled.length === 0) return 'なし'
     if (enabled.length === FEATURES.length) return '全画面'
     return enabled.map((f) => f.label).join('、')
+  }
+
+  // work_categories 未設定(null)のユーザーは従来どおり全カテゴリが見えている扱いにする
+  const workCategoryChecked = (u: AdminUser, key: WorkCategory) => visibleWorkCategories(u).includes(key)
+
+  const toggleWorkCategory = (u: AdminUser, key: WorkCategory) => {
+    const current = visibleWorkCategories(u)
+    const next = current.includes(key) ? current.filter((category) => category !== key) : [...current, key]
+    // 全解除(0件)なら null に戻す = 従来どおり全カテゴリ
+    patchUser(u.id, { work_categories: next.length === 0 ? null : next })
+  }
+
+  // 折りたたみ時の要約（work_categories 未設定は「全カテゴリ」表示）
+  const workCategorySummary = (u: AdminUser) => {
+    if (!u.work_categories?.length) return '全カテゴリ'
+    return visibleWorkCategories(u).map((key) => WORK_CATEGORY_LABELS[key]).join('、')
   }
 
   const permissionOf = (u: AdminUser, sourceKey: string): DataSourcePermission =>
@@ -146,6 +168,7 @@ export default function UsersPage() {
               <th className="px-4 py-2">メール</th>
               <th className="px-4 py-2 w-24 text-center">権限</th>
               <th className="px-4 py-2 w-48">閲覧できる画面</th>
+              <th className="px-4 py-2 w-44">勤怠カテゴリ</th>
               <th className="px-4 py-2 w-56">案件データ（進捗）</th>
               <th className="px-4 py-2 w-48">カレンダーで見える人</th>
               <th className="px-4 py-2 w-56">管理対象（サブ管理者）</th>
@@ -154,9 +177,9 @@ export default function UsersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-[var(--color-text-sub)]">読み込み中…</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg)] align-top">
                 <td className="px-4 py-2 text-xs font-medium text-[var(--color-text)] whitespace-nowrap">{u.display_name || '—'}</td>
@@ -180,6 +203,21 @@ export default function UsersPage() {
                         <label key={f.key} className="flex items-center gap-1.5 text-[11px]">
                           <input type="checkbox" checked={featureChecked(u, f.key)} onChange={() => toggleFeature(u, f.key)} />
                           {f.label}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <div className="text-[11px] text-[var(--color-text)] break-words">{workCategorySummary(u)}</div>
+                  <button onClick={() => setEditingWorkCategories(editingWorkCategories === u.id ? null : u.id)}
+                    className="mt-1 text-[10px] text-indigo-600">{editingWorkCategories === u.id ? '閉じる' : 'カテゴリを編集'}</button>
+                  {editingWorkCategories === u.id && (
+                    <div className="mt-1 rounded-md border border-[var(--color-border)] p-2 space-y-1 max-h-52 overflow-y-auto">
+                      {WORK_CATEGORY_KEYS.map((key) => (
+                        <label key={key} className="flex items-center gap-1.5 text-[11px]">
+                          <input type="checkbox" checked={workCategoryChecked(u, key)} onChange={() => toggleWorkCategory(u, key)} />
+                          {WORK_CATEGORY_LABELS[key]}
                         </label>
                       ))}
                     </div>

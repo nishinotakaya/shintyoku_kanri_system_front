@@ -1,0 +1,208 @@
+import axios from 'axios'
+import { api, resolveApiBaseUrl } from './api'
+
+// 相手向け公開ページ(/sign/contracts/:token)はログイン不要。
+// api インスタンスは interceptor で JWT を自動付与するため、公開 API には使わず専用インスタンスを用いる。
+export const publicApi = axios.create({
+  baseURL: resolveApiBaseUrl(),
+})
+
+export type ContractParty = {
+  name: string
+  address: string
+  representative: string
+}
+
+export type ContractArticle = {
+  heading: string
+  body: string
+}
+
+export type ContractStatus = 'draft' | 'sent' | 'signed' | 'void'
+
+export const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
+  draft: '下書き',
+  sent: '送付済',
+  signed: '署名済',
+  void: '無効',
+}
+
+export const CONTRACT_STATUS_BADGE_CLASS: Record<ContractStatus, string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  sent: 'bg-sky-100 text-sky-700',
+  signed: 'bg-emerald-100 text-emerald-700',
+  void: 'bg-red-100 text-red-700',
+}
+
+// 発行者(認証あり)向けの契約書 JSON
+export type Contract = {
+  id: number
+  title: string
+  status: ContractStatus
+  party_a: ContractParty
+  party_b: ContractParty
+  contract_date: string | null
+  start_on: string | null
+  end_on: string | null
+  articles: ContractArticle[]
+  special_terms: string | null
+  share_url?: string // issue の応答にだけ含む
+  share_expires_at: string | null
+  sent_at: string | null
+  signed_at: string | null
+  signer_name: string | null
+  content_sha256: string | null
+  has_signed_pdf: boolean
+  editable: boolean
+  user_name: string
+  created_at: string
+  updated_at: string
+}
+
+// 編集フォームで扱う入力値。日付は <input type="date"> 用に空文字許容の string で保持し、
+// 送信直前に null へ変換する(PurchaseOrdersPage の period_start/period_end と同じ扱い)。
+export type ContractFormInput = {
+  title: string
+  party_a_name: string
+  party_a_address: string
+  party_a_representative: string
+  party_b_name: string
+  party_b_address: string
+  party_b_representative: string
+  contract_date: string
+  start_on: string
+  end_on: string
+  articles: ContractArticle[]
+  special_terms: string
+}
+
+export function contractToFormInput(contract: Contract): ContractFormInput {
+  return {
+    title: contract.title,
+    party_a_name: contract.party_a.name,
+    party_a_address: contract.party_a.address,
+    party_a_representative: contract.party_a.representative,
+    party_b_name: contract.party_b.name,
+    party_b_address: contract.party_b.address,
+    party_b_representative: contract.party_b.representative,
+    contract_date: contract.contract_date ?? '',
+    start_on: contract.start_on ?? '',
+    end_on: contract.end_on ?? '',
+    articles: contract.articles,
+    special_terms: contract.special_terms ?? '',
+  }
+}
+
+export function formatContractDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  return value.slice(0, 10)
+}
+
+export function formatContractDateTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('ja-JP')
+}
+
+export async function fetchContracts(): Promise<Contract[]> {
+  const res = await api.get<Contract[]>('/contracts')
+  return res.data
+}
+
+export async function fetchContract(id: number): Promise<Contract> {
+  const res = await api.get<Contract>(`/contracts/${id}`)
+  return res.data
+}
+
+// 新規作成は空 body で送る。タイトル・条文の既定値・甲情報はすべて backend 側が補完する。
+export async function createContract(): Promise<Contract> {
+  const res = await api.post<Contract>('/contracts', { contract: {} })
+  return res.data
+}
+
+export async function updateContract(id: number, form: ContractFormInput): Promise<Contract> {
+  const res = await api.patch<Contract>(`/contracts/${id}`, {
+    contract: {
+      title: form.title,
+      party_a_name: form.party_a_name,
+      party_a_address: form.party_a_address,
+      party_a_representative: form.party_a_representative,
+      party_b_name: form.party_b_name,
+      party_b_address: form.party_b_address,
+      party_b_representative: form.party_b_representative,
+      contract_date: form.contract_date || null,
+      start_on: form.start_on || null,
+      end_on: form.end_on || null,
+      articles: form.articles,
+      special_terms: form.special_terms,
+    },
+  })
+  return res.data
+}
+
+export async function deleteContract(id: number): Promise<void> {
+  await api.delete(`/contracts/${id}`)
+}
+
+// 署名リンクを発行(再発行時は旧リンクを無効化)。応答にのみ share_url を含む。
+export async function issueContract(id: number): Promise<Contract> {
+  const res = await api.post<Contract>(`/contracts/${id}/issue`)
+  return res.data
+}
+
+export async function duplicateContract(id: number): Promise<Contract> {
+  const res = await api.post<Contract>(`/contracts/${id}/duplicate`)
+  return res.data
+}
+
+export async function voidContract(id: number): Promise<Contract> {
+  const res = await api.post<Contract>(`/contracts/${id}/void`)
+  return res.data
+}
+
+export async function fetchContractPdfBlob(id: number): Promise<Blob> {
+  const res = await api.get(`/contracts/${id}/pdf`, { responseType: 'blob' })
+  return res.data as Blob
+}
+
+// ---- 公開 API (相手向け、認証ヘッダなし) ----
+
+export type PublicContract = {
+  title: string
+  party_a: ContractParty
+  party_b: ContractParty
+  contract_date: string | null
+  start_on: string | null
+  end_on: string | null
+  articles: ContractArticle[]
+  special_terms: string | null
+  status: ContractStatus
+  signed_at: string | null
+  signer_name: string | null
+  signable: boolean
+  expired: boolean
+}
+
+export async function fetchPublicContract(token: string): Promise<PublicContract> {
+  const res = await publicApi.get<PublicContract>(`/public/contracts/${token}`)
+  return res.data
+}
+
+export type SignContractPayload = {
+  signer_name: string
+  signature_image: string
+  agreed: boolean
+  consent_electronic: boolean
+}
+
+export async function signPublicContract(
+  token: string,
+  payload: SignContractPayload,
+): Promise<{ status: 'signed'; signed_at: string }> {
+  const res = await publicApi.post(`/public/contracts/${token}/sign`, payload)
+  return res.data
+}
+
+export async function fetchPublicContractPdfBlob(token: string): Promise<Blob> {
+  const res = await publicApi.get(`/public/contracts/${token}/pdf`, { responseType: 'blob' })
+  return res.data as Blob
+}

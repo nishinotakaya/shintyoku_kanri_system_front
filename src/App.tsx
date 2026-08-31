@@ -14,6 +14,8 @@ import InterviewMindmapPage from './pages/InterviewMindmapPage'
 import VideoStudioPage from './pages/VideoStudioPage'
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage'
 import InvoicesPage from './pages/InvoicesPage'
+import ContractsPage from './pages/ContractsPage'
+import ContractSignPage from './pages/ContractSignPage'
 import SettingsModal from './components/SettingsModal'
 import BusinessExpensesPage from './pages/BusinessExpensesPage'
 import { isAuthed, signOut } from './lib/auth'
@@ -29,7 +31,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 // 各画面の閲覧権限 (admin は常に全部見れる)。値は users.feature_flags のキー。
-export type FeatureKey = 'attendance' | 'calendar' | 'progress' | 'purchase_orders' | 'invoices' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
+export type FeatureKey = 'attendance' | 'calendar' | 'progress' | 'purchase_orders' | 'invoices' | 'contracts' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
 type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; feature?: FeatureKey; tabTitle?: string }
 const NAV: NavItem[] = [
   { to: '/calendar', label: 'カレンダー', icon: '📅', feature: 'calendar', tabTitle: 'カレンダー' },
@@ -38,6 +40,7 @@ const NAV: NavItem[] = [
   { to: '/attendance', label: '勤怠', icon: '🕒', feature: 'attendance', tabTitle: '勤怠' },
   { to: '/purchase-orders', label: '注文書', icon: '📋', feature: 'purchase_orders', tabTitle: '注文書' },
   { to: '/invoices', label: '請求書一覧', icon: '📄', feature: 'invoices', tabTitle: '請求書' },
+  { to: '/contracts', label: '契約書', icon: '📝', feature: 'contracts', tabTitle: '契約書' },
   { to: '/skill-sheets', label: 'スキルシート', icon: '📑', feature: 'skill_sheet', tabTitle: 'スキルシート' },
   { to: '/interview-mindmap', label: 'マインドマップ', icon: '🧠', feature: 'interview_mindmap', tabTitle: 'マインドマップ' },
   { to: '/backlog-activities', label: '対応ログ', icon: '📈', feature: 'backlog_activities', tabTitle: '対応ログ' },
@@ -355,6 +358,8 @@ export default function App() {
       <Route path="/sign_in" element={<SignIn />} />
       <Route path="/sign_up" element={<SignUp />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      {/* 相手(乙)向けの契約書署名ページ。ログイン不要のためRequireAuthの外に置く */}
+      <Route path="/sign/contracts/:token" element={<ContractSignPage />} />
       <Route
         path="/"
         element={
@@ -507,6 +512,18 @@ export default function App() {
             <RequireFeature feature="invoices">
               <Layout>
                 <InvoicesPage />
+              </Layout>
+            </RequireFeature>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/contracts"
+        element={
+          <RequireAuth>
+            <RequireFeature feature="contracts">
+              <Layout>
+                <ContractsPage />
               </Layout>
             </RequireFeature>
           </RequireAuth>
