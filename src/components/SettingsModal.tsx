@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { defaultOvertimeUnitPrice } from '../lib/transportPay'
 import InvoiceClientsEditor from './InvoiceClientsEditor'
 import type { Me } from '../lib/api'
 import { visibleWorkCategories, WORK_CATEGORY_LABELS } from '../lib/workCategories'
@@ -249,6 +250,9 @@ export default function SettingsModal({
       setSaving(false)
     }
   }
+
+  // 超過時給の既定(日給 ÷ 所定時間 × 1.25)。入力途中の日給・所定時間から出してプレースホルダに見せる
+  const defaultOvertime = defaultOvertimeUnitPrice(inv)
 
   const saveInvoice = async () => {
     if (!inv || !invCat) return
@@ -699,11 +703,14 @@ export default function SettingsModal({
                         <input
                           type="number"
                           value={inv?.overtime_unit_price ?? ''}
+                          placeholder={defaultOvertime ? `未入力なら ${defaultOvertime.toLocaleString()} 円` : ''}
                           onChange={(e) => setInv((p) => p && { ...p, overtime_unit_price: e.target.value === '' ? null : Number(e.target.value) })}
                           className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
                         />
                         <span className="mt-1 block text-[10px] leading-tight text-[var(--color-text-sub)]">
-                          所定時間（未設定なら8時間）を超えた分に、1時間あたりこの単価を足します
+                          所定時間（未設定なら8時間）を超えた分に、1時間あたりこの単価を足します。
+                          未入力なら 日給 ÷ 所定時間 × 1.25（残業割増）
+                          {defaultOvertime ? ` = ${defaultOvertime.toLocaleString()} 円` : ''}
                         </span>
                       </label>
                     </>
