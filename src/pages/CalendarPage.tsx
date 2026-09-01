@@ -5,6 +5,7 @@ import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import CalendarView from '../components/CalendarView'
 import DayDetailModal from '../components/DayDetailModal'
 import { billingMonthForToday } from '../lib/billingMonth'
+import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
 
 type TeamScheduleEntry = { id?: number; date: string; person: string; status: string; location?: string | null; memo?: string | null }
 
@@ -19,6 +20,9 @@ export default function CalendarPage() {
   const [openDate, setOpenDate] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const mp = `${year}-${String(month).padStart(2, '0')}`
+  // 締日はログインユーザー基準（CalendarView 内の集計と同じ）。25日固定にすると末日締めのユーザーで見出しと集計の期間が食い違う
+  const closingDay = me?.closing_day ?? 25
+  const billingPeriod = billingPeriodRange(year, month, closingDay)
 
   // 業務報告関連のあらゆるクエリを無効化（Dashboard 含む）
   const invalidateReports = () => {
@@ -186,7 +190,7 @@ export default function CalendarPage() {
           <div>
             <div className="text-lg font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">{year}年 {month}月分</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
-              締日(25日)：{month === 1 ? year - 1 : year}年{month === 1 ? 12 : month - 1}月26日 〜 {year}年{month}月25日
+              締日({closingDay}日)：{formatJpDate(formatIsoDate(billingPeriod.start))} 〜 {formatJpDate(formatIsoDate(billingPeriod.end))}
             </div>
           </div>
           <button onClick={() => monthShift(1)} className="rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">→</button>

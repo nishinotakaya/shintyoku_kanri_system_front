@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
 import type { WorkReport, Expense, Me } from '../lib/api'
 import { visibleWorkCategories } from '../lib/workCategories'
+import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
 
 const wd = '日月火水木金土'
 
@@ -63,33 +64,6 @@ function statusClass(status: string) {
     if (status.includes(key)) return STATUS_CLASS[key]
   }
   return 'bg-amber-100 text-amber-700'
-}
-
-// 締日(month, 1-12)の月末日を返す。closingDay=31 等の「末日締め」で月によって末日が変わる(2月等)場合の丸めに使う
-function lastDayOfMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate()
-}
-
-// バックエンドの User#period_for と同じロジックで締日期間の開始日/終了日を算出する。
-// 例: closingDay=25 → 前月26日〜当月25日。closingDay=31(末日締め) → 実在しない日は自動でその月の末日に丸める
-function billingPeriodRange(year: number, month: number, closingDay: number): { start: Date; end: Date } {
-  const endDay = Math.min(closingDay, lastDayOfMonth(year, month))
-  const end = new Date(year, month - 1, endDay)
-  const prevMonthYear = month === 1 ? year - 1 : year
-  const prevMonth = month === 1 ? 12 : month - 1
-  const prevEndDay = Math.min(closingDay, lastDayOfMonth(prevMonthYear, prevMonth))
-  const start = new Date(prevMonthYear, prevMonth - 1, prevEndDay + 1)
-  return { start, end }
-}
-
-function formatIsoDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-// 'YYYY-MM-DD' → 'YYYY年M月D日'（見出し表示用）
-function formatJpDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  return `${y}年${m}月${d}日`
 }
 
 export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, visiblePersons, me }: Props) {
