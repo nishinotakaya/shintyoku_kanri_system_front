@@ -17,6 +17,19 @@ export function applyInvoiceItemPatch(items: InvoiceItem[], index: number, patch
   })
 }
 
+// 明細から 小計(税抜)/消費税/合計(税込) を出す。サーバ(InvoicePdfRenderer#calculation)と同じ式。
+//   税抜: 小計=明細合計、消費税=小計×税率(四捨五入)、合計=小計+消費税
+//   税込: 合計=明細合計、小計=合計÷(1+税率)(四捨五入)、消費税=合計−小計
+export function invoiceTotals(items: InvoiceItem[], taxRate: number, taxIncluded: boolean): { subtotal: number; tax: number; total: number } {
+  const itemsSum = items.reduce((acc, item) => acc + (Number(item.amount) || 0), 0)
+  if (taxIncluded) {
+    const subtotal = Math.round(itemsSum / (1 + taxRate / 100))
+    return { subtotal, tax: itemsSum - subtotal, total: itemsSum }
+  }
+  const tax = Math.round((itemsSum * taxRate) / 100)
+  return { subtotal: itemsSum, tax, total: itemsSum + tax }
+}
+
 type Props = {
   items: InvoiceItem[]
   category: string                                   // 税率判定 (resystems/techleaders は 0%)
@@ -24,14 +37,14 @@ type Props = {
   onAdd: () => void
   onRemove: (index: number) => void
   showTotals?: boolean                               // 小計/消費税/税込の表示 (既定 true)
+  taxIncluded?: boolean                              // 税込(内税)設定のユーザー: 明細合計がそのまま税込合計
 }
 
 const CELL = 'w-full rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-sky-300'
 
-export default function InvoiceItemsEditor({ items, category, onUpdate, onAdd, onRemove, showTotals = true }: Props) {
+export default function InvoiceItemsEditor({ items, category, onUpdate, onAdd, onRemove, showTotals = true, taxIncluded = false }: Props) {
   const taxRate = category === 'resystems' || category === 'techleaders' ? 0 : 10
-  const subtotal = items.reduce((a, it) => a + (Number(it.amount) || 0), 0)
-  const tax = Math.round((subtotal * taxRate) / 100)
+  const { subtotal, tax, total } = invoiceTotals(items, taxRate, taxIncluded)
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
@@ -67,9 +80,9 @@ export default function InvoiceItemsEditor({ items, category, onUpdate, onAdd, o
           <tfoot>
             <tr className="border-t border-[var(--color-border)]">
               <td colSpan={4} className="py-1 pr-1 text-right text-[var(--color-text-sub)]">
-                小計（税抜）¥{subtotal.toLocaleString()} ／ 消費税{taxRate}% ¥{tax.toLocaleString()}
+                小計（税抜）¥{subtotal.toLocaleString()} ／ {taxIncluded ? '内消費税' : '消費税'}{taxRate}% ¥{tax.toLocaleString()}
               </td>
-              <td className="py-1 px-1 text-right font-mono tabular-nums font-semibold text-sky-700">¥{(subtotal + tax).toLocaleString()}</td>
+              <td className="py-1 px-1 text-right font-mono tabular-nums font-semibold text-sky-700">¥{total.toLocaleString()}</td>
               <td></td>
             </tr>
           </tfoot>

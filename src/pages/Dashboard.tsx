@@ -443,15 +443,15 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2">
-            <div className="text-[10px] text-[var(--color-text-sub)]">小計</div>
+            <div className="text-[10px] text-[var(--color-text-sub)]">小計{invoiceQ.data?.tax_included ? '（税抜）' : ''}</div>
             <div className="font-mono tabular-nums text-lg text-[var(--color-text)]">{fmtYen(invoiceQ.data?.subtotal)}</div>
           </div>
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2">
-            <div className="text-[10px] text-[var(--color-text-sub)]">消費税 ({invoiceQ.data?.tax_rate ?? 10}%)</div>
+            <div className="text-[10px] text-[var(--color-text-sub)]">{invoiceQ.data?.tax_included ? '内消費税' : '消費税'} ({invoiceQ.data?.tax_rate ?? 10}%)</div>
             <div className="font-mono tabular-nums text-lg text-[var(--color-text)]">{fmtYen(invoiceQ.data?.tax)}</div>
           </div>
           <div className="rounded-xl border border-amber-400/40 bg-amber-50 px-3 py-2">
-            <div className="text-[10px] text-amber-600">合計</div>
+            <div className="text-[10px] text-amber-600">合計{invoiceQ.data?.tax_included ? '（税込）' : ''}</div>
             <div className="font-mono tabular-nums text-lg text-amber-600">{fmtYen(invoiceQ.data?.total)}</div>
           </div>
         </div>

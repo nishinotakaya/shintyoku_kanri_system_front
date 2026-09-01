@@ -8,7 +8,7 @@ import { showPdf } from '../lib/openPdf'
 import LabopMailModal from '../components/LabopMailModal'
 import Modal from '../components/Modal'
 import { LabeledField, fieldInputCls } from '../components/InvoiceFormFields'
-import InvoiceItemsEditor, { applyInvoiceItemPatch, emptyInvoiceItem, type InvoiceItem } from '../components/InvoiceItemsEditor'
+import InvoiceItemsEditor, { applyInvoiceItemPatch, emptyInvoiceItem, invoiceTotals, type InvoiceItem } from '../components/InvoiceItemsEditor'
 import RowActions from '../components/RowActions'
 import ExpenseEditList from '../components/ExpenseEditList'
 import IssuedPdfEditModal from '../components/IssuedPdfEditModal'
@@ -286,6 +286,8 @@ export default function InvoicesPage() {
   const [createPostalInitial, setCreatePostalInitial] = useState('')
   // 請求書単体で持てる項目: インボイス番号 / 申請日 / 支払期限
   const [createRegNo, setCreateRegNo] = useState('')
+  // 対象ユーザー×カテゴリの税込/税抜設定。明細フッタの合計計算に使う(税込なら明細合計がそのまま税込合計)
+  const [createTaxIncluded, setCreateTaxIncluded] = useState(false)
   const [createAppDate, setCreateAppDate] = useState('')
   const [createDueDate, setCreateDueDate] = useState('')
   const addCreateItem = () => setCreateItems((p) => [...p, emptyInvoiceItem()])
@@ -305,8 +307,9 @@ export default function InvoicesPage() {
         const tel = (r.data?.tel as string) ?? ''; setCreateTel(tel); setCreateTelInitial(tel)
         const postal = (r.data?.postal_code as string) ?? ''; setCreatePostal(postal); setCreatePostalInitial(postal)
         setCreateRegNo((r.data?.registration_no as string) ?? '') // インボイス番号の既定(設定値)をプレフィル
+        setCreateTaxIncluded(!!r.data?.tax_included)
       })
-      .catch(() => { setCreateBank(''); setCreateBankInitial(''); setCreateAddress(''); setCreateAddressInitial(''); setCreateTel(''); setCreateTelInitial(''); setCreatePostal(''); setCreatePostalInitial(''); setCreateRegNo('') })
+      .catch(() => { setCreateBank(''); setCreateBankInitial(''); setCreateAddress(''); setCreateAddressInitial(''); setCreateTel(''); setCreateTelInitial(''); setCreatePostal(''); setCreatePostalInitial(''); setCreateRegNo(''); setCreateTaxIncluded(false) })
   }, [creating, createForm.category, createForm.target_user_id, me?.admin])
   useEffect(() => {
     if (!creating) return
@@ -375,6 +378,8 @@ export default function InvoicesPage() {
   const [editForm, setEditForm] = useState<{ note: string; purchase_order_no_override: string; total_override: string; subject_override: string; application_date: string; due_date: string; registration_no: string; bank_info: string; address: string; tel: string; postal: string; paid_at: string; invoice_client_id: string; items: ItemRow[] }>({ note: '', purchase_order_no_override: '', total_override: '', subject_override: '', application_date: '', due_date: '', registration_no: '', bank_info: '', address: '', tel: '', postal: '', paid_at: '', invoice_client_id: '', items: [] })
   // 請求先(宛先)マスタ。編集モーダルを開いた申請の持ち主のぶんを読む
   const [editClients, setEditClients] = useState<InvoiceClient[]>([])
+  // 申請者本人の税込/税抜設定(admin は as_user_id で対象ユーザーのぶん)。税込なら明細合計＝税込合計として保存する
+  const [editTaxIncluded, setEditTaxIncluded] = useState(false)
   const [editBusy, setEditBusy] = useState(false)
   const updateEditItem = (i: number, patch: Partial<ItemRow>) => setEditForm((p) => ({ ...p, items: applyInvoiceItemPatch(p.items, i, patch) }))
   const addEditItem = () => setEditForm((p) => ({ ...p, items: [...p.items, emptyInvoiceItem()] }))
@@ -431,6 +436,9 @@ export default function InvoicesPage() {
     api.get<InvoiceClient[]>('/invoice_clients', { params: { as_user_id: s.user_id } })
       .then((r) => setEditClients(r.data))
       .catch(() => setEditClients([]))
+    api.get('/invoice_setting', { params: { category: s.category, as_user_id: s.user_id } })
+      .then((r) => setEditTaxIncluded(!!r.data?.tax_included))
+      .catch(() => setEditTaxIncluded(false))
     // 詳細フェッチして default_items 等を取得
     try {
       const r = await api.get<Submission & { items_override: ItemRow[] | null; default_items: ItemRow[] | null; default_subject: string | null; due_date_override: string | null; default_due_date: string | null }>('/invoice_submissions', { params: { kind: s.kind, status: 'all' } })
@@ -481,8 +489,7 @@ export default function InvoicesPage() {
       const taxRate = (editingSub.category === 'resystems' || editingSub.category === 'techleaders') ? 0 : 10
       let totalOverride = editForm.total_override.replace(/[^\d-]/g, '')
       if (itemsClean.length > 0) {
-        const subtotal = itemsClean.reduce((a, it) => a + (Number(it.amount) || 0), 0)
-        totalOverride = String(subtotal + Math.round((subtotal * taxRate) / 100))
+        totalOverride = String(invoiceTotals(itemsClean, taxRate, editTaxIncluded).total)
       }
       const payload: Record<string, unknown> = {
         note: editForm.note,
@@ -1991,7 +1998,7 @@ export default function InvoicesPage() {
                   <LabeledField label="件名（任意）">
                     <input value={createSubject} onChange={(e) => setCreateSubject(e.target.value)} placeholder="例: システム開発支援業務" className={fieldInputCls} />
                   </LabeledField>
-                  <InvoiceItemsEditor items={createItems} category={createForm.category}
+                  <InvoiceItemsEditor items={createItems} category={createForm.category} taxIncluded={createTaxIncluded}
                     onUpdate={updateCreateItem} onAdd={addCreateItem} onRemove={removeCreateItem} />
                 </div>
               )}
@@ -2203,7 +2210,7 @@ export default function InvoicesPage() {
             {editingSub.kind === 'invoice' && (
               <div className="block">
                 <div className="text-[11px] font-semibold mb-1">品番・品名 / 明細</div>
-                <InvoiceItemsEditor items={editForm.items} category={editingSub.category}
+                <InvoiceItemsEditor items={editForm.items} category={editingSub.category} taxIncluded={editTaxIncluded}
                   onUpdate={updateEditItem} onAdd={addEditItem} onRemove={removeEditItem} />
               </div>
             )}

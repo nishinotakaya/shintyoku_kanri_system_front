@@ -15,6 +15,7 @@ type InvoiceSetting = {
   unit_price: number
   merged_unit_price: number | null // 統合請求書(ラボップ宛)でこの人の稼働に掛ける時給。支払時給とは別
   tax_rate: number
+  tax_included: boolean // true=税込(単価・金額が税込、消費税は内税) / false=税抜(既定。消費税を加算)
   payment_due_days: number
   payment_due_type: string
   issuer_name: string
@@ -253,6 +254,8 @@ export default function SettingsModal({
 
   // 超過時給の既定(日給 ÷ 所定時間 × 1.25)。入力途中の日給・所定時間から出してプレースホルダに見せる
   const defaultOvertime = defaultOvertimeUnitPrice(inv)
+  // 税込設定なら、単価欄のラベルに「税込」を明示する(入力している金額が税込か税抜かで迷わないように)
+  const taxSuffix = inv?.tax_included ? '・税込' : ''
 
   const saveInvoice = async () => {
     if (!inv || !invCat) return
@@ -696,10 +699,10 @@ export default function SettingsModal({
                   </label>
                   {inv?.pay_type === 'daily' ? (
                     <>
-                      {fld('日給 (円/日)', 'daily_rate', 'number', 'col-span-1')}
+                      {fld(`日給 (円/日${taxSuffix})`, 'daily_rate', 'number', 'col-span-1')}
                       {fld('所定時間 (h/日)', 'standard_hours', 'number', 'col-span-1')}
                       <label className="block col-span-1">
-                        <span className="text-[11px] text-[var(--color-text-sub)]">超過時給 (円/h)</span>
+                        <span className="text-[11px] text-[var(--color-text-sub)]">超過時給 (円/h{taxSuffix})</span>
                         <input
                           type="number"
                           value={inv?.overtime_unit_price ?? ''}
@@ -715,7 +718,7 @@ export default function SettingsModal({
                       </label>
                     </>
                   ) : (
-                    fld('時給 (円/h)', 'unit_price', 'number', 'col-span-1')
+                    fld(`時給 (円/h${taxSuffix})`, 'unit_price', 'number', 'col-span-1')
                   )}
                 </>
               ) : (
@@ -737,6 +740,22 @@ export default function SettingsModal({
                 </span>
               </label>
               {fld('消費税率 (%)', 'tax_rate', 'number', 'col-span-1')}
+              <label className="block col-span-1">
+                <span className="text-[11px] text-[var(--color-text-sub)]">税込 / 税抜</span>
+                <select
+                  value={inv?.tax_included ? 'included' : 'excluded'}
+                  onChange={(e) => setInv((prev) => prev ? { ...prev, tax_included: e.target.value === 'included' } : prev)}
+                  className="mt-1 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm"
+                >
+                  <option value="excluded">税抜（単価に消費税を加算する）</option>
+                  <option value="included">税込（単価に消費税が含まれる・内税）</option>
+                </select>
+                <span className="mt-1 block text-[10px] leading-tight text-[var(--color-text-sub)]">
+                  {inv?.tax_included
+                    ? '合計＝明細合計。消費税は合計 ÷ 1.1 から逆算して「内消費税」として表示します'
+                    : '明細合計（税抜）に消費税率ぶんを加えて合計にします'}
+                </span>
+              </label>
               <label className="block col-span-1">
                 <span className="text-[11px] text-[var(--color-text-sub)]">支払期限</span>
                 <select
