@@ -52,6 +52,40 @@ export default function SettingsModal({
   const [isAdmin, setIsAdmin] = useState(false)
   const [me, setMe] = useState<Me | null>(null)
 
+  // === 会社(テナント) ===
+  // カレンダーの行ラベルにこの会社名が出る。変更できるのは代表本人と admin だけ。
+  type EditableTenant = { id: number; name: string; code: string; editable: boolean }
+  const [tenants, setTenants] = useState<EditableTenant[]>([])
+  const [tenantNameDrafts, setTenantNameDrafts] = useState<Record<number, string>>({})
+  const [tenantMessage, setTenantMessage] = useState<string | null>(null)
+  const [tenantSavingId, setTenantSavingId] = useState<number | null>(null)
+  useEffect(() => {
+    if (!open) return
+    api.get<{ tenants: EditableTenant[] }>('/tenants')
+      .then((r) => {
+        const list = r.data.tenants ?? []
+        setTenants(list)
+        setTenantNameDrafts(Object.fromEntries(list.map((tenant) => [tenant.id, tenant.name])))
+      })
+      .catch(() => {})
+  }, [open])
+  const saveTenantName = async (tenant: EditableTenant) => {
+    const name = (tenantNameDrafts[tenant.id] ?? '').trim()
+    if (!name || name === tenant.name) return
+    setTenantSavingId(tenant.id)
+    setTenantMessage(null)
+    try {
+      const r = await api.patch<EditableTenant>(`/tenants/${tenant.id}`, { name })
+      setTenants((prev) => prev.map((t) => (t.id === tenant.id ? { ...t, name: r.data.name } : t)))
+      setTenantMessage(`会社名を「${r.data.name}」に変更しました`)
+      onSaved?.()
+    } catch (e: any) {
+      setTenantMessage(e?.response?.data?.error ?? e?.message ?? '会社名の変更に失敗しました')
+    } finally {
+      setTenantSavingId(null)
+    }
+  }
+
   // === admin: ユーザー管理 ===
   type AdminUser = { id: number; email: string; display_name: string | null; admin: boolean; has_google: boolean; created_at: string | null }
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
@@ -311,6 +345,37 @@ export default function SettingsModal({
                 <span className="text-xs text-[var(--color-text-sub)]">例: 25 日 → 「4 月分」は 3/26 〜 4/25</span>
               </div>
             </div>
+
+            {tenants.length > 0 && (
+              <div>
+                <div className="text-xs text-[var(--color-text-sub)]">会社（カレンダーの行に出る名前）</div>
+                <div className="mt-2 space-y-2">
+                  {tenants.map((tenant) => (
+                    <div key={tenant.id} className="flex flex-wrap items-center gap-2">
+                      <input
+                        value={tenantNameDrafts[tenant.id] ?? ''}
+                        onChange={(e) => setTenantNameDrafts((prev) => ({ ...prev, [tenant.id]: e.target.value }))}
+                        disabled={!tenant.editable}
+                        className="min-w-[12rem] flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-2 text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 disabled:opacity-60"
+                      />
+                      {tenant.editable ? (
+                        <button
+                          type="button"
+                          onClick={() => saveTenantName(tenant)}
+                          disabled={tenantSavingId === tenant.id || (tenantNameDrafts[tenant.id] ?? '').trim() === tenant.name}
+                          className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                        >
+                          {tenantSavingId === tenant.id ? '保存中…' : '会社名を保存'}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-[var(--color-text-sub)]">代表者だけが変更できます</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {tenantMessage && <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">{tenantMessage}</div>}
+              </div>
+            )}
 
             <DocumentFolderSync />
 

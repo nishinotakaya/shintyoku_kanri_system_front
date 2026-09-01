@@ -87,12 +87,18 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
   // 一瞬表示されてしまうため。取込データから動的に足すこともしない(設定で隠せなくなる)。
   const persons = visiblePersons ?? []
 
-  // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）
+  // 行の表示名。テナント(会社)の代表は会社名で出す(「西野 雄太郎」→「HAUKUR運送」)。
+  // 予定の保存キーは person のままなので、表示だけ差し替える。
+  const personLabel = (person: string) => me?.calendar_person_labels?.[person] ?? person
+
+  // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）。
+  // 運送(transport)ユーザーはタマ向けの既定ステータス（出社 / リビング リモート / TL@… ）が
+  // 当てはまらないので、最初は空にして「…自由入力」で足したものが選択肢に増えていくようにする。
   const statusOptions = useMemo(() => {
-    const set = new Set<string>(STATUS_OPTIONS)
+    const set = new Set<string>(isTransportOnly ? [] : STATUS_OPTIONS)
     teamSchedules.forEach((entry) => { if (entry.status) set.add(entry.status) })
     return [...set]
-  }, [teamSchedules])
+  }, [teamSchedules, isTransportOnly])
 
   // 締日(me.closing_day)まで: 前月(締日+1)日〜当月締日 の範囲で集計
   const periodTotals = useMemo(() => {
@@ -377,7 +383,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                     if (!entry?.status) return null
                     return (
                       <div key={person} className={`rounded-sm px-0.5 text-[8px] leading-[11px] truncate ${statusClass(entry.status)}`}>
-                        {person.charAt(0)} {entry.status}
+                        {personLabel(person).charAt(0)} {entry.status}
                       </div>
                     )
                   })}
@@ -409,7 +415,15 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                     }
                     return (
                       <div key={person} className="flex items-center gap-1 text-[10px] min-w-0" onClick={(e) => e.stopPropagation()}>
-                        <span className={`font-semibold w-7 shrink-0 ${editable ? 'text-[var(--color-text-sub)]' : 'text-gray-400'}`}>{person}</span>
+                        {/* 「西野 雄太郎」のような長い人物名でも折り返さず1行に収める（はみ出す分は省略、全体は title で見せる） */}
+                        <span
+                          title={personLabel(person)}
+                          className={`font-semibold shrink-0 whitespace-nowrap overflow-hidden text-ellipsis ${
+                            personLabel(person).length > 3 ? 'max-w-[4rem] text-[8px]' : 'w-7'
+                          } ${editable ? 'text-[var(--color-text-sub)]' : 'text-gray-400'}`}
+                        >
+                          {personLabel(person)}
+                        </span>
                         {editable ? (
                           <select
                             value={status === '' ? '' : (knownOption ? status : '__custom__')}

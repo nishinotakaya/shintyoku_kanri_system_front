@@ -7,6 +7,7 @@ import { DEFAULT_WORK_CATEGORIES, WORK_CATEGORY_LABELS, visibleWorkCategories } 
 import type { WorkCategory } from '../lib/workCategories'
 import ClockCard from '../components/ClockCard'
 import WorkReportTable from '../components/WorkReportTable'
+import TransportWorkReportTable from '../components/TransportWorkReportTable'
 import ExpenseTable from '../components/ExpenseTable'
 import SettingsModal from '../components/SettingsModal'
 import PurchaseOrderList from '../components/PurchaseOrderList'
@@ -461,7 +462,13 @@ export default function Dashboard() {
         )}
       </div>
 
-      <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
+      {/* 運送(transport)は紙の「稼働報告書」と同じ列(開始/終了時間・走行距離・検印など)で出す。
+          カレンダーから入れた内容がそのままこの勤怠表に出る(同じ work_reports を見ている) */}
+      {category === 'transport' ? (
+        <TransportWorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} asUserId={asUserId} />
+      ) : (
+        <WorkReportTable year={year} month={month} period={period} reports={reports} onChanged={refetchAll} defaultTransit={defaultTransit} category={category} asUserId={asUserId} />
+      )}
       <ExpenseTable year={year} month={month} expenses={expenses} reports={reports} category={category} onPdfDownloaded={onExpenseFileSaved} onChanged={refetchAll} asUserId={asUserId} surname={surname} />
       {expenseRegMsg && (
         <div className={`text-right text-[10px] ${expenseRegMsg.startsWith('✅') ? 'text-emerald-600' : 'text-red-500'}`}>{expenseRegMsg}</div>
