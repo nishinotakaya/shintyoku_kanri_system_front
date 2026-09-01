@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -180,19 +181,19 @@ export default function UsersPage() {
 
       {err && <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">{err}</div>}
 
-      <div className="glass overflow-hidden rounded-2xl shadow-md">
+      <div className="glass overflow-x-auto rounded-2xl shadow-md">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)]">
-              <th className="px-4 py-2">表示名</th>
-              <th className="px-4 py-2">メール</th>
-              <th className="px-4 py-2 w-24 text-center">権限</th>
-              <th className="px-4 py-2 w-48">閲覧できる画面</th>
-              <th className="px-4 py-2 w-44">勤怠カテゴリ</th>
-              <th className="px-4 py-2 w-56">案件データ（進捗）</th>
-              <th className="px-4 py-2 w-48">カレンダーで見える人</th>
-              <th className="px-4 py-2 w-56">管理対象（サブ管理者）</th>
-              <th className="px-4 py-2 w-36 text-center">操作</th>
+              <th className="px-3 py-2 w-28">表示名</th>
+              <th className="px-3 py-2 w-40">メール</th>
+              <th className="px-3 py-2 w-20 text-center">権限</th>
+              <th className="px-3 py-2 w-44">閲覧できる画面</th>
+              <th className="px-3 py-2 w-36">勤怠カテゴリ</th>
+              <th className="px-3 py-2 w-40">案件データ（進捗）</th>
+              <th className="px-3 py-2 w-36">カレンダーで見える人</th>
+              <th className="px-3 py-2 w-40">管理対象（サブ管理者）</th>
+              <th className="px-3 py-2 w-32 text-center">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -202,9 +203,13 @@ export default function UsersPage() {
               <tr><td colSpan={9} className="px-4 py-8 text-center text-[var(--color-text-sub)]">ユーザーが居ません</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg)] align-top">
-                <td className="px-4 py-2 text-xs font-medium text-[var(--color-text)] whitespace-nowrap">{u.display_name || '—'}</td>
-                <td className="px-4 py-2 text-[var(--color-text-sub)]">{u.email}</td>
-                <td className="px-4 py-2 text-center">
+                <td className="px-3 py-2 text-xs font-medium text-[var(--color-text)]">
+                  <div className="max-w-[7rem] truncate" title={u.display_name || ''}>{u.display_name || '—'}</div>
+                </td>
+                <td className="px-3 py-2 text-[var(--color-text-sub)]">
+                  <div className="max-w-[10rem] truncate text-[11px]" title={u.email}>{u.email}</div>
+                </td>
+                <td className="px-3 py-2 text-center">
                   {u.admin ? (
                     <span className="rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700">admin</span>
                   ) : u.sub_admin ? (
@@ -213,12 +218,11 @@ export default function UsersPage() {
                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">user</span>
                   )}
                 </td>
-                <td className="px-4 py-2">
-                  <div className="text-[11px] text-[var(--color-text)] break-words">{featureSummary(u)}</div>
-                  <button onClick={() => setEditingFeatures(editingFeatures === u.id ? null : u.id)}
-                    className="mt-1 text-[10px] text-indigo-600">{editingFeatures === u.id ? '閉じる' : '画面を編集'}</button>
-                  {editingFeatures === u.id && (
-                    <div className="mt-1 rounded-md border border-[var(--color-border)] p-2 space-y-1 max-h-52 overflow-y-auto">
+                <td className="px-3 py-2">
+                  <AccordionCell summary={featureSummary(u)} label="閲覧できる画面" width="w-40"
+                    open={editingFeatures === u.id}
+                    onToggle={() => setEditingFeatures(editingFeatures === u.id ? null : u.id)}>
+                    <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
                       {FEATURES.map((f) => (
                         <label key={f.key} className="flex items-center gap-1.5 text-[11px]">
                           <input type="checkbox" checked={featureChecked(u, f.key)} onChange={() => toggleFeature(u, f.key)} />
@@ -226,14 +230,13 @@ export default function UsersPage() {
                         </label>
                       ))}
                     </div>
-                  )}
+                  </AccordionCell>
                 </td>
-                <td className="px-4 py-2">
-                  <div className="text-[11px] text-[var(--color-text)] break-words">{workCategorySummary(u)}</div>
-                  <button onClick={() => setEditingWorkCategories(editingWorkCategories === u.id ? null : u.id)}
-                    className="mt-1 text-[10px] text-indigo-600">{editingWorkCategories === u.id ? '閉じる' : 'カテゴリを編集'}</button>
-                  {editingWorkCategories === u.id && (
-                    <div className="mt-1 rounded-md border border-[var(--color-border)] p-2 space-y-1 max-h-52 overflow-y-auto">
+                <td className="px-3 py-2">
+                  <AccordionCell summary={workCategorySummary(u)} label="勤怠カテゴリ" width="w-32"
+                    open={editingWorkCategories === u.id}
+                    onToggle={() => setEditingWorkCategories(editingWorkCategories === u.id ? null : u.id)}>
+                    <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
                       {WORK_CATEGORY_KEYS.map((key) => (
                         <label key={key} className="flex items-center gap-1.5 text-[11px]">
                           <input type="checkbox" checked={workCategoryChecked(u, key)} onChange={() => toggleWorkCategory(u, key)} />
@@ -241,25 +244,21 @@ export default function UsersPage() {
                         </label>
                       ))}
                     </div>
-                  )}
+                  </AccordionCell>
                 </td>
-                <td className="px-4 py-2">
-                  <div className="text-[11px] text-[var(--color-text)] break-words">{sourceSummary(u)}</div>
-                  {!u.admin && (
-                    <button onClick={() => setEditingSources(editingSources === u.id ? null : u.id)}
-                      className="mt-1 text-[10px] text-indigo-600">{editingSources === u.id ? '閉じる' : '案件データを編集'}</button>
-                  )}
-                  {editingSources === u.id && !u.admin && (
+                <td className="px-3 py-2">
+                  <AccordionCell summary={sourceSummary(u)} label="案件データ" width="w-36" editable={!u.admin}
+                    open={editingSources === u.id}
+                    onToggle={() => setEditingSources(editingSources === u.id ? null : u.id)}>
                     <DataSourcePermissionEditor user={u} lenderCandidates={users.filter((other) => other.id !== u.id)}
                       permissionOf={permissionOf} onChange={patchSource} />
-                  )}
+                  </AccordionCell>
                 </td>
-                <td className="px-4 py-2">
-                  <div className="text-[11px] text-[var(--color-text)] break-words">{u.calendar_persons.join('、')}</div>
-                  <button onClick={() => setEditingCalendarPersons(editingCalendarPersons === u.id ? null : u.id)}
-                    className="mt-1 text-[10px] text-indigo-600">{editingCalendarPersons === u.id ? '閉じる' : '見える人を編集'}</button>
-                  {editingCalendarPersons === u.id && (
-                    <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
+                <td className="px-3 py-2">
+                  <AccordionCell summary={u.calendar_persons.join('、') || '既定'} label="カレンダーで見える人" width="w-32"
+                    open={editingCalendarPersons === u.id}
+                    onToggle={() => setEditingCalendarPersons(editingCalendarPersons === u.id ? null : u.id)}>
+                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
                       {calendarPersonCandidates.map((person) => (
                         <label key={person} className="flex items-center gap-1.5 text-[11px]">
                           <input type="checkbox" checked={u.calendar_persons.includes(person)}
@@ -268,39 +267,31 @@ export default function UsersPage() {
                         </label>
                       ))}
                     </div>
-                  )}
+                  </AccordionCell>
                 </td>
-                <td className="px-4 py-2">
-                  {u.admin ? (
-                    <span className="text-[10px] text-[var(--color-text-sub)]">全ユーザー</span>
-                  ) : (
-                    <div>
-                      <div className="text-[11px] text-[var(--color-text)]">
-                        {u.managee_ids.length === 0 ? '—' : u.managee_ids.map(nameOf).join('、')}
-                      </div>
-                      <button onClick={() => setEditingManagee(editingManagee === u.id ? null : u.id)}
-                        className="mt-1 text-[10px] text-indigo-600">{editingManagee === u.id ? '閉じる' : '管理対象を編集'}</button>
-                      {editingManagee === u.id && (
-                        <div className="mt-1 rounded-md border border-[var(--color-border)] p-2 space-y-1 max-h-40 overflow-y-auto">
-                          {users.filter((o) => o.id !== u.id).map((o) => (
-                            <label key={o.id} className="flex items-center gap-1.5 text-[11px]">
-                              <input type="checkbox" checked={u.managee_ids.includes(o.id)} onChange={() => toggleManagee(u, o.id)} />
-                              {o.display_name || o.email}
-                            </label>
-                          ))}
-                        </div>
-                      )}
+                <td className="px-3 py-2">
+                  <AccordionCell label="管理対象" width="w-36" editable={!u.admin}
+                    summary={u.admin ? '全ユーザー' : (u.managee_ids.length === 0 ? '—' : u.managee_ids.map(nameOf).join('、'))}
+                    open={editingManagee === u.id}
+                    onToggle={() => setEditingManagee(editingManagee === u.id ? null : u.id)}>
+                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
+                      {users.filter((o) => o.id !== u.id).map((o) => (
+                        <label key={o.id} className="flex items-center gap-1.5 text-[11px]">
+                          <input type="checkbox" checked={u.managee_ids.includes(o.id)} onChange={() => toggleManagee(u, o.id)} />
+                          {o.display_name || o.email}
+                        </label>
+                      ))}
                     </div>
-                  )}
+                  </AccordionCell>
                 </td>
-                <td className="px-4 py-2 text-center">
+                <td className="px-3 py-2 text-center">
                   {meId !== u.id ? (
                     <div className="flex flex-col items-stretch gap-1">
                       <button onClick={() => setImpersonateTarget(u)}
-                        className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow"
-                        title={`${u.display_name} としてログインする（ログアウトで管理者に戻る）`}>🔑 なりすましログイン</button>
+                        className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 py-1 text-[10px] font-semibold text-white shadow"
+                        title={`${u.display_name} としてログインする（ログアウトで管理者に戻る）`}>🔑 なりすまし</button>
                       <button onClick={() => viewAs(u)}
-                        className="rounded-md whitespace-nowrap border border-[var(--color-border)] px-3 py-1 text-[11px] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+                        className="rounded-md whitespace-nowrap border border-[var(--color-border)] px-2 py-1 text-[10px] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
                         title={`${u.display_name} の勤怠を管理者のまま閲覧`}>👤 として閲覧</button>
                     </div>
                   ) : (
@@ -328,6 +319,36 @@ export default function UsersPage() {
           onClose={() => setImpersonateTarget(null)}
         />
       )}
+    </div>
+  )
+}
+
+// 表の1セル。要約は必ず1行（溢れたら …）で、右の ▾ ボタンで中身を開く（アコーディオン）。
+// editable=false のときは要約だけ表示してボタンを出さない（admin など編集不要な行）。
+function AccordionCell({ summary, label, width, open, onToggle, editable = true, children }: {
+  summary: string
+  label: string
+  width: string
+  open: boolean
+  onToggle: () => void
+  editable?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div className={width}>
+      <div className="flex items-center gap-1">
+        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-text)]" title={summary}>{summary}</span>
+        {editable && (
+          <button onClick={onToggle} aria-expanded={open} aria-label={`${label}を編集`} title={`${label}を編集`}
+            className="shrink-0 rounded-md border border-[var(--color-border)] bg-white p-0.5 text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"
+              className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}>
+              <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {editable && open && <div className="mt-1">{children}</div>}
     </div>
   )
 }
