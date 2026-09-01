@@ -37,8 +37,13 @@ export default function Dashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'account' | 'invoice'>('account')
   const [defaultTransit, setDefaultTransit] = useState<{ section: string; fee: number } | null>(null)
-  const [category, setCategory] = useState<WorkCategory>('wings')
   const [me, setMe] = useState<Me | null>(null)
+  // 選択中カテゴリ。/me が返るまで wings を仮置きしない(運送専用ユーザーに一瞬 Tama の画面・請求プレビューが出て
+  // 「シェアラウンジ利用料」等の Tama 既定が混入していた)。見えないカテゴリを選んだままにもしない。
+  const [pickedCategory, setPickedCategory] = useState<WorkCategory | null>(null)
+  const visibleCategories = useMemo(() => visibleCategoriesFor(me), [me])
+  const category: WorkCategory = pickedCategory && visibleCategories.includes(pickedCategory) ? pickedCategory : visibleCategories[0]
+  const categoryReady = me !== null
 
   // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
   const [asUserId, setAsUserId] = useState<number | null>(null)
@@ -87,6 +92,7 @@ export default function Dashboard() {
   const invoiceQ = useQuery({
     queryKey: ['invoice_preview', monthParam, category, asUserId],
     queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category, ...asUserParam } })).data,
+    enabled: categoryReady,
   })
   // 見える(wings/living)カテゴリ一覧。今期サマリの請求書行と、川村パネルの一括申請ボタンの両方で使う。
   // 運送専用ユーザーは wings/living どちらも見えないため空配列になり、対応するクエリ／ボタンは出さない。
@@ -106,6 +112,7 @@ export default function Dashboard() {
   const linkPosQ = useQuery({
     queryKey: ['link_received_pos', monthParam, category, asUserId],
     queryFn: async () => (await api.get<LinkPO[]>('/received_purchase_orders', { params: { year, month, ...asUserParam } })).data,
+    enabled: categoryReady,
   })
   // 紐付け候補: 発注者がラボップ × 受注者が自分(=viewing user) × カテゴリ判定 (案件名 or category)
   const targetUserId = asUserId ?? me?.id
@@ -171,11 +178,6 @@ export default function Dashboard() {
     document.title = `勤怠 ${year}年${month}月 — 進捗管理システム`
     api.get('/me').then((r) => {
       setMe(r.data as Me)
-      // 見えないカテゴリを選んだままにしない（見える範囲が変わった/初回ロード時の補正）
-      const categoriesForFetchedMe = visibleCategoriesFor(r.data)
-      if (!categoriesForFetchedMe.includes(category)) {
-        setCategory(categoriesForFetchedMe[0])
-      }
       if (r.data.default_transit_from && r.data.default_transit_fee) {
         setDefaultTransit({ section: `${r.data.default_transit_from} ~ ${r.data.default_transit_to}`, fee: r.data.default_transit_fee })
       }
@@ -273,6 +275,11 @@ export default function Dashboard() {
     setMonth(d.getMonth() + 1)
   }
 
+  // /me が返るまではカテゴリ依存の表(勤怠・立替金・請求プレビュー)を描かない
+  if (!categoryReady) {
+    return <div className="py-10 text-center text-xs text-[var(--color-text-sub)]">読み込み中…</div>
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-y-2">
@@ -306,8 +313,8 @@ export default function Dashboard() {
             </select>
           )}
           <div className="flex gap-1">
-            {visibleCategoriesFor(me).map((key) => (
-              <button key={key} onClick={() => setCategory(key)}
+            {visibleCategories.map((key) => (
+              <button key={key} onClick={() => setPickedCategory(key)}
                 className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                   category === key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] border border-[var(--color-border)]'
                 }`}>{WORK_CATEGORY_LABELS[key]}</button>

@@ -141,10 +141,15 @@ export default function SettingsModal({
   const [routes, setRoutes] = useState<{ from: string; to: string; fee: number; line: string }[]>([])
   const [commuteDays, setCommuteDays] = useState<number[]>([1, 2, 3, 4, 5])
   const [inv, setInv] = useState<InvoiceSetting | null>(null)
-  const [invCat, setInvCat] = useState<WorkCategory>('wings')
+  // 請求書設定のカテゴリ。/me が返って見えるカテゴリが分かるまで決めない(wings を仮置きすると、
+  // 運送専用ユーザーの画面に Tama の設定(ラボップ宛・シェアラウンジ利用料)が読み込まれ、保存も wings に落ちていた)。
+  const [invCat, setInvCat] = useState<WorkCategory | null>(null)
   useEffect(() => {
-    if (!open) return
-    api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
+    if (!open || !invCat) return
+    // タブを素早く切り替えたとき、先に投げた古いカテゴリの応答で上書きされないようにする
+    let stale = false
+    api.get('/invoice_setting', { params: { category: invCat } }).then((r) => { if (!stale) setInv(r.data) })
+    return () => { stale = true }
   }, [invCat, open])
   const [blSetting, setBlSetting] = useState({ backlog_url: '', backlog_email: '', backlog_password: '', board_id: 0, user_backlog_id: 0, session_cookie: '', has_cookie: false, api_key: '', has_api_key: false, assignee_name_filter: '' })
   const [gh, setGh] = useState({ personal_access_token: '', default_repos: '', has_token: false })
@@ -166,11 +171,9 @@ export default function SettingsModal({
     setTrelloToken('')
     api.get('/me').then((r) => {
       setMe(r.data as Me)
-      // 見えないカテゴリを選んだままにしない（見える範囲が変わった/初回ロード時の補正）
+      // 見えるカテゴリの先頭を既定に(運送専用ユーザーなら transport)。見えないカテゴリを選んだままにもしない
       const categoriesForFetchedMe = visibleWorkCategories(r.data)
-      if (!categoriesForFetchedMe.includes(invCat)) {
-        setInvCat(categoriesForFetchedMe[0])
-      }
+      setInvCat((current) => current && categoriesForFetchedMe.includes(current) ? current : categoriesForFetchedMe[0])
       setKeySet(!!r.data.openai_api_key_set)
       setHeygenKeySet(!!r.data.heygen_api_key_set)
       setTrelloKeySet(!!r.data.trello_api_key_set)
@@ -190,7 +193,6 @@ export default function SettingsModal({
       setTaxInfo({ tax_office: r.data.tax_office ?? '', address: r.data.address ?? '', name_kana: r.data.name_kana ?? '' })
       setIsAdmin(!!r.data.admin)
     })
-    api.get('/invoice_setting', { params: { category: invCat } }).then((r) => setInv(r.data))
     api.get('/backlog/setting').then((r) => setBlSetting((prev) => ({ ...prev, ...r.data })))
     api.get('/github/setting').then((r) => setGh((prev) => ({ ...prev, has_token: !!r.data.has_token, default_repos: r.data.default_repos ?? '' }))).catch(() => {})
     api.get('/freee/setting').then((r) => setFreee((prev) => ({ ...prev, status: r.data, identity: r.data.identity ?? '' }))).catch(() => {})
@@ -249,11 +251,12 @@ export default function SettingsModal({
   }
 
   const saveInvoice = async () => {
-    if (!inv) return
+    if (!inv || !invCat) return
     setSaving(true)
     setMsg(null)
     try {
-      await api.patch('/invoice_setting', { invoice_setting: inv, category: invCat, seal_image: inv.seal_image ?? '' })
+      // サーバは invoice_setting.category を優先して保存先を決めるので、読み込んだ設定の category ではなく選択中タブで上書きする
+      await api.patch('/invoice_setting', { invoice_setting: { ...inv, category: invCat }, category: invCat, seal_image: inv.seal_image ?? '' })
       setMsg('保存しました')
       onSaved?.()
     } catch (e: any) {
