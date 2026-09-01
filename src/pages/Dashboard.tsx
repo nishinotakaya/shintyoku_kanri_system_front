@@ -28,6 +28,9 @@ const visibleCategoriesFor = (me: Me | null): WorkCategory[] => {
   return me?.work_categories?.length ? visibleWorkCategories(me) : legacyCategories
 }
 
+// 今期サマリに請求書行を出すカテゴリ(見えるものだけ出す)
+const SUMMARY_CATEGORIES: WorkCategory[] = ['wings', 'living', 'transport']
+
 export default function Dashboard() {
   // 締日基準で今日が含まれる請求月を初期表示（closing_day=25 既定）
   const initial = billingMonthForToday(25)
@@ -94,14 +97,20 @@ export default function Dashboard() {
     queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category, ...asUserParam } })).data,
     enabled: categoryReady,
   })
-  // 見える(wings/living)カテゴリ一覧。今期サマリの請求書行と、川村パネルの一括申請ボタンの両方で使う。
-  // 運送専用ユーザーは wings/living どちらも見えないため空配列になり、対応するクエリ／ボタンは出さない。
+  // 今期サマリに請求書行を出すカテゴリ。従来どおり wings/living に、運送専用ユーザーの transport を加える
+  // (techleaders/resystems は従来どおり出さない)。/me が返るまでは空配列にして、wings/living を仮置きした
+  // 請求プレビューを投げない(運送ユーザーの初回描画で wings/living のプレビューが飛んでいた)。
+  const summaryCategories = useMemo(
+    () => (me ? visibleCategories.filter((workCategory) => SUMMARY_CATEGORIES.includes(workCategory)) : []),
+    [me, visibleCategories],
+  )
+  // 川村パネルの一括申請ボタンは wings/living だけ。運送専用ユーザーは空配列になりボタンを出さない
   const wingsLivingCategories = useMemo(
-    () => visibleWorkCategories(me).filter((workCategory) => workCategory === 'wings' || workCategory === 'living'),
-    [me],
+    () => summaryCategories.filter((workCategory) => workCategory === 'wings' || workCategory === 'living'),
+    [summaryCategories],
   )
   const summaryInvoiceQueries = useQueries({
-    queries: wingsLivingCategories.map((summaryCategory) => ({
+    queries: summaryCategories.map((summaryCategory) => ({
       queryKey: ['invoice_preview', monthParam, summaryCategory, asUserId],
       queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: summaryCategory, ...asUserParam } })).data,
     })),
@@ -354,7 +363,7 @@ export default function Dashboard() {
                 <span className="text-xs text-[var(--color-text-sub)]">h</span>
               </dd>
             </div>
-            {wingsLivingCategories.map((summaryCategory, summaryIndex) => (
+            {summaryCategories.map((summaryCategory, summaryIndex) => (
               <div key={summaryCategory} className="flex items-baseline justify-between">
                 <dt className="text-xs text-[var(--color-text-sub)]">請求書 {WORK_CATEGORY_LABELS[summaryCategory]}</dt>
                 <dd className="font-mono tabular-nums text-[var(--color-text)]">{fmtYen(summaryInvoiceQueries[summaryIndex].data?.total)}</dd>
