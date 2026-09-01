@@ -19,7 +19,8 @@ import ContractSignPage from './pages/ContractSignPage'
 import SettingsModal from './components/SettingsModal'
 import BusinessExpensesPage from './pages/BusinessExpensesPage'
 import { isAuthed, signOut } from './lib/auth'
-import { currentImpersonation, stopImpersonation } from './lib/impersonation'
+import { stopImpersonation, startImpersonation, fetchImpersonationCandidates,
+  type ImpersonationCandidate } from './lib/impersonation'
 import { useMe, clearMeCache } from './lib/useMe'
 import { api } from './lib/api'
 import type { Me } from './lib/api'
@@ -111,8 +112,15 @@ function Layout({ children }: { children: React.ReactNode }) {
     } catch { return new Set() }
   })
   const nav = useNavigate()
-  // なりすまし中かどうか(管理者トークンを退避しているかで判定)
-  const impersonation = currentImpersonation()
+  // なりすまし中かどうかはサーバの /me が返す impersonator を正とする。
+  // localStorage が飛んでもバナーが出るので、管理者に戻れなくなる状態が構造的に起きない。
+  const impersonator = me?.impersonator ?? null
+  // なりすまし中の乗り換え先。バナーのセレクトで使う
+  const [switchCandidates, setSwitchCandidates] = useState<ImpersonationCandidate[]>([])
+  useEffect(() => {
+    if (!impersonator) { setSwitchCandidates([]); return }
+    fetchImpersonationCandidates().then(setSwitchCandidates).catch(() => setSwitchCandidates([]))
+  }, [impersonator?.id])
   const loc = useLocation()
 
   useEffect(() => {
@@ -239,18 +247,40 @@ function Layout({ children }: { children: React.ReactNode }) {
       {/* Main area */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* なりすまし中は常時バナーを出す(誰として操作しているかを見失わないため) */}
-        {impersonation && (
+        {impersonator && (
           <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 bg-amber-500 px-3 py-1.5 text-[11px] font-semibold text-white sm:px-6">
             <span>
-              🔑 {impersonation.display_name || impersonation.email} としてログイン中
-              <span className="ml-1 font-normal opacity-90">（管理者: {impersonation.admin_display_name}）</span>
+              🔑 {me?.display_name || me?.email} としてログイン中
+              <span className="ml-1 font-normal opacity-90">（管理者: {impersonator.display_name}）</span>
             </span>
-            <button
-              onClick={async () => { await stopImpersonation(); clearMeCache(); location.href = '/users' }}
-              className="rounded-md bg-white/20 px-2.5 py-1 hover:bg-white/30"
-            >
-              管理者に戻る
-            </button>
+            <div className="flex items-center gap-2">
+              {/* 管理者に戻らずに別ユーザーへ乗り換える。管理者権限はトークン側が保持している */}
+              <select
+                value=""
+                onChange={async (e) => {
+                  const id = Number(e.target.value)
+                  if (!id) return
+                  await startImpersonation(id)
+                  clearMeCache()
+                  location.href = '/'
+                }}
+                className="rounded-md bg-white/20 px-2 py-1 text-white [&>option]:text-black"
+                title="別のユーザーに切り替える"
+              >
+                <option value="">別のユーザーに切替…</option>
+                {switchCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.display_name || candidate.email}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={async () => { await stopImpersonation(); clearMeCache(); location.href = '/users' }}
+                className="rounded-md bg-white/20 px-2.5 py-1 hover:bg-white/30"
+              >
+                管理者に戻る
+              </button>
+            </div>
           </div>
         )}
         <header className="sticky top-0 z-20 bg-white border-b border-[var(--color-border)] shadow-sm">
@@ -346,16 +376,21 @@ function Layout({ children }: { children: React.ReactNode }) {
               </button>
               <button
                 onClick={async () => {
-                  const { returnedToAdmin } = await signOut()
-                  clearMeCache()
                   // なりすまし中のログアウトは管理者アカウントに戻る(サインイン画面には出さない)
-                  if (returnedToAdmin) { location.href = '/users'; return }
+                  if (impersonator) {
+                    await stopImpersonation()
+                    clearMeCache()
+                    location.href = '/users'
+                    return
+                  }
+                  await signOut()
+                  clearMeCache()
                   nav('/sign_in')
                 }}
                 className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] sm:px-3"
               >
                 {/* なりすまし中はサインアウトではなく管理者に戻る動きなので、ラベルもそう出す */}
-                {impersonation ? '管理者に戻る' : 'ログアウト'}
+                {impersonator ? '管理者に戻る' : 'ログアウト'}
               </button>
             </div>
           </div>

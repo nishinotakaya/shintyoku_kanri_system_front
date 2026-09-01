@@ -119,6 +119,8 @@ export type Me = {
   tenant_name?: string | null
   writable_data_sources?: string[]
   sub_admin?: boolean
+  // なりすまし中のみ入る「戻り先の管理者」。バナー表示はこれを正とする(localStorage に依存しない)
+  impersonator?: { id: number; display_name: string } | null
   gender?: 'male' | 'female' | null
   work_categories?: string[] | null
 }
