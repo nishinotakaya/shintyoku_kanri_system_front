@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
 import type { WorkReport, Expense, Me } from '../lib/api'
 import { visibleWorkCategories } from '../lib/workCategories'
+import { workedHoursBetween } from '../lib/workedHours'
 import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
 
 const wd = '日月火水木金土'
@@ -87,10 +88,6 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
   // 一瞬表示されてしまうため。取込データから動的に足すこともしない(設定で隠せなくなる)。
   const persons = visiblePersons ?? []
 
-  // 行の表示名。テナント(会社)の代表は会社名で出す(「西野 雄太郎」→「HAUKUR運送」)。
-  // 予定の保存キーは person のままなので、表示だけ差し替える。
-  const personLabel = (person: string) => me?.calendar_person_labels?.[person] ?? person
-
   // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）。
   // 運送(transport)ユーザーはタマ向けの既定ステータス（出社 / リビング リモート / TL@… ）が
   // 当てはまらないので、最初は空にして「…自由入力」で足したものが選択肢に増えていくようにする。
@@ -111,6 +108,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     let tamaHours = 0
     let transportWorkedDays = 0
     let transportDistanceKm = 0
+    let transportWorkedHours = 0
     reports.forEach((report) => {
       if (report.work_date < periodStart || report.work_date > periodEnd) return
       const hours = Number(report.hours) || 0
@@ -118,6 +116,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
         livingHours += hours
       } else if (report.category === 'transport') {
         transportDistanceKm += Number(report.distance_km) || 0
+        transportWorkedHours += workedHoursBetween(report.clock_in, report.clock_out)
         // 稼働した日 = 開始・終了時間が両方入っている、または hours > 0
         const worked = (!!report.clock_in && !!report.clock_out) || hours > 0
         if (worked) transportWorkedDays += 1
@@ -156,7 +155,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
 
     return {
       livingHours, tamaHours, plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday,
-      transportWorkedDays, transportDistanceKm, periodStart, periodEnd,
+      transportWorkedDays, transportDistanceKm, transportWorkedHours, periodStart, periodEnd,
     }
   }, [reports, year, month, teamSchedules, currentSurname, closingDay])
 
@@ -240,14 +239,16 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                 <thead>
                   <tr className="text-[10px] text-[var(--color-text-sub)]">
                     <th className="text-left pr-2">　</th>
-                    <th className="text-right px-2 text-sky-600">月度稼働日数</th>
-                    <th className="text-right pl-2 text-emerald-600">走行距離</th>
+                    <th className="text-right px-2 text-sky-600">月度稼働日数(日)</th>
+                    <th className="text-right px-2 text-indigo-600">稼働時間(h)</th>
+                    <th className="text-right pl-2 text-emerald-600">走行距離(km)</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td className="text-left pr-2 text-[var(--color-text-sub)] font-semibold">合計</td>
                     <td className="text-right px-2 text-sky-700 font-semibold">{periodTotals.transportWorkedDays}日</td>
+                    <td className="text-right px-2 text-indigo-700 font-semibold">{periodTotals.transportWorkedHours.toFixed(1)}h</td>
                     <td className="text-right pl-2 text-emerald-700 font-semibold">{periodTotals.transportDistanceKm.toFixed(1)}km</td>
                   </tr>
                 </tbody>
@@ -383,7 +384,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                     if (!entry?.status) return null
                     return (
                       <div key={person} className={`rounded-sm px-0.5 text-[8px] leading-[11px] truncate ${statusClass(entry.status)}`}>
-                        {personLabel(person).charAt(0)} {entry.status}
+                        {person.charAt(0)} {entry.status}
                       </div>
                     )
                   })}
@@ -417,12 +418,12 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                       <div key={person} className="flex items-center gap-1 text-[10px] min-w-0" onClick={(e) => e.stopPropagation()}>
                         {/* 「西野 雄太郎」のような長い人物名でも折り返さず1行に収める（はみ出す分は省略、全体は title で見せる） */}
                         <span
-                          title={personLabel(person)}
+                          title={person}
                           className={`font-semibold shrink-0 whitespace-nowrap overflow-hidden text-ellipsis ${
-                            personLabel(person).length > 3 ? 'max-w-[4rem] text-[8px]' : 'w-7'
+                            person.length > 3 ? 'max-w-[4rem] text-[8px]' : 'w-7'
                           } ${editable ? 'text-[var(--color-text-sub)]' : 'text-gray-400'}`}
                         >
-                          {personLabel(person)}
+                          {person}
                         </span>
                         {editable ? (
                           <select

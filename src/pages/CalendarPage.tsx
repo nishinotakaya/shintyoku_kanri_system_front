@@ -188,7 +188,15 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <button onClick={() => monthShift(-1)} className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">←</button>
           <div>
-            <div className="text-lg font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">{year}年 {month}月分</div>
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">{year}年 {month}月分</div>
+              {/* 会社(テナント)名。稼働報告書の取引先名にあたる見出し。行は本人名のまま */}
+              {me?.tenant_name && (
+                <span className="rounded-full bg-[var(--color-bg)] border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-text-sub)] whitespace-nowrap">
+                  {me.tenant_name}
+                </span>
+              )}
+            </div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
               締日({closingDay}日)：{formatJpDate(formatIsoDate(billingPeriod.start))} 〜 {formatJpDate(formatIsoDate(billingPeriod.end))}
             </div>

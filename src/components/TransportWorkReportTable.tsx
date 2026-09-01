@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
 import { api } from '../lib/api'
 import type { Period, WorkReport } from '../lib/api'
+import { workedHoursBetween } from '../lib/workedHours'
 
 // 運送(transport)の勤怠表。紙の「稼働報告書」と同じ列を締日期間ぶん並べ、
 // カレンダー(DayDetailModal)から入れた内容がそのまま出る・ここから直しても同じ勤怠に入る。
-// 列: 日付 / 稼働 / 開始時間 / 終了時間 / 走行距離 / 備考 / 検印 / 週払 / 配送件数 / 開始メーター / 終了メーター
+// 列: 日付 / 開始時間 / 終了時間 / 稼働時間 / 走行距離(km) / 備考 / 検印 / 週払 / 配送件数(件) / 開始メーター(km) / 終了メーター(km)
 
 const WEEKDAY_LABELS = '日月火水木金土'
 
@@ -190,6 +191,10 @@ export default function TransportWorkReportTable({
     const row = editing[day.date]
     return !!row && !!row.clockIn && !!row.clockOut
   }).length
+  const totalWorkedHours = days.reduce((sum, day) => {
+    const row = editing[day.date]
+    return sum + workedHoursBetween(row?.clockIn, row?.clockOut)
+  }, 0)
   const totalDistanceKm = days.reduce((sum, day) => sum + (Number(editing[day.date]?.distanceKm) || 0), 0)
   const totalDeliveryCount = days.reduce((sum, day) => sum + (Number(editing[day.date]?.deliveryCount) || 0), 0)
 
@@ -206,6 +211,7 @@ export default function TransportWorkReportTable({
           </div>
           <div className="flex items-center gap-3 text-[11px] tabular-nums font-mono">
             <span className="text-[var(--color-text-sub)]">月度稼働日数 <span className="font-semibold text-sky-700">{workedDays}日</span></span>
+            <span className="text-[var(--color-text-sub)]">稼働時間 <span className="font-semibold text-indigo-700">{totalWorkedHours.toFixed(1)}h</span></span>
             <span className="text-[var(--color-text-sub)]">走行距離 <span className="font-semibold text-emerald-700">{totalDistanceKm.toFixed(1)}km</span></span>
             <span className="text-[var(--color-text-sub)]">配送件数 <span className="font-semibold text-fuchsia-600">{totalDeliveryCount}件</span></span>
           </div>
@@ -220,13 +226,14 @@ export default function TransportWorkReportTable({
               <th className="px-3 py-1.5 w-28">日付</th>
               <th className="px-2 py-1.5 w-20">開始時間</th>
               <th className="px-2 py-1.5 w-20">終了時間</th>
-              <th className="px-2 py-1.5 w-20 text-right">走行距離</th>
+              <th className="px-2 py-1.5 w-16 text-right">稼働時間</th>
+              <th className="px-2 py-1.5 w-24 text-right">走行距離(km)</th>
               <th className="px-2 py-1.5">備考</th>
               <th className="px-2 py-1.5 w-16 text-center">検印</th>
               <th className="px-2 py-1.5 w-12 text-center">週払</th>
-              <th className="px-2 py-1.5 w-16 text-right">配送件数</th>
-              <th className="px-2 py-1.5 w-24 text-right">開始メーター</th>
-              <th className="px-2 py-1.5 w-24 text-right">終了メーター</th>
+              <th className="px-2 py-1.5 w-20 text-right">配送件数(件)</th>
+              <th className="px-2 py-1.5 w-24 text-right">開始メーター(km)</th>
+              <th className="px-2 py-1.5 w-24 text-right">終了メーター(km)</th>
               <th className="px-2 py-1.5 w-8"></th>
             </tr>
           </thead>
@@ -252,8 +259,16 @@ export default function TransportWorkReportTable({
                   <td className="px-1 py-1">
                     <input type="time" value={row.clockOut} onChange={(e) => set(day.date, 'clockOut', e.target.value)} className={inputClass} />
                   </td>
+                  <td className="px-1 py-1 text-right font-mono tabular-nums text-[var(--color-text-sub)]">
+                    {workedHoursBetween(row.clockIn, row.clockOut) > 0
+                      ? `${workedHoursBetween(row.clockIn, row.clockOut).toFixed(1)}h`
+                      : '—'}
+                  </td>
                   <td className="px-1 py-1">
-                    <input inputMode="decimal" value={row.distanceKm} onChange={(e) => set(day.date, 'distanceKm', e.target.value)} placeholder="—" className={numberClass} />
+                    <div className="flex items-baseline">
+                      <input inputMode="decimal" value={row.distanceKm} onChange={(e) => set(day.date, 'distanceKm', e.target.value)} placeholder="—" className={numberClass} />
+                      <span className="pl-0.5 text-[10px] text-[var(--color-text-sub)]">km</span>
+                    </div>
                   </td>
                   <td className="px-1 py-1">
                     <input value={row.note} onChange={(e) => set(day.date, 'note', e.target.value)} placeholder="—" className={inputClass} />
@@ -280,20 +295,29 @@ export default function TransportWorkReportTable({
                     <input type="checkbox" checked={row.weeklyPayment} onChange={(e) => set(day.date, 'weeklyPayment', e.target.checked)} className="h-3.5 w-3.5 accent-fuchsia-500" />
                   </td>
                   <td className="px-1 py-1">
-                    <input inputMode="numeric" value={row.deliveryCount} onChange={(e) => set(day.date, 'deliveryCount', e.target.value)} placeholder="—" className={numberClass} />
+                    <div className="flex items-baseline">
+                      <input inputMode="numeric" value={row.deliveryCount} onChange={(e) => set(day.date, 'deliveryCount', e.target.value)} placeholder="—" className={numberClass} />
+                      <span className="pl-0.5 text-[10px] text-[var(--color-text-sub)]">件</span>
+                    </div>
                   </td>
                   <td className="px-1 py-1">
-                    <input inputMode="numeric" value={row.meterStart} onChange={(e) => set(day.date, 'meterStart', e.target.value)} placeholder="—" className={numberClass} />
+                    <div className="flex items-baseline">
+                      <input inputMode="numeric" value={row.meterStart} onChange={(e) => set(day.date, 'meterStart', e.target.value)} placeholder="—" className={numberClass} />
+                      <span className="pl-0.5 text-[10px] text-[var(--color-text-sub)]">km</span>
+                    </div>
                   </td>
                   <td className="px-1 py-1">
-                    <input
-                      inputMode="numeric"
-                      value={row.meterEnd}
-                      onChange={(e) => set(day.date, 'meterEnd', e.target.value)}
-                      placeholder="—"
-                      className={`${numberClass} ${meterInvalid ? 'text-red-500' : ''}`}
-                      title={meterInvalid ? '終了メーターは開始メーターより小さい値にできません' : undefined}
-                    />
+                    <div className="flex items-baseline">
+                      <input
+                        inputMode="numeric"
+                        value={row.meterEnd}
+                        onChange={(e) => set(day.date, 'meterEnd', e.target.value)}
+                        placeholder="—"
+                        className={`${numberClass} ${meterInvalid ? 'text-red-500' : ''}`}
+                        title={meterInvalid ? '終了メーターは開始メーターより小さい値にできません' : undefined}
+                      />
+                      <span className="pl-0.5 text-[10px] text-[var(--color-text-sub)]">km</span>
+                    </div>
                   </td>
                   <td className="px-1 py-1 text-right">
                     {justSaved ? (

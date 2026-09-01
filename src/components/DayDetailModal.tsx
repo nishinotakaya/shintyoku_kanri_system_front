@@ -1076,7 +1076,7 @@ export default function DayDetailModal({
           </label>
 
           <label className="block">
-            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">配送件数</span>
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">配送件数 (件)</span>
             <input
               type="number"
               inputMode="numeric"
@@ -1189,8 +1189,7 @@ export default function DayDetailModal({
             <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
               {dayTeam.map((entry, i) => (
                 <div key={i} className="rounded-lg border border-[var(--color-border)] px-2 py-1">
-                  {/* カレンダーの行と同じく、テナント代表は会社名で出す */}
-                  <div className="font-semibold">{me?.calendar_person_labels?.[entry.person] ?? entry.person}</div>
+                  <div className="font-semibold">{entry.person}</div>
                   <div className="text-[var(--color-text-sub)]">{entry.status}</div>
                 </div>
               ))}

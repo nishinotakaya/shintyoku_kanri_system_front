@@ -107,7 +107,7 @@ export type Me = {
   calendar_persons?: string[]
   own_calendar_person?: string
   editable_calendar_persons?: string[]
-  calendar_person_labels?: Record<string, string>
+  tenant_name?: string | null
   writable_data_sources?: string[]
   sub_admin?: boolean
   gender?: 'male' | 'female' | null
