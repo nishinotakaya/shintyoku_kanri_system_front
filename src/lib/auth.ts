@@ -1,5 +1,6 @@
 import { api } from './api'
 import type { Me } from './api'
+import { isImpersonating, stopImpersonation } from './impersonation'
 
 export async function signIn(email: string, password: string) {
   const res = await api.post('/auth/sign_in', { user: { email, password } })
@@ -17,13 +18,19 @@ export async function signUp(email: string, password: string, display_name: stri
   return res.data?.user as Me
 }
 
-export async function signOut() {
+// なりすまし中のログアウトは「管理者アカウントに戻る」。戻った場合は true を返す。
+export async function signOut(): Promise<{ returnedToAdmin: boolean }> {
+  if (isImpersonating()) {
+    const returned = await stopImpersonation()
+    if (returned) return { returnedToAdmin: true }
+  }
   try {
     await api.delete('/auth/sign_out')
   } catch {
     // ignore
   }
   localStorage.removeItem('jwt')
+  return { returnedToAdmin: false }
 }
 
 export async function fetchMe(): Promise<Me | null> {

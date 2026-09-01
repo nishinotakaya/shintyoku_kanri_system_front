@@ -30,6 +30,15 @@ api.interceptors.response.use(
   },
   (err) => {
     if (err.response?.status === 401) {
+      // なりすまし中にトークンが切れたら、サインイン画面ではなく管理者アカウントに戻す
+      const adminToken = localStorage.getItem('jwt_admin')
+      if (adminToken) {
+        localStorage.setItem('jwt', adminToken)
+        localStorage.removeItem('jwt_admin')
+        localStorage.removeItem('impersonation')
+        location.href = '/'
+        return Promise.reject(err)
+      }
       localStorage.removeItem('jwt')
       if (location.pathname !== '/sign_in' && location.pathname !== '/sign_up') {
         location.href = '/sign_in'

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { startImpersonation } from '../lib/impersonation'
 import { WORK_CATEGORY_KEYS, WORK_CATEGORY_LABELS, visibleWorkCategories } from '../lib/workCategories'
 import type { WorkCategory } from '../lib/workCategories'
 
@@ -55,7 +57,25 @@ export default function UsersPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const impersonate = (u: AdminUser) => navigate(`/attendance?as_user_id=${u.id}`)
+  // 「として閲覧」= 管理者のまま as_user_id で見るだけ。データは触れるが自分のログインのまま。
+  const viewAs = (u: AdminUser) => navigate(`/attendance?as_user_id=${u.id}`)
+
+  // 「なりすましログイン」= そのユーザーの JWT に差し替えて、本人としてアプリを開き直す。
+  // ログアウト or 上部バナーの「管理者に戻る」で元のアカウントに戻る。
+  const [impersonateTarget, setImpersonateTarget] = useState<AdminUser | null>(null)
+  const [impersonateBusy, setImpersonateBusy] = useState(false)
+  const runImpersonation = async () => {
+    if (!impersonateTarget) return
+    setImpersonateBusy(true)
+    try {
+      await startImpersonation(impersonateTarget.id)
+      location.href = '/'   // 画面全体を開き直して、そのユーザーとして再取得する
+    } catch (e: any) {
+      setErr(e?.response?.data?.error ?? 'なりすましログインに失敗しました')
+      setImpersonateBusy(false)
+      setImpersonateTarget(null)
+    }
+  }
 
   const patchUser = async (id: number, payload: Record<string, unknown>) => {
     try {
@@ -275,9 +295,14 @@ export default function UsersPage() {
                 </td>
                 <td className="px-4 py-2 text-center">
                   {meId !== u.id ? (
-                    <button onClick={() => impersonate(u)}
-                      className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow"
-                      title={`${u.display_name} として勤怠ダッシュボードを閲覧`}>👤 として閲覧</button>
+                    <div className="flex flex-col items-stretch gap-1">
+                      <button onClick={() => setImpersonateTarget(u)}
+                        className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow"
+                        title={`${u.display_name} としてログインする（ログアウトで管理者に戻る）`}>🔑 なりすましログイン</button>
+                      <button onClick={() => viewAs(u)}
+                        className="rounded-md whitespace-nowrap border border-[var(--color-border)] px-3 py-1 text-[11px] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
+                        title={`${u.display_name} の勤怠を管理者のまま閲覧`}>👤 として閲覧</button>
+                    </div>
                   ) : (
                     <span className="text-[10px] text-[var(--color-text-sub)]">自分</span>
                   )}
@@ -287,6 +312,22 @@ export default function UsersPage() {
           </tbody>
         </table>
       </div>
+      {impersonateTarget && (
+        <ConfirmDialog
+          title="なりすましログイン"
+          message={<>
+            <span className="font-semibold">{impersonateTarget.display_name || impersonateTarget.email}</span> として
+            ログインします。この間の操作はすべてこのユーザー本人の操作として記録されます。
+            ログアウト（または画面上部の「管理者に戻る」）で元のアカウントに戻ります。
+          </>}
+          confirmLabel="このユーザーでログイン"
+          busyLabel="切り替え中…"
+          busy={impersonateBusy}
+          tone="warning"
+          onConfirm={runImpersonation}
+          onClose={() => setImpersonateTarget(null)}
+        />
+      )}
     </div>
   )
 }
