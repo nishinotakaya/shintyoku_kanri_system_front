@@ -353,7 +353,8 @@ function Layout({ children }: { children: React.ReactNode }) {
                 }}
                 className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] sm:px-3"
               >
-                ログアウト
+                {/* なりすまし中はサインアウトではなく管理者に戻る動きなので、ラベルもそう出す */}
+                {impersonation ? '管理者に戻る' : 'ログアウト'}
               </button>
             </div>
           </div>
