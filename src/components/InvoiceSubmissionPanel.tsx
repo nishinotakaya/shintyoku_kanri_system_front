@@ -27,7 +27,7 @@ type Submission = {
   year_month: string
   category: string
   kind: SubmissionKind
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'draft' | 'pending' | 'approved' | 'rejected'
   submitted_at: string | null
   reviewed_at: string | null
   reviewer_id: number | null
@@ -544,6 +544,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                     <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${k === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{label}</span>
                     {sub ? (
                       <span>
+                        {sub.status === 'draft' && <span className="text-[var(--color-text-sub)]">下書き（PDF保存済・未申請）</span>}
                         {sub.status === 'pending' && <span className="text-amber-600 font-semibold">申請中</span>}
                         {sub.status === 'approved' && <span className="text-emerald-600 font-semibold">✅ 承認済</span>}
                         {sub.status === 'rejected' && <span className="text-red-500 font-semibold">却下</span>}
