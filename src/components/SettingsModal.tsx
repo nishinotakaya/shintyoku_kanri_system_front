@@ -24,6 +24,11 @@ type InvoiceSetting = {
   email: string
   bank_info: string
   seal_image?: string | null // 印鑑(ハンコ)画像 data URL。ユーザー単位(全カテゴリ共通)。
+  // 報酬形態(運送のみ画面に出す)。hourly = 稼働時間×時給 / daily = 稼働日数×日給 + 超過時給
+  pay_type: 'hourly' | 'daily'
+  daily_rate: number | null
+  standard_hours: number | null
+  overtime_unit_price: number | null
   default_items: { label: string; qty: number; unit: string; price: number }[]
 }
 
@@ -669,7 +674,43 @@ export default function SettingsModal({
               </div>
               {fld('件名', 'subject')}
               {fld('品目ラベル', 'item_label', 'text', 'col-span-1')}
-              {fld('単価 (円/h)', 'unit_price', 'number', 'col-span-1')}
+              {invCat === 'transport' ? (
+                <>
+                  <label className="block col-span-1">
+                    <span className="text-[11px] text-[var(--color-text-sub)]">報酬形態</span>
+                    <select
+                      value={inv?.pay_type ?? 'hourly'}
+                      onChange={(e) => setInv((p) => p && { ...p, pay_type: e.target.value as 'hourly' | 'daily' })}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                    >
+                      <option value="hourly">時給（稼働時間 × 時給）</option>
+                      <option value="daily">日給（稼働日数 × 日給 ＋ 残業）</option>
+                    </select>
+                  </label>
+                  {inv?.pay_type === 'daily' ? (
+                    <>
+                      {fld('日給 (円/日)', 'daily_rate', 'number', 'col-span-1')}
+                      {fld('所定時間 (h/日)', 'standard_hours', 'number', 'col-span-1')}
+                      <label className="block col-span-1">
+                        <span className="text-[11px] text-[var(--color-text-sub)]">超過時給 (円/h)</span>
+                        <input
+                          type="number"
+                          value={inv?.overtime_unit_price ?? ''}
+                          onChange={(e) => setInv((p) => p && { ...p, overtime_unit_price: e.target.value === '' ? null : Number(e.target.value) })}
+                          className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+                        />
+                        <span className="mt-1 block text-[10px] leading-tight text-[var(--color-text-sub)]">
+                          所定時間（未設定なら8時間）を超えた分に、1時間あたりこの単価を足します
+                        </span>
+                      </label>
+                    </>
+                  ) : (
+                    fld('時給 (円/h)', 'unit_price', 'number', 'col-span-1')
+                  )}
+                </>
+              ) : (
+                fld('単価 (円/h)', 'unit_price', 'number', 'col-span-1')
+              )}
               <label className="block col-span-1">
                 <span className="text-[11px] text-[var(--color-text-sub)]">統合請求の時給 (円/h)</span>
                 <input

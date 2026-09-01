@@ -1,8 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
+import { api } from '../lib/api'
 import type { WorkReport, Expense, Me } from '../lib/api'
 import { visibleWorkCategories } from '../lib/workCategories'
 import { workedHoursBetween } from '../lib/workedHours'
+import { isDailyPay, overtimeHoursOf, standardHoursOf } from '../lib/transportPay'
+import type { TransportPaySetting } from '../lib/transportPay'
 import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
 
 const wd = '日月火水木金土'
@@ -73,6 +76,14 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
   const visibleCategories = useMemo(() => visibleWorkCategories(me), [me])
   // 運送(transport)専用ユーザーかどうか。この場合だけ「予定/実績/差」表を稼働報告書用の集計に差し替える
   const isTransportOnly = visibleCategories.length === 1 && visibleCategories[0] === 'transport'
+  // 運送の報酬形態。日給のときだけ「時間外」を集計に出す
+  const [paySetting, setPaySetting] = useState<TransportPaySetting | null>(null)
+  useEffect(() => {
+    if (!isTransportOnly) { setPaySetting(null); return }
+    api.get<TransportPaySetting>('/invoice_setting', { params: { category: 'transport' } })
+      .then((res) => setPaySetting(res.data))
+      .catch(() => setPaySetting(null))
+  }, [isTransportOnly])
   const teamMap = useMemo(() => {
     const map = new Map<string, TeamScheduleEntry[]>()
     teamSchedules.forEach((entry) => {
@@ -109,6 +120,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     let transportWorkedDays = 0
     let transportDistanceKm = 0
     let transportWorkedHours = 0
+    let transportOvertimeHours = 0
     reports.forEach((report) => {
       if (report.work_date < periodStart || report.work_date > periodEnd) return
       const hours = Number(report.hours) || 0
@@ -116,7 +128,9 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
         livingHours += hours
       } else if (report.category === 'transport') {
         transportDistanceKm += Number(report.distance_km) || 0
-        transportWorkedHours += workedHoursBetween(report.clock_in, report.clock_out)
+        const workedHours = workedHoursBetween(report.clock_in, report.clock_out)
+        transportWorkedHours += workedHours
+        transportOvertimeHours += overtimeHoursOf(workedHours, paySetting)
         // 稼働した日 = 開始・終了時間が両方入っている、または hours > 0
         const worked = (!!report.clock_in && !!report.clock_out) || hours > 0
         if (worked) transportWorkedDays += 1
@@ -155,9 +169,9 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
 
     return {
       livingHours, tamaHours, plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday,
-      transportWorkedDays, transportDistanceKm, transportWorkedHours, periodStart, periodEnd,
+      transportWorkedDays, transportDistanceKm, transportWorkedHours, transportOvertimeHours, periodStart, periodEnd,
     }
-  }, [reports, year, month, teamSchedules, currentSurname, closingDay])
+  }, [reports, year, month, teamSchedules, currentSurname, closingDay, paySetting])
 
   // 締日(me.closing_day)期間でセルを構築: 前月(締日+1)日〜当月締日
   const cells = useMemo(() => {
@@ -241,6 +255,9 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                     <th className="text-left pr-2">　</th>
                     <th className="text-right px-2 text-sky-600">月度稼働日数(日)</th>
                     <th className="text-right px-2 text-indigo-600">稼働時間(h)</th>
+                    {isDailyPay(paySetting) && (
+                      <th className="text-right px-2 text-rose-600" title={`1日 ${standardHoursOf(paySetting)} 時間を超えた分`}>時間外(h)</th>
+                    )}
                     <th className="text-right pl-2 text-emerald-600">走行距離(km)</th>
                   </tr>
                 </thead>
@@ -249,6 +266,9 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                     <td className="text-left pr-2 text-[var(--color-text-sub)] font-semibold">合計</td>
                     <td className="text-right px-2 text-sky-700 font-semibold">{periodTotals.transportWorkedDays}日</td>
                     <td className="text-right px-2 text-indigo-700 font-semibold">{periodTotals.transportWorkedHours.toFixed(1)}h</td>
+                    {isDailyPay(paySetting) && (
+                      <td className="text-right px-2 text-rose-700 font-semibold">{periodTotals.transportOvertimeHours.toFixed(1)}h</td>
+                    )}
                     <td className="text-right pl-2 text-emerald-700 font-semibold">{periodTotals.transportDistanceKm.toFixed(1)}km</td>
                   </tr>
                 </tbody>

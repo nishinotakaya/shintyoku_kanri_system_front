@@ -3,6 +3,8 @@ import * as holidayJp from '@holiday-jp/holiday_jp'
 import { api } from '../lib/api'
 import type { Period, WorkReport } from '../lib/api'
 import { workedHoursBetween } from '../lib/workedHours'
+import { isDailyPay, overtimeHoursOf, standardHoursOf } from '../lib/transportPay'
+import type { TransportPaySetting } from '../lib/transportPay'
 
 // 運送(transport)の勤怠表。紙の「稼働報告書」と同じ列を締日期間ぶん並べ、
 // カレンダー(DayDetailModal)から入れた内容がそのまま出る・ここから直しても同じ勤怠に入る。
@@ -93,6 +95,14 @@ export default function TransportWorkReportTable({
   const transportReports = reports.filter((report) => report.category === 'transport')
   const days = daysInPeriod(period)
   const byDate = new Map<string, WorkReport>(transportReports.map((report) => [report.work_date, report]))
+
+  // 報酬形態(時給 or 日給+超過時給)。日給のときだけ「時間外」を出す
+  const [paySetting, setPaySetting] = useState<TransportPaySetting | null>(null)
+  useEffect(() => {
+    api.get<TransportPaySetting>('/invoice_setting', { params: { category: 'transport', ...asUserParam } })
+      .then((res) => setPaySetting(res.data))
+      .catch(() => setPaySetting(null))
+  }, [asUserId])
 
   const [editing, setEditing] = useState<Record<string, TransportRow>>({})
   const [savedAt, setSavedAt] = useState<Record<string, number>>({})
@@ -195,6 +205,11 @@ export default function TransportWorkReportTable({
     const row = editing[day.date]
     return sum + workedHoursBetween(row?.clockIn, row?.clockOut)
   }, 0)
+  const dailyPay = isDailyPay(paySetting)
+  const totalOvertimeHours = days.reduce((sum, day) => {
+    const row = editing[day.date]
+    return sum + overtimeHoursOf(workedHoursBetween(row?.clockIn, row?.clockOut), paySetting)
+  }, 0)
   const totalDistanceKm = days.reduce((sum, day) => sum + (Number(editing[day.date]?.distanceKm) || 0), 0)
   const totalDeliveryCount = days.reduce((sum, day) => sum + (Number(editing[day.date]?.deliveryCount) || 0), 0)
 
@@ -212,6 +227,11 @@ export default function TransportWorkReportTable({
           <div className="flex items-center gap-3 text-[11px] tabular-nums font-mono">
             <span className="text-[var(--color-text-sub)]">月度稼働日数 <span className="font-semibold text-sky-700">{workedDays}日</span></span>
             <span className="text-[var(--color-text-sub)]">稼働時間 <span className="font-semibold text-indigo-700">{totalWorkedHours.toFixed(1)}h</span></span>
+            {dailyPay && (
+              <span className="text-[var(--color-text-sub)]" title={`1日 ${standardHoursOf(paySetting)} 時間を超えた分の合計`}>
+                時間外 <span className="font-semibold text-rose-600">{totalOvertimeHours.toFixed(1)}h</span>
+              </span>
+            )}
             <span className="text-[var(--color-text-sub)]">走行距離 <span className="font-semibold text-emerald-700">{totalDistanceKm.toFixed(1)}km</span></span>
             <span className="text-[var(--color-text-sub)]">配送件数 <span className="font-semibold text-fuchsia-600">{totalDeliveryCount}件</span></span>
           </div>
@@ -227,6 +247,7 @@ export default function TransportWorkReportTable({
               <th className="px-2 py-1.5 w-20">開始時間</th>
               <th className="px-2 py-1.5 w-20">終了時間</th>
               <th className="px-2 py-1.5 w-16 text-right">稼働時間</th>
+              {dailyPay && <th className="px-2 py-1.5 w-16 text-right">時間外</th>}
               <th className="px-2 py-1.5 w-24 text-right">走行距離(km)</th>
               <th className="px-2 py-1.5">備考</th>
               <th className="px-2 py-1.5 w-16 text-center">検印</th>
@@ -264,6 +285,13 @@ export default function TransportWorkReportTable({
                       ? `${workedHoursBetween(row.clockIn, row.clockOut).toFixed(1)}h`
                       : '—'}
                   </td>
+                  {dailyPay && (
+                    <td className="px-1 py-1 text-right font-mono tabular-nums text-rose-600">
+                      {overtimeHoursOf(workedHoursBetween(row.clockIn, row.clockOut), paySetting) > 0
+                        ? `${overtimeHoursOf(workedHoursBetween(row.clockIn, row.clockOut), paySetting).toFixed(1)}h`
+                        : '—'}
+                    </td>
+                  )}
                   <td className="px-1 py-1">
                     <div className="flex items-baseline">
                       <input inputMode="decimal" value={row.distanceKm} onChange={(e) => set(day.date, 'distanceKm', e.target.value)} placeholder="—" className={numberClass} />
