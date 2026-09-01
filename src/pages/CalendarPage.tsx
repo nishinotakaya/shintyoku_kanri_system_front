@@ -46,7 +46,6 @@ export default function CalendarPage() {
   // 苗字「西野」で判定すると同姓の一般ユーザーも管理者UIになるので、サーバの admin 判定を使う
   const isAdmin = !!me?.admin
   const isOsumi = (me?.display_name ?? '').includes('大隅')
-  const myCurrentSurname = (me?.display_name ?? '').split(/[\s　]/)[0] ?? ''
 
   // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
   const [asUserId, setAsUserId] = useState<number | null>(null)
@@ -61,9 +60,10 @@ export default function CalendarPage() {
   const viewingUser = pickableUsers.find((u) => u.id === asUserId) ?? me
   const viewingSurname = (viewingUser?.display_name ?? '').split(/[\s　]/)[0] ?? ''
   // 編集権限は常に自分基準（admin はすべて編集可）。
-  // シートヘッダが「川村卓也」で自分の苗字が「川村」のような表記ゆれ両方向を許容する
-  const canEditPerson = (person: string) =>
-    isAdmin || (myCurrentSurname !== '' && person !== '' && (person.includes(myCurrentSurname) || myCurrentSurname.includes(person)))
+  // 苗字の部分一致で判定すると同姓の別ユーザー（西野 鷹也さんと西野 雄太郎さん）の行まで
+  // 編集できてしまうので、サーバが返す「操作できる人物行」だけを許可する。
+  const editablePersons = me?.editable_calendar_persons ?? []
+  const canEditPerson = (person: string) => isAdmin || editablePersons.includes(person)
 
   // 当月 + 翌月分も取得（カレンダー表示日が次の締日期間に属する分をカバー）
   const nextMonthDate = new Date(year, month, 1)

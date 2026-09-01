@@ -105,6 +105,8 @@ export type Me = {
   can_use_talk_cards_mindmap?: boolean
   viewable_data_sources?: string[]
   calendar_persons?: string[]
+  own_calendar_person?: string
+  editable_calendar_persons?: string[]
   writable_data_sources?: string[]
   sub_admin?: boolean
   gender?: 'male' | 'female' | null
