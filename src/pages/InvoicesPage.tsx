@@ -13,6 +13,7 @@ import RowActions from '../components/RowActions'
 import ExpenseEditList from '../components/ExpenseEditList'
 import IssuedPdfEditModal from '../components/IssuedPdfEditModal'
 import MergedRowEditModal from '../components/MergedRowEditModal'
+import type { InvoiceClient } from '../components/InvoiceClientsEditor'
 import ScannedInvoiceUploader, { type ScannedInvoice } from '../components/ScannedInvoiceUploader'
 
 // 郵便番号(7桁)から住所(都道府県+市区町村+町域)を zipcloud の無料APIで取得する。API キー不要。
@@ -371,7 +372,9 @@ export default function InvoicesPage() {
   const [editingIssued, setEditingIssued] = useState<IssuedPdf | null>(null)
   const [editingMergedRow, setEditingMergedRow] = useState<{ ids: number[]; po: string | null; kind: 'merged_expense' | 'merged_invoice' } | null>(null)
   const [editingSub, setEditingSub] = useState<Submission | null>(null)
-  const [editForm, setEditForm] = useState<{ note: string; purchase_order_no_override: string; total_override: string; subject_override: string; application_date: string; due_date: string; registration_no: string; bank_info: string; address: string; tel: string; postal: string; paid_at: string; items: ItemRow[] }>({ note: '', purchase_order_no_override: '', total_override: '', subject_override: '', application_date: '', due_date: '', registration_no: '', bank_info: '', address: '', tel: '', postal: '', paid_at: '', items: [] })
+  const [editForm, setEditForm] = useState<{ note: string; purchase_order_no_override: string; total_override: string; subject_override: string; application_date: string; due_date: string; registration_no: string; bank_info: string; address: string; tel: string; postal: string; paid_at: string; invoice_client_id: string; items: ItemRow[] }>({ note: '', purchase_order_no_override: '', total_override: '', subject_override: '', application_date: '', due_date: '', registration_no: '', bank_info: '', address: '', tel: '', postal: '', paid_at: '', invoice_client_id: '', items: [] })
+  // 請求先(宛先)マスタ。編集モーダルを開いた申請の持ち主のぶんを読む
+  const [editClients, setEditClients] = useState<InvoiceClient[]>([])
   const [editBusy, setEditBusy] = useState(false)
   const updateEditItem = (i: number, patch: Partial<ItemRow>) => setEditForm((p) => ({ ...p, items: applyInvoiceItemPatch(p.items, i, patch) }))
   const addEditItem = () => setEditForm((p) => ({ ...p, items: [...p.items, emptyInvoiceItem()] }))
@@ -424,6 +427,10 @@ export default function InvoicesPage() {
 
   const openEdit = async (s: Submission) => {
     setEditingSub(s)
+    // 宛先セレクト用: 申請者本人の請求先マスタ(admin は as_user_id で対象ユーザーのぶん)
+    api.get<InvoiceClient[]>('/invoice_clients', { params: { as_user_id: s.user_id } })
+      .then((r) => setEditClients(r.data))
+      .catch(() => setEditClients([]))
     // 詳細フェッチして default_items 等を取得
     try {
       const r = await api.get<Submission & { items_override: ItemRow[] | null; default_items: ItemRow[] | null; default_subject: string | null; due_date_override: string | null; default_due_date: string | null }>('/invoice_submissions', { params: { kind: s.kind, status: 'all' } })
@@ -442,6 +449,7 @@ export default function InvoicesPage() {
         tel: String((detail as any).default_tel ?? ''),
         postal: String((detail as any).default_postal_code ?? ''),
         paid_at: String((detail as any).paid_at ?? '').slice(0, 10),
+        invoice_client_id: (detail as any).invoice_client_id ? String((detail as any).invoice_client_id) : '',
         items: items.length > 0 ? items : [],
       })
     } catch {
@@ -458,6 +466,7 @@ export default function InvoicesPage() {
         tel: '',
         postal: '',
         paid_at: String((s as any).paid_at ?? '').slice(0, 10),
+        invoice_client_id: (s as any).invoice_client_id ? String((s as any).invoice_client_id) : '',
         items: [],
       })
     }
@@ -484,6 +493,8 @@ export default function InvoicesPage() {
         due_date_override: editForm.due_date || null,
         registration_no_override: editForm.registration_no.trim() || null,
         bank_info_override: editForm.bank_info.trim() || null,
+        // 宛先: 空文字なら「請求先マスタを使わない(請求書設定の宛名に戻す)」
+        invoice_client_id: editForm.invoice_client_id,
       }
       if (itemsClean.length > 0) {
         payload.items_override = itemsClean.map((it) => ({
@@ -2113,6 +2124,18 @@ export default function InvoicesPage() {
             <div className="text-[10px] text-[var(--color-text-sub)] bg-amber-50 px-2 py-1.5 rounded border border-amber-200">
               💡 PDF には別途 <strong>お振込先（口座番号）</strong> が自動表示されます — ⚙ 設定 → 請求書設定 → 銀行情報 で編集
             </div>
+            <LabeledField label="請求先（宛先）" hint="⚙ 設定 → 請求書設定 で取引先を登録すると、ここで選べます">
+              <select value={editForm.invoice_client_id}
+                onChange={(e) => setEditForm({ ...editForm, invoice_client_id: e.target.value })}
+                className={fieldInputCls}>
+                <option value="">請求書設定の宛名を使う{(editingSub as any).default_client_name ? `（${(editingSub as any).default_client_name}）` : ''}</option>
+                {editClients.map((client) => (
+                  <option key={client.id} value={String(client.id)}>
+                    {client.name} {client.honorific}{client.is_default ? '（既定）' : ''}
+                  </option>
+                ))}
+              </select>
+            </LabeledField>
             <LabeledField label="申請日" hint="請求書PDF・一覧に表示される申請日を変更します">
               <input type="date" value={editForm.application_date}
                 onChange={(e) => setEditForm({ ...editForm, application_date: e.target.value })}

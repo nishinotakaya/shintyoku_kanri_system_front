@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import InvoiceClientsEditor from './InvoiceClientsEditor'
 import type { Me } from '../lib/api'
 import { visibleWorkCategories, WORK_CATEGORY_LABELS } from '../lib/workCategories'
 import type { WorkCategory } from '../lib/workCategories'
@@ -653,7 +654,7 @@ export default function SettingsModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex gap-2 col-span-2">
-                <div className="flex-1">{fld('請求先', 'client_name')}</div>
+                <div className="flex-1">{fld('請求先（既定・請求先マスタ未使用時）', 'client_name')}</div>
                 <label className="block w-24">
                   <span className="text-[11px] text-[var(--color-text-sub)]">敬称</span>
                   <select
@@ -726,6 +727,8 @@ export default function SettingsModal({
                 </div>
               </div>
             </div>
+
+            <InvoiceClientsEditor />
 
             <div className="mt-4">
               <div className="text-[11px] text-[var(--color-text-sub)]">既定の追加品目（マイナスで控除）</div>
