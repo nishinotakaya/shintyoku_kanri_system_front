@@ -50,10 +50,10 @@ const NAV: NavItem[] = [
   { to: '/users', label: 'ユーザー一覧', icon: '👥', adminOnly: true, tabTitle: 'ユーザー' },
 ]
 
-// NAV 項目の表示可否: adminOnly は admin のみ（常時表示でロックアウト防止）、
-// feature は admin なら明示的に false のときだけ非表示・一般ユーザーは該当フラグ ON のみ
+// NAV 項目の表示可否: adminOnly は admin とサブ管理者(テナント代表・管理割当あり。例: 雄太郎→外注)に表示
+// （常時表示でロックアウト防止）、feature は admin なら明示的に false のときだけ非表示・一般ユーザーは該当フラグ ON のみ
 function navVisible(item: NavItem, me: Me | null): boolean {
-  if (item.adminOnly) return !!me?.admin
+  if (item.adminOnly) return !!me?.admin || !!me?.sub_admin
   if (item.feature) {
     if (me?.admin) return me?.feature_flags?.[item.feature] !== false
     return !!me?.feature_flags?.[item.feature]
@@ -83,7 +83,8 @@ function RequireFeature({ feature, adminOnly, children }: { feature?: FeatureKey
     if (!feature || me.feature_flags?.[feature] !== false) return <>{children}</>
     return <Navigate to={firstVisiblePath(me)} replace />
   }
-  if (adminOnly) return <Navigate to={firstVisiblePath(me)} replace />
+  // adminOnly 画面(ユーザー一覧)はサブ管理者(テナント代表・管理割当あり)にも開く。中身はサーバ側で管理対象だけに絞られる
+  if (adminOnly) return me.sub_admin ? <>{children}</> : <Navigate to={firstVisiblePath(me)} replace />
   if (!feature || me.feature_flags?.[feature]) return <>{children}</>
   return <Navigate to={firstVisiblePath(me)} replace />
 }

@@ -99,7 +99,6 @@ export default function SettingsModal({
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserName, setNewUserName] = useState('')
-  const [newUserAdmin, setNewUserAdmin] = useState(false)
   const [userBusy, setUserBusy] = useState(false)
   const [userMsg, setUserMsg] = useState<string | null>(null)
   const loadAdminUsers = async () => {
@@ -116,10 +115,10 @@ export default function SettingsModal({
     setUserBusy(true); setUserMsg(null)
     try {
       const r = await api.post<{ id: number; invite_sent: boolean; invite_error: string | null }>('/admin/users', {
-        email: newUserEmail.trim(), display_name: newUserName.trim(), admin: newUserAdmin, send_invite: true,
+        email: newUserEmail.trim(), display_name: newUserName.trim(), send_invite: true,
       })
       setUserMsg(r.data.invite_sent ? `✅ 作成 + 招待メール送信 (id=${r.data.id})` : `⚠ 作成 (id=${r.data.id}) / 招待メール失敗: ${r.data.invite_error}`)
-      setNewUserEmail(''); setNewUserName(''); setNewUserAdmin(false)
+      setNewUserEmail(''); setNewUserName('')
       await loadAdminUsers()
     } catch (e: any) {
       setUserMsg(`失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
@@ -326,7 +325,7 @@ export default function SettingsModal({
         </div>
 
         <div className="mt-5 flex gap-2 flex-wrap">
-          {(isAdmin
+          {((isAdmin || me?.sub_admin)
             ? ['account', 'invoice', 'backlog', 'github', 'freee', 'users'] as const
             : ['account', 'invoice', 'backlog', 'github', 'freee'] as const
           ).map((t) => (
@@ -1131,10 +1130,12 @@ export default function SettingsModal({
           </div>
         )}
 
-        {tab === 'users' && isAdmin && (
+        {tab === 'users' && (isAdmin || me?.sub_admin) && (
           <div className="mt-5 space-y-4">
             <div className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
-              admin 権限: 新しいユーザーを作成して招待メール (Google ログイン案内) を送信できます。
+              {isAdmin
+                ? 'admin 権限: 新しいユーザーを作成して招待メール (Google ログイン案内) を送信できます。'
+                : '外注・メンバーを追加して招待メール (Google ログイン案内) を送信できます。追加した人は自分の管理対象になり、勤怠の閲覧対象セレクトとユーザー一覧に出ます。見える画面・勤怠カテゴリ・締日は自分と同じで作成されます。'}
               <br />招待された人がそのメールアドレスで Google ログインすると、自動で本アカウントに紐づきます。
             </div>
 
@@ -1150,10 +1151,6 @@ export default function SettingsModal({
                   <span className="text-[11px] text-[var(--color-text-sub)]">表示名</span>
                   <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="山田 太郎"
                     className="mt-0.5 w-full rounded border border-[var(--color-border)] px-2 py-1 text-sm" />
-                </label>
-                <label className="flex items-end gap-1.5 text-xs">
-                  <input type="checkbox" checked={newUserAdmin} onChange={(e) => setNewUserAdmin(e.target.checked)} />
-                  <span>admin 権限</span>
                 </label>
               </div>
               <div className="flex items-center justify-between gap-2">

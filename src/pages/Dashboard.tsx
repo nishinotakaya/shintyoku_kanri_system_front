@@ -61,13 +61,16 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
   const [pickableUsers, setPickableUsers] = useState<{ id: number; display_name: string; email: string; admin: boolean }[]>([])
+  // 閲覧対象ユーザーを切り替えられる人: admin(全員) / サブ管理者=テナント代表・管理割当あり(自分の外注・メンバーだけ)。
+  // 候補はサーバ(/users/pickable)が管理対象に絞って返す
+  const canPickUsers = !!me?.admin || !!me?.sub_admin
   useEffect(() => {
-    if (!me?.admin) return
+    if (!canPickUsers) return
     api.get('/users/pickable').then((r) => setPickableUsers(r.data)).catch(() => {})
-  }, [me?.admin])
+  }, [canPickUsers])
   const isAdmin = !!me?.admin
   const isOsumi = (me?.display_name ?? '').includes('大隅')
-  const asUserParam = isAdmin && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
+  const asUserParam = canPickUsers && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
 
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
 
@@ -309,7 +312,7 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && pickableUsers.length > 0 && (
+          {canPickUsers && pickableUsers.length > 1 && (
             <select
               value={asUserId ?? me?.id ?? 0}
               onChange={(e) => setAsUserId(Number(e.target.value))}

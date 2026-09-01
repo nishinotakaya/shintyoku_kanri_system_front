@@ -42,6 +42,9 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [meId, setMeId] = useState<number | null>(null)
+  // admin だけに出す列・操作(案件データ・カレンダー人物・管理対象・なりすまし)。サブ管理者(テナント代表)は
+  // 自分の外注・メンバーの一覧と、閲覧できる画面・勤怠カテゴリの設定だけ
+  const [meAdmin, setMeAdmin] = useState(false)
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
   const [editingFeatures, setEditingFeatures] = useState<number | null>(null)
   const [editingWorkCategories, setEditingWorkCategories] = useState<number | null>(null)
@@ -51,7 +54,7 @@ export default function UsersPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get('/me').then((r) => setMeId(r.data.id))
+    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin) })
     api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
       .then((r) => { setUsers(r.data.users); setCalendarPersonCandidates(r.data.calendar_person_candidates) })
       .catch((e) => setErr(e?.response?.data?.error ?? e?.message ?? '取得失敗'))
@@ -174,7 +177,11 @@ export default function UsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <div className="text-2xl font-semibold tracking-tight text-[var(--color-text)]">ユーザー一覧</div>
-          <div className="text-[11px] text-[var(--color-text-sub)]">管理者のみ。機能権限・管理対象（サブ管理者）を設定できます</div>
+          <div className="text-[11px] text-[var(--color-text-sub)]">
+            {meAdmin
+              ? '管理者のみ。機能権限・管理対象（サブ管理者）を設定できます'
+              : '自分の外注・メンバーだけが表示されます。閲覧できる画面と勤怠カテゴリを設定できます（追加は ⚙ 設定 → ユーザー）'}
+          </div>
         </div>
         <div className="text-xs text-[var(--color-text-sub)]">{users.length} 件</div>
       </div>
@@ -190,9 +197,11 @@ export default function UsersPage() {
               <th className="px-3 py-2 w-20 text-center">権限</th>
               <th className="px-3 py-2 w-44">閲覧できる画面</th>
               <th className="px-3 py-2 w-36">勤怠カテゴリ</th>
+              {meAdmin && (<>
               <th className="px-3 py-2 w-40">案件データ（進捗）</th>
               <th className="px-3 py-2 w-36">カレンダーで見える人</th>
               <th className="px-3 py-2 w-40">管理対象（サブ管理者）</th>
+              </>)}
               <th className="px-3 py-2 w-32 text-center">操作</th>
             </tr>
           </thead>
@@ -246,6 +255,7 @@ export default function UsersPage() {
                     </div>
                   </AccordionCell>
                 </td>
+                {meAdmin && (<>
                 <td className="px-3 py-2">
                   <AccordionCell summary={sourceSummary(u)} label="案件データ" width="w-36" editable={!u.admin}
                     open={editingSources === u.id}
@@ -284,12 +294,15 @@ export default function UsersPage() {
                     </div>
                   </AccordionCell>
                 </td>
+                </>)}
                 <td className="px-3 py-2 text-center">
                   {meId !== u.id ? (
                     <div className="flex flex-col items-stretch gap-1">
+                      {meAdmin && (
                       <button onClick={() => setImpersonateTarget(u)}
                         className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 py-1 text-[10px] font-semibold text-white shadow"
                         title={`${u.display_name} としてログインする（ログアウトで管理者に戻る）`}>🔑 なりすまし</button>
+                      )}
                       <button onClick={() => viewAs(u)}
                         className="rounded-md whitespace-nowrap border border-[var(--color-border)] px-2 py-1 text-[10px] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
                         title={`${u.display_name} の勤怠を管理者のまま閲覧`}>👤 として閲覧</button>
