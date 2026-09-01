@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
-import type { WorkReport, Expense } from '../lib/api'
+import type { WorkReport, Expense, Me } from '../lib/api'
+import { visibleWorkCategories } from '../lib/workCategories'
 
 const wd = '日月火水木金土'
 
@@ -31,6 +32,8 @@ type Props = {
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
   visiblePersons?: string[]
+  /** 締日・見えるカテゴリの判定に使う。未取得(null)時は締日25日・既定4カテゴリにフォールバックする */
+  me?: Me | null
 }
 
 // 1日のステータス → { living, tama } 予定時間
@@ -62,7 +65,39 @@ function statusClass(status: string) {
   return 'bg-amber-100 text-amber-700'
 }
 
-export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, visiblePersons }: Props) {
+// 締日(month, 1-12)の月末日を返す。closingDay=31 等の「末日締め」で月によって末日が変わる(2月等)場合の丸めに使う
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate()
+}
+
+// バックエンドの User#period_for と同じロジックで締日期間の開始日/終了日を算出する。
+// 例: closingDay=25 → 前月26日〜当月25日。closingDay=31(末日締め) → 実在しない日は自動でその月の末日に丸める
+function billingPeriodRange(year: number, month: number, closingDay: number): { start: Date; end: Date } {
+  const endDay = Math.min(closingDay, lastDayOfMonth(year, month))
+  const end = new Date(year, month - 1, endDay)
+  const prevMonthYear = month === 1 ? year - 1 : year
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevEndDay = Math.min(closingDay, lastDayOfMonth(prevMonthYear, prevMonth))
+  const start = new Date(prevMonthYear, prevMonth - 1, prevEndDay + 1)
+  return { start, end }
+}
+
+function formatIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// 'YYYY-MM-DD' → 'YYYY年M月D日'（見出し表示用）
+function formatJpDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${y}年${m}月${d}日`
+}
+
+export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, visiblePersons, me }: Props) {
+  // 締日は me.closing_day を使う。未取得(null/undefined)のうちだけ 25 にフォールバック
+  const closingDay = me?.closing_day ?? 25
+  const visibleCategories = useMemo(() => visibleWorkCategories(me), [me])
+  // 運送(transport)専用ユーザーかどうか。この場合だけ「予定/実績/差」表を稼働報告書用の集計に差し替える
+  const isTransportOnly = visibleCategories.length === 1 && visibleCategories[0] === 'transport'
   const teamMap = useMemo(() => {
     const map = new Map<string, TeamScheduleEntry[]>()
     teamSchedules.forEach((entry) => {
@@ -85,21 +120,30 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     return [...set]
   }, [teamSchedules])
 
-  // 締日（25日）まで: 前月26日〜当月25日 の範囲で集計
+  // 締日(me.closing_day)まで: 前月(締日+1)日〜当月締日 の範囲で集計
   const periodTotals = useMemo(() => {
-    const closingDay = 25
-    const periodEnd = `${year}-${String(month).padStart(2, '0')}-${String(closingDay).padStart(2, '0')}`
-    const previousMonthDate = new Date(year, month - 2, closingDay + 1)
-    const periodStart = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, '0')}-${String(previousMonthDate.getDate()).padStart(2, '0')}`
+    const { start, end } = billingPeriodRange(year, month, closingDay)
+    const periodStart = formatIsoDate(start)
+    const periodEnd = formatIsoDate(end)
 
-    // 実績
+    // 実績（カテゴリごとに正しく集計。運送(transport)は「タマ」に含めない）
     let livingHours = 0
     let tamaHours = 0
+    let transportWorkedDays = 0
+    let transportDistanceKm = 0
     reports.forEach((report) => {
       if (report.work_date < periodStart || report.work_date > periodEnd) return
       const hours = Number(report.hours) || 0
-      if (report.category === 'living') livingHours += hours
-      else tamaHours += hours
+      if (report.category === 'living') {
+        livingHours += hours
+      } else if (report.category === 'transport') {
+        transportDistanceKm += Number(report.distance_km) || 0
+        // 稼働した日 = 開始・終了時間が両方入っている、または hours > 0
+        const worked = (!!report.clock_in && !!report.clock_out) || hours > 0
+        if (worked) transportWorkedDays += 1
+      } else {
+        tamaHours += hours
+      }
     })
 
     // 予定（自分のチーム予定から推計）
@@ -130,14 +174,15 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
       })
     }
 
-    return { livingHours, tamaHours, plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday, periodStart, periodEnd }
-  }, [reports, year, month, teamSchedules, currentSurname])
+    return {
+      livingHours, tamaHours, plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday,
+      transportWorkedDays, transportDistanceKm, periodStart, periodEnd,
+    }
+  }, [reports, year, month, teamSchedules, currentSurname, closingDay])
 
-  // 締日(25日)期間でセルを構築: 前月26日〜当月25日
+  // 締日(me.closing_day)期間でセルを構築: 前月(締日+1)日〜当月締日
   const cells = useMemo(() => {
-    const closingDay = 25
-    const periodStart = new Date(year, month - 2, closingDay + 1) // 前月26日
-    const periodEnd = new Date(year, month - 1, closingDay)       // 当月25日
+    const { start: periodStart, end: periodEnd } = billingPeriodRange(year, month, closingDay)
     const startDow = periodStart.getDay()
     const totalDays = Math.round((periodEnd.getTime() - periodStart.getTime()) / 86400000) + 1
 
@@ -187,7 +232,7 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     }
 
     return grid
-  }, [year, month, reports, expenses])
+  }, [year, month, reports, expenses, closingDay])
 
   const maxH = 15 // 工数バーの最大基準
 
@@ -201,57 +246,73 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
               カレンダー — {year}年 {month}月分
             </div>
             <div className="text-[11px] text-[var(--color-text-sub)] mt-0.5">
-              {(() => {
-                const prevMonth = month === 1 ? 12 : month - 1
-                const prevYear = month === 1 ? year - 1 : year
-                return `締日(25日) — ${prevYear}年${prevMonth}月26日〜${year}年${month}月25日`
-              })()}
+              締日({closingDay}日) — {formatJpDate(periodTotals.periodStart)}〜{formatJpDate(periodTotals.periodEnd)}
             </div>
           </div>
           <div className="flex flex-col items-start sm:items-end text-xs leading-tight">
             <div className="flex items-baseline gap-1 text-[10px] text-[var(--color-text-sub)]">
-              <span className="font-semibold">締日(25日)まで</span>
+              <span className="font-semibold">締日({closingDay}日)まで</span>
               <span className="font-mono tabular-nums">{periodTotals.periodStart}〜{periodTotals.periodEnd}</span>
             </div>
-            <table className="mt-0.5 text-[11px] tabular-nums font-mono">
-              <thead>
-                <tr className="text-[10px] text-[var(--color-text-sub)]">
-                  <th className="text-left pr-2">　</th>
-                  <th className="text-right px-2 text-violet-600">リビング</th>
-                  <th className="text-right px-2 text-emerald-600">タマ</th>
-                  <th className="text-right pl-2 text-amber-600">合計</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="text-left pr-2 text-[var(--color-text-sub)]">予定</td>
-                  <td className="text-right px-2 text-violet-500">{periodTotals.plannedLiving.toFixed(1)}h</td>
-                  <td className="text-right px-2 text-emerald-500">{periodTotals.plannedTama.toFixed(1)}h</td>
-                  <td className="text-right pl-2 text-amber-500">{(periodTotals.plannedLiving + periodTotals.plannedTama).toFixed(1)}h</td>
-                </tr>
-                <tr>
-                  <td className="text-left pr-2 text-[var(--color-text-sub)] font-semibold">実績</td>
-                  <td className="text-right px-2 text-violet-700 font-semibold">{periodTotals.livingHours.toFixed(1)}h</td>
-                  <td className="text-right px-2 text-emerald-700 font-semibold">{periodTotals.tamaHours.toFixed(1)}h</td>
-                  <td className="text-right pl-2 text-amber-700 font-bold">{(periodTotals.livingHours + periodTotals.tamaHours).toFixed(1)}h</td>
-                </tr>
-                {(() => {
-                  const diffLiving = periodTotals.livingHours - periodTotals.plannedLivingToToday
-                  const diffTama = periodTotals.tamaHours - periodTotals.plannedTamaToToday
-                  const diffTotal = diffLiving + diffTama
-                  const fmt = (n: number) => `${n > 0 ? '+' : n < 0 ? '' : '±'}${n.toFixed(1)}h`
-                  const cls = (n: number) => n > 0 ? 'text-emerald-600 font-semibold' : n < 0 ? 'text-red-500 font-semibold' : 'text-[var(--color-text-sub)]'
-                  return (
-                    <tr title="本日までの予定との差 (+ なら進捗、- なら遅れ)">
-                      <td className="text-left pr-2 text-[var(--color-text-sub)]">差(本日)</td>
-                      <td className={`text-right px-2 ${cls(diffLiving)}`}>{fmt(diffLiving)}</td>
-                      <td className={`text-right px-2 ${cls(diffTama)}`}>{fmt(diffTama)}</td>
-                      <td className={`text-right pl-2 ${cls(diffTotal)}`}>{fmt(diffTotal)}</td>
-                    </tr>
-                  )
-                })()}
-              </tbody>
-            </table>
+            {isTransportOnly ? (
+              // 運送ユーザー: 「予定/実績/差」表の代わりに稼働報告書フッタと同じ集計(月度稼働日数・走行距離)を出す
+              <table className="mt-0.5 text-[11px] tabular-nums font-mono">
+                <thead>
+                  <tr className="text-[10px] text-[var(--color-text-sub)]">
+                    <th className="text-left pr-2">　</th>
+                    <th className="text-right px-2 text-sky-600">月度稼働日数</th>
+                    <th className="text-right pl-2 text-emerald-600">走行距離</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="text-left pr-2 text-[var(--color-text-sub)] font-semibold">合計</td>
+                    <td className="text-right px-2 text-sky-700 font-semibold">{periodTotals.transportWorkedDays}日</td>
+                    <td className="text-right pl-2 text-emerald-700 font-semibold">{periodTotals.transportDistanceKm.toFixed(1)}km</td>
+                  </tr>
+                </tbody>
+              </table>
+            ) : (
+              <table className="mt-0.5 text-[11px] tabular-nums font-mono">
+                <thead>
+                  <tr className="text-[10px] text-[var(--color-text-sub)]">
+                    <th className="text-left pr-2">　</th>
+                    <th className="text-right px-2 text-violet-600">リビング</th>
+                    <th className="text-right px-2 text-emerald-600">タマ</th>
+                    <th className="text-right pl-2 text-amber-600">合計</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="text-left pr-2 text-[var(--color-text-sub)]">予定</td>
+                    <td className="text-right px-2 text-violet-500">{periodTotals.plannedLiving.toFixed(1)}h</td>
+                    <td className="text-right px-2 text-emerald-500">{periodTotals.plannedTama.toFixed(1)}h</td>
+                    <td className="text-right pl-2 text-amber-500">{(periodTotals.plannedLiving + periodTotals.plannedTama).toFixed(1)}h</td>
+                  </tr>
+                  <tr>
+                    <td className="text-left pr-2 text-[var(--color-text-sub)] font-semibold">実績</td>
+                    <td className="text-right px-2 text-violet-700 font-semibold">{periodTotals.livingHours.toFixed(1)}h</td>
+                    <td className="text-right px-2 text-emerald-700 font-semibold">{periodTotals.tamaHours.toFixed(1)}h</td>
+                    <td className="text-right pl-2 text-amber-700 font-bold">{(periodTotals.livingHours + periodTotals.tamaHours).toFixed(1)}h</td>
+                  </tr>
+                  {(() => {
+                    const diffLiving = periodTotals.livingHours - periodTotals.plannedLivingToToday
+                    const diffTama = periodTotals.tamaHours - periodTotals.plannedTamaToToday
+                    const diffTotal = diffLiving + diffTama
+                    const fmt = (n: number) => `${n > 0 ? '+' : n < 0 ? '' : '±'}${n.toFixed(1)}h`
+                    const cls = (n: number) => n > 0 ? 'text-emerald-600 font-semibold' : n < 0 ? 'text-red-500 font-semibold' : 'text-[var(--color-text-sub)]'
+                    return (
+                      <tr title="本日までの予定との差 (+ なら進捗、- なら遅れ)">
+                        <td className="text-left pr-2 text-[var(--color-text-sub)]">差(本日)</td>
+                        <td className={`text-right px-2 ${cls(diffLiving)}`}>{fmt(diffLiving)}</td>
+                        <td className={`text-right px-2 ${cls(diffTama)}`}>{fmt(diffTama)}</td>
+                        <td className={`text-right pl-2 ${cls(diffTotal)}`}>{fmt(diffTotal)}</td>
+                      </tr>
+                    )
+                  })()}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
         <div className="mt-2 grid grid-cols-7 gap-px bg-[var(--color-border)]">

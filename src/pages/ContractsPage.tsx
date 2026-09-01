@@ -5,8 +5,18 @@ import {
   fetchContracts, createContract,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
-import type { Contract } from '../lib/contracts'
+import type { Contract, ContractTemplate } from '../lib/contracts'
 import ContractEditor from '../components/contracts/ContractEditor'
+import Modal from '../components/Modal'
+
+// テンプレート選択カードの見た目・挙動を配列で定義(新テンプレートを増やすときはここに足す)
+const TEMPLATE_OPTIONS: { template: ContractTemplate; label: string; description: string }[] = [
+  { template: 'standard', label: '業務委託契約書（標準・15条）', description: '従来どおりの標準テンプレート' },
+  { template: 'transport', label: '運送業務委託契約書（HAUKUR運送・全29条）', description: 'HAUKUR運送向けの全29条テンプレート' },
+]
+
+// transport テンプレート選択時のタイトル既定値
+const TRANSPORT_DEFAULT_TITLE = '運送業務委託契約書'
 
 export default function ContractsPage() {
   const [me, setMe] = useState<Me | null>(null)
@@ -15,6 +25,7 @@ export default function ContractsPage() {
   const [loadError, setLoadError] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -38,12 +49,14 @@ export default function ContractsPage() {
   // contracts 配列を更新するだけで、開いている編集画面にも自動で最新状態が反映される。
   const editingContract = useMemo(() => contracts.find((contract) => contract.id === editingId) ?? null, [contracts, editingId])
 
-  const startCreate = async () => {
+  const startCreate = async (template: ContractTemplate) => {
     setCreating(true)
     try {
-      const created = await createContract()
+      const title = template === 'transport' ? TRANSPORT_DEFAULT_TITLE : undefined
+      const created = await createContract(template, title)
       setContracts((prev) => [created, ...prev])
       setEditingId(created.id)
+      setTemplateModalOpen(false)
     } catch (error: any) {
       alert(`作成失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
@@ -79,13 +92,36 @@ export default function ContractsPage() {
         </div>
         <button
           type="button"
-          onClick={startCreate}
+          onClick={() => setTemplateModalOpen(true)}
           disabled={creating}
           className="h-11 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 text-base font-semibold text-white shadow disabled:opacity-50"
         >
           {creating ? '作成中…' : '＋ 新規作成'}
         </button>
       </div>
+
+      {templateModalOpen && (
+        <Modal onClose={() => setTemplateModalOpen(false)} size="sm" panelClassName="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold text-[var(--color-text)]">テンプレートを選択</div>
+            <button type="button" onClick={() => setTemplateModalOpen(false)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
+          </div>
+          <div className="space-y-3">
+            {TEMPLATE_OPTIONS.map((option) => (
+              <button
+                key={option.template}
+                type="button"
+                onClick={() => startCreate(option.template)}
+                disabled={creating}
+                className="block w-full rounded-lg border border-[var(--color-border)] p-3 text-left hover:bg-fuchsia-50/40 disabled:opacity-50"
+              >
+                <div className="text-base font-semibold text-[var(--color-text)]">{option.label}</div>
+                <div className="mt-1 text-sm text-[var(--color-text-sub)]">{option.description}</div>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {loading ? (
         <div className="text-base text-[var(--color-text-sub)]">読み込み中…</div>

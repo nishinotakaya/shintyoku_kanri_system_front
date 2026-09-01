@@ -50,6 +50,16 @@ export type WorkReport = {
   transit_section: string | null
   transit_fee: number | null
   category: string | null
+  // 運送(transport)向け項目
+  distance_km: number | null
+  delivery_count: number | null
+  meter_start: number | null
+  meter_end: number | null
+  note: string | null
+  weekly_payment: boolean | null
+  approved: boolean
+  approved_at: string | null
+  approved_by: { id: number; display_name: string | null } | null
 }
 
 export type Expense = {

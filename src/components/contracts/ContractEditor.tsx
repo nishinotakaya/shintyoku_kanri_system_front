@@ -30,6 +30,16 @@ function toEditableArticles(articles: ContractArticle[]): EditableArticle[] {
   return articles.map((article) => ({ ...article, id: generateArticleId() }))
 }
 
+// 各条文が PDF 上で何ページ目から始まるかを計算する(先頭からの改ページ回数を数えるだけの単純な採番)。
+// 1条文目は常にページ1、以降 page_break_before が true になった条文からページ番号が1つ増える。
+function computeArticlePageNumbers(articles: EditableArticle[]): number[] {
+  let currentPageNumber = 1
+  return articles.map((article) => {
+    if (article.page_break_before) currentPageNumber += 1
+    return currentPageNumber
+  })
+}
+
 function buildEditorFormState(contract: Contract): EditorFormState {
   const base = contractToFormInput(contract)
   return { ...base, articles: toEditableArticles(base.articles) }
@@ -74,7 +84,10 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
     }))
   }
   const addArticle = () => {
-    setForm((prev) => ({ ...prev, articles: [...prev.articles, { id: generateArticleId(), heading: '', body: '' }] }))
+    setForm((prev) => ({
+      ...prev,
+      articles: [...prev.articles, { id: generateArticleId(), heading: '', body: '', page_break_before: false }],
+    }))
   }
   const removeArticle = (index: number) => {
     setForm((prev) => ({ ...prev, articles: prev.articles.filter((_, articleIndex) => articleIndex !== index) }))
@@ -96,7 +109,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
       // articles の id は編集画面内の React key 用なので、API へ送る前に落とす
       const payload: ContractFormInput = {
         ...form,
-        articles: form.articles.map(({ heading, body }) => ({ heading, body })),
+        articles: form.articles.map(({ heading, body, page_break_before }) => ({ heading, body, page_break_before })),
       }
       const updated = await updateContract(contract.id, payload)
       onUpdated(updated)
@@ -177,6 +190,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
   }
 
   const canIssue = contract.status === 'draft' || contract.status === 'sent'
+  const articlePageNumbers = computeArticlePageNumbers(form.articles)
 
   return (
     <div className="space-y-5">
@@ -271,37 +285,58 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
             )}
           </div>
           <div className="space-y-4">
-            {form.articles.map((article, index) => (
-              <div key={article.id} className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    value={article.heading}
-                    onChange={(e) => updateArticle(index, { heading: e.target.value })}
-                    disabled={!editable}
-                    placeholder="第1条（目的）"
-                    className={`${inputCls} flex-1 font-semibold`}
-                  />
-                  {editable && (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button type="button" onClick={() => moveArticle(index, -1)} disabled={index === 0}
-                        aria-label="上へ移動" title="上へ移動" className={iconButtonCls}>↑</button>
-                      <button type="button" onClick={() => moveArticle(index, 1)} disabled={index === form.articles.length - 1}
-                        aria-label="下へ移動" title="下へ移動" className={iconButtonCls}>↓</button>
-                      <button type="button" onClick={() => removeArticle(index)}
-                        aria-label="この条文を削除" title="この条文を削除"
-                        className="flex h-11 w-11 items-center justify-center rounded-md border border-red-200 text-red-500 hover:bg-red-50">✕</button>
+            {form.articles.map((article, index) => {
+              const articlePageNumber = articlePageNumbers[index]
+              return (
+                <div key={article.id}>
+                  {article.page_break_before && (
+                    <div className="mb-2 flex items-center gap-2 border-t-2 border-dashed border-fuchsia-300 pt-2">
+                      <span className="text-sm font-semibold text-fuchsia-600">ページ {articlePageNumber}</span>
+                      <span className="text-sm text-[var(--color-text-sub)]">（ここから新しいページ）</span>
                     </div>
                   )}
+                  <div className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={article.heading}
+                        onChange={(e) => updateArticle(index, { heading: e.target.value })}
+                        disabled={!editable}
+                        placeholder="第1条（目的）"
+                        className={`${inputCls} flex-1 font-semibold`}
+                      />
+                      {editable && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button type="button" onClick={() => moveArticle(index, -1)} disabled={index === 0}
+                            aria-label="上へ移動" title="上へ移動" className={iconButtonCls}>↑</button>
+                          <button type="button" onClick={() => moveArticle(index, 1)} disabled={index === form.articles.length - 1}
+                            aria-label="下へ移動" title="下へ移動" className={iconButtonCls}>↓</button>
+                          <button type="button" onClick={() => removeArticle(index)}
+                            aria-label="この条文を削除" title="この条文を削除"
+                            className="flex h-11 w-11 items-center justify-center rounded-md border border-red-200 text-red-500 hover:bg-red-50">✕</button>
+                        </div>
+                      )}
+                    </div>
+                    <textarea
+                      value={article.body}
+                      onChange={(e) => updateArticle(index, { body: e.target.value })}
+                      disabled={!editable}
+                      rows={4}
+                      className={inputCls}
+                    />
+                    <label className="flex items-center gap-2 text-sm text-[var(--color-text-sub)]">
+                      <input
+                        type="checkbox"
+                        checked={article.page_break_before ?? false}
+                        onChange={(e) => updateArticle(index, { page_break_before: e.target.checked })}
+                        disabled={!editable}
+                        className="accent-fuchsia-500"
+                      />
+                      ここから新しいページ
+                    </label>
+                  </div>
                 </div>
-                <textarea
-                  value={article.body}
-                  onChange={(e) => updateArticle(index, { body: e.target.value })}
-                  disabled={!editable}
-                  rows={4}
-                  className={inputCls}
-                />
-              </div>
-            ))}
+              )
+            })}
             {form.articles.length === 0 && (
               <div className="text-sm text-[var(--color-text-sub)]">条文がありません（＋ 条文を追加 で追加）</div>
             )}

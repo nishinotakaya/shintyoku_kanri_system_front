@@ -239,6 +239,7 @@ export default function CalendarPage() {
         canEditPerson={canEditPerson}
         currentSurname={viewingSurname}
         visiblePersons={me?.calendar_persons}
+        me={me}
       />
 
       {openDate && (
@@ -254,6 +255,7 @@ export default function CalendarPage() {
           asUserId={asUserId}
           onExportSchedule={exportTeam}
           canExport={!isOsumi}
+          me={me}
         />
       )}
     </div>

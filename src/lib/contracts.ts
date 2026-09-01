@@ -16,7 +16,13 @@ export type ContractParty = {
 export type ContractArticle = {
   heading: string
   body: string
+  // true の場合、この条文の前で改ページする(紙の原本のページ位置を PDF 上で再現するためのフラグ)
+  page_break_before?: boolean
 }
+
+// 契約書のテンプレート。standard=従来の業務委託契約書(15条)、transport=HAUKUR運送の運送業務委託契約書(全29条)。
+// 未指定(standard)が既定
+export type ContractTemplate = 'standard' | 'transport'
 
 export type ContractStatus = 'draft' | 'sent' | 'signed' | 'void'
 
@@ -113,9 +119,13 @@ export async function fetchContract(id: number): Promise<Contract> {
   return res.data
 }
 
-// 新規作成は空 body で送る。タイトル・条文の既定値・甲情報はすべて backend 側が補完する。
-export async function createContract(): Promise<Contract> {
-  const res = await api.post<Contract>('/contracts', { contract: {} })
+// 新規作成は template のみ指定して送る。タイトル(transport 以外)・条文の既定値・甲情報は backend 側が補完する。
+// title を渡すと backend の既定タイトル("業務委託契約書")を上書きできる(transport 選択時に使う)。
+export async function createContract(template: ContractTemplate = 'standard', title?: string): Promise<Contract> {
+  const res = await api.post<Contract>('/contracts', {
+    contract: title ? { title } : {},
+    template,
+  })
   return res.data
 }
 

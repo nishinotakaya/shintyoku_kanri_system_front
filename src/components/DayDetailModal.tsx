@@ -3,7 +3,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { api } from '../lib/api'
-import type { WorkReport, Expense } from '../lib/api'
+import type { WorkReport, Expense, Me } from '../lib/api'
+import { visibleWorkCategories } from '../lib/workCategories'
 import SapLink from './SapLink'
 import Modal from './Modal'
 import BacklogTaskDetailModal from './BacklogTaskDetailModal'
@@ -360,6 +361,7 @@ export default function DayDetailModal({
   asUserId,
   onExportSchedule,
   canExport,
+  me,
 }: {
   date: string
   onClose: () => void
@@ -373,10 +375,15 @@ export default function DayDetailModal({
   asUserId?: number | null
   onExportSchedule?: () => Promise<void> | void
   canExport?: boolean
+  /** 見えるカテゴリ判定(運送ユーザーかどうか)に使う。未取得(null)時は既定4カテゴリ扱い */
+  me?: Me | null
 }) {
   const asUserParam = asUserId ? { as_user_id: asUserId } : {}
   const allowEdit = (person: string) => (canEditPerson ? canEditPerson(person) : true)
   const isAdmin = !!isAdminProp
+  // 運送(transport)専用ユーザーかどうか。この場合だけ Backlog/Notion/Trello を隠し、稼働報告書フォームに差し替える
+  const visibleCategories = useMemo(() => visibleWorkCategories(me), [me])
+  const isTransportOnly = visibleCategories.length === 1 && visibleCategories[0] === 'transport'
   const [exporting, setExporting] = useState(false)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const handleExport = async () => {
@@ -417,16 +424,18 @@ export default function DayDetailModal({
   const [detailTask, setDetailTask] = useState<BacklogTask | null>(null)
   const [meInfo, setMeInfo] = useState<{ display_name?: string | null; backlog_user_id?: number | null }>({})
   // 閲覧できるデータソース。権限が無いタブは描かず、取得もしない
+  // 運送(transport)専用ユーザーは work_categories に無いカテゴリの UI/取得を一切止める
   const [viewableSources, setViewableSources] = useState<string[]>([])
-  const canViewNotion = viewableSources.includes('notion')
-  const canViewTrello = viewableSources.includes('trello')
+  const canViewNotion = !isTransportOnly && viewableSources.includes('notion')
+  const canViewTrello = !isTransportOnly && viewableSources.includes('trello')
   useEffect(() => {
+    if (isTransportOnly) return
     api.get<{ display_name?: string; viewable_data_sources?: string[] }>('/me').then((r) => {
       setMeInfo((p) => ({ ...p, display_name: r.data.display_name }))
       setViewableSources(r.data.viewable_data_sources ?? [])
     }).catch(() => {})
     api.get<{ user_backlog_id?: number }>('/backlog/setting').then((r) => setMeInfo((p) => ({ ...p, backlog_user_id: r.data.user_backlog_id }))).catch(() => {})
-  }, [])
+  }, [isTransportOnly])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [newTaskInput, setNewTaskInput] = useState<Record<string, string>>({})
   const [addingTaskFor, setAddingTaskFor] = useState<string | null>(null)
@@ -471,6 +480,7 @@ export default function DayDetailModal({
   }
 
   useEffect(() => {
+    if (isTransportOnly) { setTasksLoading(false); return }
     setTasksLoading(true)
     Promise.all([
       api.get<BacklogTask[]>('/backlog/tasks_on_date', { params: { date, assignee: '西野' } }),
@@ -480,7 +490,7 @@ export default function DayDetailModal({
       .catch(() => setTasksByAssignee({}))
       .finally(() => setTasksLoading(false))
     api.get<BacklogTask[]>('/backlog/tasks').then((r) => setAllTasks(r.data)).catch(() => setAllTasks([]))
-  }, [date])
+  }, [date, isTransportOnly])
 
   // Notion (リビング) タスク
   const [notionTasksByAssignee, setNotionTasksByAssignee] = useState<Record<string, NotionTask[]>>({ '西野': [], '川村': [] })
@@ -576,6 +586,110 @@ export default function DayDetailModal({
         return order(a.category) - order(b.category)
       })
   , [workReports, date])
+
+  // 運送(transport)向け「稼働報告書」フォーム。この日の transport 業務報告(あれば)を初期値にする
+  const existingTransportReport = useMemo(
+    () => dayReports.find((r) => r.category === 'transport') ?? null,
+    [dayReports],
+  )
+  type TransportDraft = {
+    worked: boolean
+    clockIn: string
+    clockOut: string
+    distanceKm: string
+    note: string
+    weeklyPayment: boolean
+    deliveryCount: string
+    meterStart: string
+    meterEnd: string
+  }
+  const buildTransportDraft = (report: WorkReport | null): TransportDraft => ({
+    worked: !!report,
+    clockIn: report?.clock_in ?? '',
+    clockOut: report?.clock_out ?? '',
+    distanceKm: report?.distance_km != null ? String(report.distance_km) : '',
+    note: report?.note ?? '',
+    weeklyPayment: !!report?.weekly_payment,
+    deliveryCount: report?.delivery_count != null ? String(report.delivery_count) : '',
+    meterStart: report?.meter_start != null ? String(report.meter_start) : '',
+    meterEnd: report?.meter_end != null ? String(report.meter_end) : '',
+  })
+  const [transportDraft, setTransportDraft] = useState<TransportDraft>(() => buildTransportDraft(existingTransportReport))
+  useEffect(() => {
+    setTransportDraft(buildTransportDraft(existingTransportReport))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, existingTransportReport?.id])
+  const [transportSaving, setTransportSaving] = useState(false)
+  const [transportApproving, setTransportApproving] = useState(false)
+  const [transportError, setTransportError] = useState<string | null>(null)
+  const transportMeterInvalid =
+    transportDraft.meterStart !== '' && transportDraft.meterEnd !== '' &&
+    Number(transportDraft.meterEnd) < Number(transportDraft.meterStart)
+
+  const saveTransportReport = async () => {
+    setTransportError(null)
+    if (!transportDraft.worked) {
+      // 稼働 OFF: 既存の勤怠があれば削除する
+      if (!existingTransportReport) return
+      setTransportSaving(true)
+      try {
+        await api.delete(`/work_reports/${existingTransportReport.id}`, { params: asUserParam })
+        onChanged?.()
+      } catch (e: any) {
+        setTransportError(e?.response?.data?.error ?? e?.message ?? '削除に失敗しました')
+      } finally {
+        setTransportSaving(false)
+      }
+      return
+    }
+    if (transportMeterInvalid) {
+      setTransportError('終了メーターは開始メーターより小さい値にできません')
+      return
+    }
+    const payload = {
+      work_date: date,
+      category: 'transport',
+      clock_in: transportDraft.clockIn || null,
+      clock_out: transportDraft.clockOut || null,
+      distance_km: transportDraft.distanceKm === '' ? null : Number(transportDraft.distanceKm),
+      note: transportDraft.note || null,
+      weekly_payment: transportDraft.weeklyPayment,
+      delivery_count: transportDraft.deliveryCount === '' ? null : Number(transportDraft.deliveryCount),
+      meter_start: transportDraft.meterStart === '' ? null : Number(transportDraft.meterStart),
+      meter_end: transportDraft.meterEnd === '' ? null : Number(transportDraft.meterEnd),
+    }
+    setTransportSaving(true)
+    try {
+      if (existingTransportReport) {
+        await api.patch(`/work_reports/${existingTransportReport.id}`, payload, { params: asUserParam })
+      } else {
+        await api.post('/work_reports', payload, { params: asUserParam })
+      }
+      onChanged?.()
+    } catch (e: any) {
+      setTransportError(e?.response?.data?.error ?? e?.message ?? '保存に失敗しました')
+    } finally {
+      setTransportSaving(false)
+    }
+  }
+
+  const toggleTransportApproval = async () => {
+    if (!existingTransportReport) return
+    setTransportApproving(true)
+    setTransportError(null)
+    try {
+      if (existingTransportReport.approved_at) {
+        await api.delete(`/work_reports/${existingTransportReport.id}/approve`, { params: asUserParam })
+      } else {
+        await api.patch(`/work_reports/${existingTransportReport.id}/approve`, {}, { params: asUserParam })
+      }
+      onChanged?.()
+    } catch (e: any) {
+      setTransportError(e?.response?.data?.error ?? e?.message ?? '検印の更新に失敗しました')
+    } finally {
+      setTransportApproving(false)
+    }
+  }
 
   const existingCategories = useMemo(() => new Set(dayReports.map((r) => r.category ?? 'wings')), [dayReports])
 
@@ -844,6 +958,180 @@ export default function DayDetailModal({
           </button>
         </div>
       </div>
+    )
+  }
+
+  // 運送(transport)専用ユーザーは Backlog/Notion/Trello のタスク連携UIを一切出さず、
+  // 稼働報告書(紙の様式と同じ項目)の入力フォームだけを表示する
+  if (isTransportOnly) {
+    const fieldDisabled = !transportDraft.worked || transportSaving
+    return (
+      <Modal onClose={onClose} size="sm" panelClassName="!rounded-2xl !p-4 !shadow-2xl max-md:!max-h-[96vh]">
+        <div className="border-b border-[var(--color-border)] pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-base font-semibold text-[var(--color-text)]">{date} の稼働報告書</div>
+            <button onClick={onClose} className="shrink-0 px-1 text-lg leading-none text-[var(--color-text-sub)] hover:text-[var(--color-text)]">×</button>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-4 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={transportDraft.worked}
+              onChange={(e) => setTransportDraft((prev) => ({ ...prev, worked: e.target.checked }))}
+              className="h-4 w-4"
+            />
+            <span className="font-semibold">稼働</span>
+            {!transportDraft.worked && (
+              <span className="text-[11px] text-[var(--color-text-sub)]">OFF にすると保存時にこの日の勤怠を削除します</span>
+            )}
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">開始時間</span>
+              <input
+                type="time"
+                value={transportDraft.clockIn}
+                onChange={(e) => setTransportDraft((prev) => ({ ...prev, clockIn: e.target.value }))}
+                disabled={fieldDisabled}
+                className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">終了時間</span>
+              <input
+                type="time"
+                value={transportDraft.clockOut}
+                onChange={(e) => setTransportDraft((prev) => ({ ...prev, clockOut: e.target.value }))}
+                disabled={fieldDisabled}
+                className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">走行距離 (km)</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min="0"
+              value={transportDraft.distanceKm}
+              onChange={(e) => setTransportDraft((prev) => ({ ...prev, distanceKm: e.target.value }))}
+              disabled={fieldDisabled}
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            />
+          </label>
+
+          <label className="block">
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">備考欄</span>
+            <textarea
+              value={transportDraft.note}
+              onChange={(e) => setTransportDraft((prev) => ({ ...prev, note: e.target.value }))}
+              disabled={fieldDisabled}
+              rows={2}
+              placeholder="高速代・駐車場代の合計を記入してください"
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            />
+          </label>
+
+          <div className="border-t border-[var(--color-border)] pt-3">
+            <div className="text-[11px] text-[var(--color-text-sub)] mb-1">検印</div>
+            {existingTransportReport?.approved_at ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-emerald-600">
+                  検印済み: {new Date(existingTransportReport.approved_at).toLocaleString('ja-JP')}
+                </span>
+                <button
+                  onClick={toggleTransportApproval}
+                  disabled={transportApproving}
+                  className="rounded border border-rose-300 bg-white px-2 py-1 text-[11px] text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                >
+                  {transportApproving ? '解除中…' : '検印を解除'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={toggleTransportApproval}
+                disabled={transportApproving || !existingTransportReport}
+                className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[11px] font-semibold text-white shadow disabled:opacity-50"
+                title={existingTransportReport ? undefined : '先に保存してください'}
+              >
+                {transportApproving ? '押印中…' : existingTransportReport ? '検印を押す' : '検印は保存後に押せます'}
+              </button>
+            )}
+          </div>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={transportDraft.weeklyPayment}
+              onChange={(e) => setTransportDraft((prev) => ({ ...prev, weeklyPayment: e.target.checked }))}
+              disabled={fieldDisabled}
+              className="h-4 w-4"
+            />
+            <span>週払</span>
+          </label>
+
+          <label className="block">
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">配送件数</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={transportDraft.deliveryCount}
+              onChange={(e) => setTransportDraft((prev) => ({ ...prev, deliveryCount: e.target.value }))}
+              disabled={fieldDisabled}
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">開始メーター (km)</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                value={transportDraft.meterStart}
+                onChange={(e) => setTransportDraft((prev) => ({ ...prev, meterStart: e.target.value }))}
+                disabled={fieldDisabled}
+                className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">終了メーター (km)</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                value={transportDraft.meterEnd}
+                onChange={(e) => setTransportDraft((prev) => ({ ...prev, meterEnd: e.target.value }))}
+                disabled={fieldDisabled}
+                className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+              />
+            </label>
+          </div>
+          {transportMeterInvalid && (
+            <div className="text-[11px] text-red-500">終了メーターは開始メーターより小さい値にできません</div>
+          )}
+
+          {transportError && <div className="text-[11px] text-red-500">{transportError}</div>}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={onClose} className="rounded border border-[var(--color-border)] bg-white px-3 py-1.5 text-xs">閉じる</button>
+            <button
+              onClick={saveTransportReport}
+              disabled={transportSaving || transportMeterInvalid}
+              className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50"
+            >
+              {transportSaving ? '保存中…' : '保存'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     )
   }
 

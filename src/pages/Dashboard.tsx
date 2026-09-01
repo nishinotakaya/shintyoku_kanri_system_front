@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import { DEFAULT_WORK_CATEGORIES, WORK_CATEGORY_LABELS, visibleWorkCategories } from '../lib/workCategories'
@@ -87,14 +87,17 @@ export default function Dashboard() {
     queryKey: ['invoice_preview', monthParam, category, asUserId],
     queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category, ...asUserParam } })).data,
   })
-  // 今期サマリ用: Wings + リビング 両方の請求書合計
-  const invoiceWingsQ = useQuery({
-    queryKey: ['invoice_preview', monthParam, 'wings', asUserId],
-    queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: 'wings', ...asUserParam } })).data,
-  })
-  const invoiceLivingQ = useQuery({
-    queryKey: ['invoice_preview', monthParam, 'living', asUserId],
-    queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: 'living', ...asUserParam } })).data,
+  // 見える(wings/living)カテゴリ一覧。今期サマリの請求書行と、川村パネルの一括申請ボタンの両方で使う。
+  // 運送専用ユーザーは wings/living どちらも見えないため空配列になり、対応するクエリ／ボタンは出さない。
+  const wingsLivingCategories = useMemo(
+    () => visibleWorkCategories(me).filter((workCategory) => workCategory === 'wings' || workCategory === 'living'),
+    [me],
+  )
+  const summaryInvoiceQueries = useQueries({
+    queries: wingsLivingCategories.map((summaryCategory) => ({
+      queryKey: ['invoice_preview', monthParam, summaryCategory, asUserId],
+      queryFn: async () => (await api.get('/invoice_preview', { params: { month: monthParam, category: summaryCategory, ...asUserParam } })).data,
+    })),
   })
 
   // 紐付け候補: この月/カテゴリの 受領 PO (自分(=admin)以外のユーザーに紐付くもの)
@@ -328,6 +331,7 @@ export default function Dashboard() {
         kind="invoice"
         invoicePdfDownloaded={invoicePdfDownloaded}
         expensePdfDownloaded={expensePdfDownloaded}
+        bulkCategories={wingsLivingCategories}
       />
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -342,14 +346,12 @@ export default function Dashboard() {
                 <span className="text-xs text-[var(--color-text-sub)]">h</span>
               </dd>
             </div>
-            <div className="flex items-baseline justify-between">
-              <dt className="text-xs text-[var(--color-text-sub)]">請求書 Wings</dt>
-              <dd className="font-mono tabular-nums text-[var(--color-text)]">{fmtYen(invoiceWingsQ.data?.total)}</dd>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <dt className="text-xs text-[var(--color-text-sub)]">請求書 リビング</dt>
-              <dd className="font-mono tabular-nums text-[var(--color-text)]">{fmtYen(invoiceLivingQ.data?.total)}</dd>
-            </div>
+            {wingsLivingCategories.map((summaryCategory, summaryIndex) => (
+              <div key={summaryCategory} className="flex items-baseline justify-between">
+                <dt className="text-xs text-[var(--color-text-sub)]">請求書 {WORK_CATEGORY_LABELS[summaryCategory]}</dt>
+                <dd className="font-mono tabular-nums text-[var(--color-text)]">{fmtYen(summaryInvoiceQueries[summaryIndex].data?.total)}</dd>
+              </div>
+            ))}
             <div className="flex items-baseline justify-between">
               <dt className="text-xs text-[var(--color-text-sub)]">立替金</dt>
               <dd className="font-mono tabular-nums text-[var(--color-text)]">¥{totals.expense.toLocaleString()}</dd>
@@ -357,7 +359,7 @@ export default function Dashboard() {
             <div className="border-t border-[var(--color-border)] pt-1.5 flex items-baseline justify-between">
               <dt className="text-xs text-amber-600 font-semibold">合計</dt>
               <dd className="font-mono tabular-nums text-lg text-amber-600">
-                ¥{((invoiceWingsQ.data?.total ?? 0) + (invoiceLivingQ.data?.total ?? 0) + totals.expense).toLocaleString()}
+                ¥{(summaryInvoiceQueries.reduce((sum, query) => sum + (query.data?.total ?? 0), 0) + totals.expense).toLocaleString()}
               </dd>
             </div>
           </dl>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Expense, WorkReport } from '../lib/api'
 import { api } from '../lib/api'
+import type { WorkCategory } from '../lib/workCategories'
 import FolderSaveButtons, { fetchExportBlob } from './FolderSaveButtons'
 
 
@@ -19,7 +20,7 @@ export default function ExpenseTable({
   month: number
   expenses: Expense[]
   reports: WorkReport[]
-  category?: string
+  category?: WorkCategory
   onPdfDownloaded?: () => void
   onChanged?: () => void
   asUserId?: number | null
@@ -28,6 +29,11 @@ export default function ExpenseTable({
   const mp = `${year}-${String(month).padStart(2, '0')}`
   const asUserParam = asUserId ? { as_user_id: asUserId } : {}
   const filenamePrefix = surname ? `${surname}_` : ''
+
+  // シェアラウンジ(押上)の既定文言・ヒントは Tama(wings) / リビング(living) の立替金でしか意味を持たないため、
+  // 運送(transport)など他カテゴリでは出さない
+  const isShareLoungeCategory = category === 'wings' || category === 'living'
+  const defaultExpensePurpose = isShareLoungeCategory ? '押上シェアラウンジ利用料' : ''
 
   // 立替金の合計（expense レコードのみ。work_reports.transit_fee はここでは加算しない＝
   // apply_transit で Expense にも複製作成済み → 二重計上防止）
@@ -48,7 +54,7 @@ export default function ExpenseTable({
   const [updating, setUpdating] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
   const [newExpense, setNewExpense] = useState<{ expense_date: string; purpose: string; amount: string }>(
-    () => ({ expense_date: `${year}-${String(month).padStart(2, '0')}-01`, purpose: '押上シェアラウンジ利用料', amount: '' })
+    () => ({ expense_date: `${year}-${String(month).padStart(2, '0')}-01`, purpose: defaultExpensePurpose, amount: '' })
   )
   const [creating, setCreating] = useState(false)
 
@@ -84,7 +90,7 @@ export default function ExpenseTable({
         category,
         billing_month: `${year}-${String(month).padStart(2, '0')}`, // 表示中の月に紐づける（締日跨ぎでもこの月に入る）
       })
-      setNewExpense({ expense_date: `${year}-${String(month).padStart(2, '0')}-01`, purpose: '押上シェアラウンジ利用料', amount: '' })
+      setNewExpense({ expense_date: `${year}-${String(month).padStart(2, '0')}-01`, purpose: defaultExpensePurpose, amount: '' })
       setAdding(false)
       onChanged?.()
     } catch (e: any) {
@@ -133,7 +139,7 @@ export default function ExpenseTable({
       <div className="mt-2 flex items-center gap-2">
         <button onClick={() => setAdding((v) => !v)}
           className="text-[11px] rounded border border-emerald-400 bg-white px-2 py-0.5 text-emerald-600 hover:bg-emerald-50">
-          {adding ? '× 追加をキャンセル' : '＋ 立替金を追加（押上シェアラウンジ利用料 等）'}
+          {adding ? '× 追加をキャンセル' : (isShareLoungeCategory ? '＋ 立替金を追加（押上シェアラウンジ利用料 等）' : '＋ 立替金を追加')}
         </button>
       </div>
       {adding && (
@@ -142,10 +148,10 @@ export default function ExpenseTable({
             <input type="date" value={newExpense.expense_date}
               onChange={(e) => setNewExpense({ ...newExpense, expense_date: e.target.value })}
               className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs" /></label>
-          <label className="col-span-5"><div className="text-[10px] mb-0.5">用途（"押上 シェアラウンジ" を含むと会社負担=ON）</div>
+          <label className="col-span-5"><div className="text-[10px] mb-0.5">{isShareLoungeCategory ? '用途（"押上 シェアラウンジ" を含むと会社負担=ON）' : '用途'}</div>
             <input value={newExpense.purpose}
               onChange={(e) => setNewExpense({ ...newExpense, purpose: e.target.value })}
-              placeholder="押上シェアラウンジ利用料"
+              placeholder={isShareLoungeCategory ? '押上シェアラウンジ利用料' : '高速代'}
               className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs" /></label>
           <label className="col-span-2"><div className="text-[10px] mb-0.5">金額(円)</div>
             <input type="text" inputMode="numeric" value={newExpense.amount}
@@ -202,9 +208,11 @@ export default function ExpenseTable({
                   })}
                 </tbody>
               </table>
-              <div className="px-2 py-1 text-[10px] text-[var(--color-text-sub)] bg-amber-50">
-                ※ 会社負担を外したものは請求書 PDF/Excel に含まれません（押上以外のシェアラウンジ等）
-              </div>
+              {isShareLoungeCategory && (
+                <div className="px-2 py-1 text-[10px] text-[var(--color-text-sub)] bg-amber-50">
+                  ※ 会社負担を外したものは請求書 PDF/Excel に含まれません（押上以外のシェアラウンジ等）
+                </div>
+              )}
             </div>
           )}
         </div>

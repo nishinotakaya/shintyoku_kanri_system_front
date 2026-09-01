@@ -5,6 +5,8 @@ import { showPdf } from '../lib/openPdf'
 import LabopMailModal from './LabopMailModal'
 import InvoiceSubmitConfirmModal from './InvoiceSubmitConfirmModal'
 import InvoiceItemsEditor, { applyInvoiceItemPatch, emptyInvoiceItem } from './InvoiceItemsEditor'
+import { WORK_CATEGORY_LABELS } from '../lib/workCategories'
+import type { WorkCategory } from '../lib/workCategories'
 
 type SubmissionKind = 'invoice' | 'expense' | 'work_report'
 
@@ -55,6 +57,9 @@ type Props = {
   // applicant 統合用: kind="invoice" インスタンスに両方の PDF DL 状態を渡す
   invoicePdfDownloaded?: boolean
   expensePdfDownloaded?: boolean
+  // 一括申請ボタンの対象カテゴリ (呼び出し元で visibleWorkCategories(me) と ['wings','living'] の積集合を渡す)。
+  // 未指定時は従来どおり Tama+リビングにフォールバックする
+  bulkCategories?: WorkCategory[]
 }
 
 const KIND_LABEL: Record<SubmissionKind, string> = {
@@ -93,7 +98,7 @@ type LabopForm = {
 
 const emptyItem = (): ItemRow => emptyInvoiceItem()
 
-export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, category, kind, pdfDownloaded = false, invoicePdfDownloaded, expensePdfDownloaded }: Props) {
+export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, category, kind, pdfDownloaded = false, invoicePdfDownloaded, expensePdfDownloaded, bulkCategories = ['wings', 'living'] }: Props) {
   const invoiceDl = invoicePdfDownloaded ?? (kind === 'invoice' ? pdfDownloaded : false)
   const expenseDl = expensePdfDownloaded ?? (kind === 'expense' ? pdfDownloaded : false)
   const [mine, setMine] = useState<Submission[]>([])
@@ -200,17 +205,15 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
     | { mode: 'single'; category: string; kind: SubmissionKind }
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null)
 
-  // 一括申請: Tama(wings) + リビング(living) × 請求書 + 立替金 を 4 件まとめて
+  // 一括申請: bulkCategories(通常は Tama(wings) + リビング(living)) × 請求書 + 立替金 をまとめて
   //  ★1 リクエストで送信 → admin への通知メールも 1 通に集約される
   const submitAllBulk = async () => {
     setBusy(true); setMsg(null)
     try {
-      const submissions = [
-        { category: 'wings',  kind: 'invoice' },
-        { category: 'wings',  kind: 'expense' },
-        { category: 'living', kind: 'invoice' },
-        { category: 'living', kind: 'expense' },
-      ]
+      const submissions = bulkCategories.flatMap((bulkCategory) => [
+        { category: bulkCategory, kind: 'invoice' },
+        { category: bulkCategory, kind: 'expense' },
+      ])
       const r = await api.post<unknown[]>('/invoice_submissions/bulk_create', { year, month, submissions })
       setMsg(`✅ ${r.data.length} 件まとめて申請しました (admin 宛通知メールも 1 通)`)
       await loadAll()
@@ -488,6 +491,9 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       { k: 'expense', label: '立替金', sub: myExpenseCurrent, dlOk: expenseDl },
     ]
     const anySubmitted = rows.some(({ sub }) => sub?.status === 'pending' || sub?.status === 'approved')
+    // 一括申請ボタンのラベル用: 対象カテゴリ名を「/」でつなげる。カテゴリ数 × (請求書+立替金) が申請件数
+    const bulkCategoryLabel = bulkCategories.map((bulkCategory) => WORK_CATEGORY_LABELS[bulkCategory]).join(' / ')
+    const bulkSubmissionCount = bulkCategories.length * 2
     return (
       <div className="glass rounded-xl px-3 py-2 shadow-md">
         <div className="flex items-center justify-between mb-1">
@@ -499,15 +505,17 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
           </div>
           {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
         </div>
-        {/* 一括申請ボタン (Tama+リビング × 請求書+立替金 = 4件) */}
-        <button
-          onClick={() => setConfirmTarget({ mode: 'bulk' })}
-          disabled={busy}
-          className="mb-2 w-full rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 via-pink-500 to-rose-500 px-3 py-2 text-xs font-semibold text-white shadow disabled:opacity-50"
-          title="Tama (請求書+立替金) + リビング (請求書+立替金) の4件を一気に申請する"
-        >
-          {busy ? '送信中…' : '🚀 まとめて一括申請（Tama / リビング × 請求書 / 立替金 4件）'}
-        </button>
+        {/* 一括申請ボタン (bulkCategories × 請求書+立替金)。対象カテゴリが無い(運送専用ユーザー等)場合はボタン自体を出さない */}
+        {bulkCategories.length > 0 && (
+          <button
+            onClick={() => setConfirmTarget({ mode: 'bulk' })}
+            disabled={busy}
+            className="mb-2 w-full rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 via-pink-500 to-rose-500 px-3 py-2 text-xs font-semibold text-white shadow disabled:opacity-50"
+            title={`${bulkCategoryLabel} (請求書+立替金) の${bulkSubmissionCount}件を一気に申請する`}
+          >
+            {busy ? '送信中…' : `🚀 まとめて一括申請（${bulkCategoryLabel} × 請求書 / 立替金 ${bulkSubmissionCount}件）`}
+          </button>
+        )}
 
         {/* 請求書を注文書に紐付ける（任意） */}
         <div className="mb-1.5 flex items-center gap-2 text-[11px] bg-amber-50 px-2 py-1 rounded">
