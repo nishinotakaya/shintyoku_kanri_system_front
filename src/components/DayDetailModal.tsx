@@ -1189,7 +1189,8 @@ export default function DayDetailModal({
             <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
               {dayTeam.map((entry, i) => (
                 <div key={i} className="rounded-lg border border-[var(--color-border)] px-2 py-1">
-                  <div className="font-semibold">{entry.person}</div>
+                  {/* カレンダーの行と同じく、テナント代表は会社名で出す */}
+                  <div className="font-semibold">{me?.calendar_person_labels?.[entry.person] ?? entry.person}</div>
                   <div className="text-[var(--color-text-sub)]">{entry.status}</div>
                 </div>
               ))}
