@@ -7,6 +7,7 @@ import type { WorkReport, Expense, Me } from '../lib/api'
 import { visibleWorkCategories } from '../lib/workCategories'
 import SapLink from './SapLink'
 import NotionLineReportModal from './NotionLineReportModal'
+import { buildNotionLineReportMessage } from '../lib/notionLineReport'
 import Modal from './Modal'
 import BacklogTaskDetailModal from './BacklogTaskDetailModal'
 import TaskMemoEditor from './TaskMemoEditor'
@@ -82,6 +83,10 @@ type NotionTask = {
   note: string | null
   memo?: string | null
   url?: string | null
+  start_date_prev?: string | null
+  end_date_prev?: string | null
+  progress_rate_prev?: number | null
+  status_prev?: string | null
 }
 
 type TrelloTask = {
@@ -563,6 +568,37 @@ export default function DayDetailModal({
     Object.values(notionTasksByAssignee).flat()
       .filter((task) => lineSelectedIds.has(task.id))
       .map((task) => `N-${task.notion_block_id.replace(/-/g, '')}`)
+
+  // 勤怠に追加したタスクの枠内で編集する「修正後」の値。未編集なら Notion の現在値がデフォルト。
+  const [lineEditsById, setLineEditsById] = useState<Record<number, { start: string; end: string; ratePercent: number }>>({})
+  const lineEditFor = (task: NotionTask) => lineEditsById[task.id] ?? {
+    start: task.start_date ?? '',
+    end: task.end_date ?? '',
+    ratePercent: task.progress_rate != null ? Math.round(Number(task.progress_rate) * 100) : 0,
+  }
+  const patchLineEdit = (task: NotionTask, patch: Partial<{ start: string; end: string; ratePercent: number }>) => {
+    setLineEditsById((previous) => ({ ...previous, [task.id]: { ...lineEditFor(task), ...patch } }))
+  }
+  // LINE 文面は枠内で編集した「修正後」を使ってフロントで組み立てる(修正前は前回同期値 *_prev)
+  const buildCalendarLineMessage = () => {
+    const selectedTasks = Object.values(notionTasksByAssignee).flat().filter((task) => lineSelectedIds.has(task.id))
+    const entries = selectedTasks.map((task) => {
+      const edit = lineEditFor(task)
+      const currentRate = task.progress_rate != null ? Math.round(Number(task.progress_rate) * 100) : null
+      const beforeRate = task.progress_rate_prev != null ? Math.round(Number(task.progress_rate_prev) * 100) : currentRate
+      return {
+        title: task.title,
+        wbsLevel: task.wbs_level,
+        url: task.url ?? `https://www.notion.so/21e123f261d2802b93bae6e0f9406682?v=21e123f261d280b29c52000c51b8b437&p=${task.notion_block_id.replace(/-/g, '')}&pm=s`,
+        status: task.status,
+        statusPrev: task.status_prev,
+        note: task.note,
+        before: { start: task.start_date_prev ?? task.start_date, end: task.end_date_prev ?? task.end_date, ratePercent: beforeRate },
+        after: { start: edit.start || null, end: edit.end || null, ratePercent: edit.ratePercent },
+      }
+    })
+    return buildNotionLineReportMessage(entries, meInfo.display_name)
+  }
 
   // Trello (テックリーダー) タスク
   const [trelloTasks, setTrelloTasks] = useState<Record<string, TrelloTask[]>>({})
@@ -1598,11 +1634,6 @@ export default function DayDetailModal({
                                   {task.progress_rate != null && task.progress_rate > 0 && (
                                     <span>{Math.round(Number(task.progress_rate) * 100)}%</span>
                                   )}
-                                  <label className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
-                                    <input type="checkbox" className="accent-emerald-500" checked={lineSelectedIds.has(task.id)}
-                                      onChange={(e) => toggleLineSelect(task.id, e.target.checked)} onClick={(e) => e.stopPropagation()} />
-                                    <span className={`font-semibold ${lineSelectedIds.has(task.id) ? 'text-emerald-600' : ''}`}>LINE報告</span>
-                                  </label>
                                 </div>
                                 {task.note && <div className="text-[10px] text-gray-500 mt-0.5 truncate" title={task.note}>{task.note}</div>}
                                 <TaskMemoEditor
@@ -1610,6 +1641,47 @@ export default function DayDetailModal({
                                   onSave={(value) => saveNotionMemo(task.id, value)}
                                   editable={editable}
                                 />
+                                {alreadyInLiving && (() => {
+                                  const edit = lineEditFor(task)
+                                  const beforeStart = task.start_date_prev ?? task.start_date
+                                  const beforeEnd = task.end_date_prev ?? task.end_date
+                                  const currentRate = task.progress_rate != null ? Math.round(Number(task.progress_rate) * 100) : null
+                                  const beforeRate = task.progress_rate_prev != null ? Math.round(Number(task.progress_rate_prev) * 100) : currentRate
+                                  return (
+                                    <div className="mt-1 rounded border border-emerald-200 bg-emerald-50/50 p-1.5 text-[10px] space-y-1" onClick={(e) => e.stopPropagation()}>
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-emerald-700">LINE報告（修正後を編集）</span>
+                                        <label className="flex items-center gap-1 cursor-pointer select-none">
+                                          <input type="checkbox" className="accent-emerald-500" checked={lineSelectedIds.has(task.id)}
+                                            onChange={(e) => toggleLineSelect(task.id, e.target.checked)} />
+                                          <span className={`font-semibold ${lineSelectedIds.has(task.id) ? 'text-emerald-600' : 'text-[var(--color-text-sub)]'}`}>報告する</span>
+                                        </label>
+                                      </div>
+                                      <div className="grid grid-cols-[3.2rem_1fr_auto_1fr] items-center gap-x-1 gap-y-0.5">
+                                        <span className="text-[var(--color-text-sub)]">開始日</span>
+                                        <span className="text-gray-500">{beforeStart ? beforeStart.replaceAll('-', '/') : '-'}</span>
+                                        <span>→</span>
+                                        <input type="date" value={edit.start} onChange={(e) => patchLineEdit(task, { start: e.target.value })}
+                                          className="rounded border border-emerald-200 bg-white px-1 py-0.5" />
+                                        <span className="text-[var(--color-text-sub)]">終了日</span>
+                                        <span className="text-gray-500">{beforeEnd ? beforeEnd.replaceAll('-', '/') : '-'}</span>
+                                        <span>→</span>
+                                        <input type="date" value={edit.end} onChange={(e) => patchLineEdit(task, { end: e.target.value })}
+                                          className="rounded border border-emerald-200 bg-white px-1 py-0.5" />
+                                        <span className="text-[var(--color-text-sub)]">進捗率</span>
+                                        <span className="text-gray-500">{beforeRate != null ? `${beforeRate}%` : '-'}</span>
+                                        <span>→</span>
+                                        <select value={edit.ratePercent} onChange={(e) => patchLineEdit(task, { ratePercent: Number(e.target.value) })}
+                                          className="rounded border border-emerald-200 bg-white px-1 py-0.5">
+                                          {/* 5%刻み + Notionの現在値(33%等の端数)も選択肢に含めて表示ズレを防ぐ */}
+                                          {[...new Set([...Array.from({ length: 21 }, (_, i) => i * 5), edit.ratePercent])].sort((a, b) => a - b).map((pct) => (
+                                            <option key={pct} value={pct}>{pct}%</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
                               </div>
                               {editable && (
                                 <div className="flex shrink-0 items-center gap-1">
@@ -1778,6 +1850,7 @@ export default function DayDetailModal({
       {lineModalOpen && (
         <NotionLineReportModal
           issueKeys={selectedLineIssueKeys()}
+          initialMessage={buildCalendarLineMessage()}
           onClose={() => setLineModalOpen(false)}
           onSent={() => {
             setLineModalOpen(false)

@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
-export default function NotionLineReportModal({ issueKeys, onClose, onSent }: {
+export default function NotionLineReportModal({ issueKeys, initialMessage, onClose, onSent }: {
   issueKeys: string[]
+  /** 呼び出し側で組み立てた文面。渡されたときはサーバのプレビューを使わない(カレンダーの枠内編集から使う) */
+  initialMessage?: string | null
   onClose: () => void
   onSent: () => void
 }) {
@@ -14,6 +16,10 @@ export default function NotionLineReportModal({ issueKeys, onClose, onSent }: {
 
   // モーダルは開くたびにマウントされるので、初回に1度だけプレビューを取る
   useEffect(() => {
+    if (initialMessage != null) {
+      setMessage(initialMessage)
+      return
+    }
     api.post<{ message: string }>('/notion_tasks/line_report_preview', { issue_keys: issueKeys })
       .then((r) => setMessage(r.data.message))
       .catch((e) => setError(e?.response?.data?.error ?? 'LINE報告の文面作成に失敗しました'))
