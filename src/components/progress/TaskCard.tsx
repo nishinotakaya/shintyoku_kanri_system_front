@@ -135,6 +135,20 @@ function TaskCard({
   }
 
   const { daysLeft, overdue, urgent } = dueState(task.due_date)
+
+  // 同期で日付が動いていたら「修正前 → 修正後」を出す。動いていなければ現在値だけ。
+  const dateWithChange = (current: string | null, previous: string | null) => {
+    if (!previous || previous === current) return <>{current?.slice(5) ?? '—'}</>
+    return <span className="font-semibold text-rose-600">{previous.slice(5)} → {current?.slice(5) ?? '—'}</span>
+  }
+  const showsStart = !!(task.start_date || task.start_date_prev)
+  const showsEnd = !!(task.end_date || task.end_date_prev)
+  const scheduleSpans = showsStart || showsEnd ? (
+    <>
+      {showsStart && <span>開始: {dateWithChange(task.start_date, task.start_date_prev)}</span>}
+      {showsEnd && <span>終了: {dateWithChange(task.end_date, task.end_date_prev)}</span>}
+    </>
+  ) : null
   const editable = task.source !== 'backlog' && !!onSummaryChanged
   const deadlineBorder = overdue ? 'border-l-4 border-l-red-500' : urgent ? 'border-l-4 border-l-amber-400' : ''
 
@@ -274,6 +288,12 @@ function TaskCard({
             <div className="mt-2 text-xs text-[var(--color-text-sub)]">期限: {task.due_date}</div>
           )}
 
+          {scheduleSpans && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--color-text-sub)]">
+              {scheduleSpans}
+            </div>
+          )}
+
           {flagCheckboxes}
 
           <div className="mt-3">{progressBar('h-2', 'px-1 py-0.5 text-[11px]')}</div>
@@ -294,7 +314,8 @@ function TaskCard({
                 {assigneeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             )}
-            {task.due_date && <span>完了予定: {task.due_date.slice(5)}</span>}
+            {scheduleSpans}
+            {!scheduleSpans && task.due_date && <span>完了予定: {task.due_date.slice(5)}</span>}
             <span>作成: {task.created_on?.slice(5) ?? '—'}</span>
             {task.completed_on && <span className="text-emerald-600 font-semibold">完了: {task.completed_on.slice(5)}</span>}
             {elapsedDaysBadge(task.created_on)}

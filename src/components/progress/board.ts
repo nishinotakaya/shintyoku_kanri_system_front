@@ -10,6 +10,11 @@ export type BLTask = {
   created_on: string | null
   completed_on: string | null
   due_date: string | null
+  start_date: string | null
+  end_date: string | null
+  // 前回同期からの変更前の値。入っていればカードに「修正前 → 修正後」を出す
+  start_date_prev: string | null
+  end_date_prev: string | null
   memo: string | null
   deploy_date: string | null
   deploy_note: string | null
