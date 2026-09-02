@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
-export default function NotionLineReportModal({ issueKeys, initialMessage, onClose, onSent }: {
-  issueKeys: string[]
+export default function NotionLineReportModal({ previewIssueKeys, initialMessage, notionIssueKeys, onClose, onSent }: {
+  /** サーバに文面プレビューを作らせる Notion タスクのキー(initialMessage が無いときに使う) */
+  previewIssueKeys?: string[]
   /** 呼び出し側で組み立てた文面。渡されたときはサーバのプレビューを使わない(カレンダーの枠内編集から使う) */
   initialMessage?: string | null
+  /** 送信後に変更差分(*_prev)をクリアする Notion タスクのキー。Notion 以外のタスクだけなら空でよい */
+  notionIssueKeys?: string[]
   onClose: () => void
   onSent: () => void
 }) {
@@ -20,7 +23,7 @@ export default function NotionLineReportModal({ issueKeys, initialMessage, onClo
       setMessage(initialMessage)
       return
     }
-    api.post<{ message: string }>('/notion_tasks/line_report_preview', { issue_keys: issueKeys })
+    api.post<{ message: string }>('/notion_tasks/line_report_preview', { issue_keys: previewIssueKeys ?? [] })
       .then((r) => setMessage(r.data.message))
       .catch((e) => setError(e?.response?.data?.error ?? 'LINE報告の文面作成に失敗しました'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -31,7 +34,7 @@ export default function NotionLineReportModal({ issueKeys, initialMessage, onClo
     setBusy(true)
     setError(null)
     try {
-      await api.post('/notion_tasks/line_report', { issue_keys: issueKeys, message })
+      await api.post('/line_reports', { message, notion_issue_keys: notionIssueKeys ?? [] })
       onSent()
     } catch (e: any) {
       setError(e?.response?.data?.error ?? 'LINE送信に失敗しました')

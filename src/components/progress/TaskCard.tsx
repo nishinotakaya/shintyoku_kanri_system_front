@@ -169,7 +169,7 @@ function TaskCard({
           onChange={(e) => onFlagChanged?.(task.id, { did_previous: e.target.checked })} onClick={stopPropagation} />
         <span className={`font-semibold ${task.did_previous ? 'text-sky-600' : 'text-[var(--color-text-sub)]'}`}>前回行った</span>
       </label>
-      {task.source === 'notion' && onLineSelectChanged && (
+      {onLineSelectChanged && (
         <label className="flex items-center gap-1 cursor-pointer select-none" onClick={stopPropagation}>
           <input type="checkbox" checked={!!lineSelectedIds?.has(task.id)} className="accent-emerald-500"
             onChange={(e) => onLineSelectChanged(task.id, e.target.checked)} onClick={stopPropagation} />

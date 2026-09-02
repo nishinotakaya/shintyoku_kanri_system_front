@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import KanbanBoard from '../components/KanbanBoard'
 import NotionLineReportModal from '../components/NotionLineReportModal'
+import { buildNotionLineReportMessage } from '../lib/notionLineReport'
 import WorkspaceTabs from '../components/progress/WorkspaceTabs'
 import type { ProgressWorkspace } from '../components/progress/WorkspaceTabs'
 import { sortTasks } from '../components/progress/board'
@@ -262,6 +263,22 @@ export default function ProgressPage() {
   }, [])
   const selectedLineIssueKeys = () =>
     (tasksQ.data ?? []).filter((task) => lineSelectedIds.has(task.id)).map((task) => task.issue_key)
+  const isNotionWorkspace = selectedWorkspace?.source_type === 'notion'
+  // Notion 以外(タマ/テックリーダー/手動)のワークスペースは、カードの値からフロントで文面を組み立てる
+  const buildKanbanLineMessage = () => {
+    const selectedTasks = (tasksQ.data ?? []).filter((task) => lineSelectedIds.has(task.id))
+    const entries = selectedTasks.map((task) => ({
+      title: task.source === 'backlog' ? task.issue_key : task.summary,
+      wbsLevel: task.source === 'backlog' ? task.summary : null,
+      url: task.url ?? '',
+      status: task.status_name,
+      statusPrev: null,
+      note: task.memo,
+      before: { start: null, end: task.due_date, ratePercent: Math.round((task.progress ?? 0) * 100) },
+      after: { start: null, end: task.due_date, ratePercent: Math.round((task.progress ?? 0) * 100) },
+    }))
+    return buildNotionLineReportMessage(entries, me.display_name)
+  }
 
   return (
     <div className="space-y-6">
@@ -279,16 +296,16 @@ export default function ProgressPage() {
             </button>
           )}
           {selectedWorkspace?.source_type === 'notion' && (
-            <>
-              <button onClick={syncNotion} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
-                {syncing ? '同期中…' : '🔄 Notion同期'}
-              </button>
-              <button onClick={() => setLineModalOpen(true)} disabled={lineSelectedIds.size === 0}
-                title="カードの「LINE報告」にチェックしたタスクの進捗を、西野さんのLINEへ送信します"
-                className="whitespace-nowrap rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
-                {`📱 LINE送信 (${lineSelectedIds.size})`}
-              </button>
-            </>
+            <button onClick={syncNotion} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+              {syncing ? '同期中…' : '🔄 Notion同期'}
+            </button>
+          )}
+          {selectedWorkspace && (
+            <button onClick={() => setLineModalOpen(true)} disabled={lineSelectedIds.size === 0}
+              title="カードの「LINE報告」にチェックしたタスクの進捗を、西野さんのLINEへ送信します"
+              className="whitespace-nowrap rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+              {`📱 LINE送信 (${lineSelectedIds.size})`}
+            </button>
           )}
           {selectedWorkspace?.source_type === 'trello' && (
             <button onClick={syncTrello} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
@@ -495,7 +512,7 @@ export default function ProgressPage() {
         onUrlChanged={handleUrlChanged}
         onAssigneeChanged={handleAssigneeChanged}
         onFlagChanged={handleFlagChanged}
-        onLineSelectChanged={selectedWorkspace?.source_type === 'notion' ? handleLineSelectChanged : undefined}
+        onLineSelectChanged={handleLineSelectChanged}
         lineSelectedIds={lineSelectedIds}
         workspaceId={selectedWorkspaceId}
         currentUserName={me.display_name}
@@ -505,7 +522,9 @@ export default function ProgressPage() {
       {/* LINE 報告モーダル。文面を確認・編集してから送信する */}
       {lineModalOpen && (
         <NotionLineReportModal
-          issueKeys={selectedLineIssueKeys()}
+          previewIssueKeys={isNotionWorkspace ? selectedLineIssueKeys() : undefined}
+          initialMessage={isNotionWorkspace ? undefined : buildKanbanLineMessage()}
+          notionIssueKeys={isNotionWorkspace ? selectedLineIssueKeys() : []}
           onClose={() => setLineModalOpen(false)}
           onSent={() => {
             setLineModalOpen(false)

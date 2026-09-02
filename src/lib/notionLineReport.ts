@@ -45,8 +45,10 @@ export function buildNotionLineReportMessage(entries: NotionReportEntry[], repor
       lines.push(`ステータス: ${entry.statusPrev && entry.statusPrev !== entry.status ? `${entry.statusPrev} → ${entry.status}` : entry.status}`)
     }
     if (entry.note) lines.push(`備考(遅れた理由など): ${entry.note}`)
-    lines.push('リンク')
-    lines.push(entry.url)
+    if (entry.url) {
+      lines.push('リンク')
+      lines.push(entry.url)
+    }
     return lines.join('\n')
   })
   return [header, ...sections].join('\n\n')
