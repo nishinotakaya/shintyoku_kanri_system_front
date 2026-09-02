@@ -1715,9 +1715,9 @@ export default function DayDetailModal({
                                             <option key={statusOption} value={statusOption}>{statusOption}</option>
                                           ))}
                                         </select>
-                                        <span className="text-[var(--color-text-sub)]">備考</span>
+                                        <span className="text-[var(--color-text-sub)]" title="備考(遅れた理由など)">備考</span>
                                         <input value={edit.note} onChange={(e) => patchLineEdit(task, { note: e.target.value })}
-                                          placeholder="備考（空なら文面に入りません）"
+                                          placeholder="遅れた理由など（空なら文面に入りません）"
                                           className="col-span-3 rounded border border-emerald-200 bg-white px-1 py-0.5" />
                                       </div>
                                     </div>
