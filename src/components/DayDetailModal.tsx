@@ -80,6 +80,7 @@ type NotionTask = {
   priority: string | null
   note: string | null
   memo?: string | null
+  url?: string | null
 }
 
 type TrelloTask = {
@@ -1248,7 +1249,7 @@ export default function DayDetailModal({
                     )}
                   </div>
                   {!isEditing && report.content && (
-                    <div className="mt-1 leading-relaxed"><SapLink text={report.content} /></div>
+                    <div className="mt-1 leading-relaxed"><SapLink text={report.content} category={report.category ?? 'wings'} /></div>
                   )}
                   {!isEditing && report.transit_section && (
                     <div className="mt-0.5 text-[var(--color-text-sub)]">{report.transit_section}{report.transit_fee ? ` ¥${report.transit_fee}` : ''}</div>
@@ -1553,7 +1554,7 @@ export default function DayDetailModal({
                               <div className="flex-1 min-w-0">
                                 <div className="font-mono text-[9px] text-fuchsia-500">{task.wbs_level}</div>
                                 <a
-                                  href={`https://www.notion.so/21e123f261d2802b93bae6e0f9406682?v=21e123f261d280b29c52000c51b8b437&p=${task.notion_block_id.replace(/-/g, '')}&pm=s`}
+                                  href={task.url ?? `https://www.notion.so/21e123f261d2802b93bae6e0f9406682?v=21e123f261d280b29c52000c51b8b437&p=${task.notion_block_id.replace(/-/g, '')}&pm=s`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="block font-semibold truncate text-fuchsia-700 hover:underline"

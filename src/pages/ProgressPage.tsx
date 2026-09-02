@@ -246,6 +246,50 @@ export default function ProgressPage() {
     saveTask(taskId, patch, patch)
   }, [saveTask])
 
+  // リビング(Notion)タスクの LINE 報告: 「LINE報告」にチェックしたタスクの文面を組み立てて
+  // 西野さんの LINE へ送る。文面はモーダルで確認・編集できる。
+  const [lineSelectedIds, setLineSelectedIds] = useState<Set<number>>(new Set())
+  const [lineMessage, setLineMessage] = useState<string | null>(null) // null = モーダル非表示
+  const [lineBusy, setLineBusy] = useState(false)
+  const [lineError, setLineError] = useState<string | null>(null)
+  useEffect(() => { setLineSelectedIds(new Set()) }, [selectedWorkspaceId])
+  const handleLineSelectChanged = useCallback((taskId: number, selected: boolean) => {
+    setLineSelectedIds((previous) => {
+      const next = new Set(previous)
+      if (selected) next.add(taskId)
+      else next.delete(taskId)
+      return next
+    })
+  }, [])
+  const selectedLineIssueKeys = () =>
+    (tasksQ.data ?? []).filter((task) => lineSelectedIds.has(task.id)).map((task) => task.issue_key)
+  const openLineModal = async () => {
+    setLineBusy(true)
+    setLineError(null)
+    try {
+      const { data } = await api.post<{ message: string }>('/notion_tasks/line_report_preview', { issue_keys: selectedLineIssueKeys() })
+      setLineMessage(data.message)
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.error ?? 'LINE報告の文面作成に失敗しました')
+    } finally {
+      setLineBusy(false)
+    }
+  }
+  const sendLineReport = async () => {
+    setLineBusy(true)
+    setLineError(null)
+    try {
+      await api.post('/notion_tasks/line_report', { issue_keys: selectedLineIssueKeys(), message: lineMessage })
+      setLineMessage(null)
+      setLineSelectedIds(new Set())
+      setSyncMsg('LINEに送信しました')
+    } catch (e: any) {
+      setLineError(e?.response?.data?.error ?? 'LINE送信に失敗しました')
+    } finally {
+      setLineBusy(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -262,9 +306,16 @@ export default function ProgressPage() {
             </button>
           )}
           {selectedWorkspace?.source_type === 'notion' && (
-            <button onClick={syncNotion} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
-              {syncing ? '同期中…' : '🔄 Notion同期'}
-            </button>
+            <>
+              <button onClick={syncNotion} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+                {syncing ? '同期中…' : '🔄 Notion同期'}
+              </button>
+              <button onClick={openLineModal} disabled={lineBusy || lineSelectedIds.size === 0}
+                title="カードの「LINE報告」にチェックしたタスクの進捗を、西野さんのLINEへ送信します"
+                className="whitespace-nowrap rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
+                {lineBusy && lineMessage == null ? '文面作成中…' : `📱 LINE送信 (${lineSelectedIds.size})`}
+              </button>
+            </>
           )}
           {selectedWorkspace?.source_type === 'trello' && (
             <button onClick={syncTrello} disabled={syncing} className="whitespace-nowrap rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-semibold text-white shadow-md disabled:opacity-50 sm:px-5 sm:py-2.5 sm:text-sm">
@@ -471,10 +522,35 @@ export default function ProgressPage() {
         onUrlChanged={handleUrlChanged}
         onAssigneeChanged={handleAssigneeChanged}
         onFlagChanged={handleFlagChanged}
+        onLineSelectChanged={selectedWorkspace?.source_type === 'notion' ? handleLineSelectChanged : undefined}
+        lineSelectedIds={lineSelectedIds}
         workspaceId={selectedWorkspaceId}
         currentUserName={me.display_name}
         isAdmin={me.admin}
       />
+
+      {/* LINE 報告モーダル。文面を確認・編集してから送信する */}
+      {lineMessage != null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!lineBusy) setLineMessage(null) }}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold text-slate-800">📱 LINE報告（西野さんへ送信）</div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              開始日・終了日・進捗率は Notion の値です（前回同期から変わった項目は「修正前 → 修正後」）。文面は編集できます。
+            </div>
+            <textarea value={lineMessage} onChange={(e) => setLineMessage(e.target.value)} rows={14}
+              className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs leading-relaxed text-slate-800" />
+            {lineError && <div className="mt-2 text-xs font-semibold text-red-600">{lineError}</div>}
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={() => setLineMessage(null)} disabled={lineBusy}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">キャンセル</button>
+              <button onClick={sendLineReport} disabled={lineBusy || !lineMessage.trim()}
+                className="rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow disabled:opacity-50">
+                {lineBusy ? '送信中…' : '送信'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

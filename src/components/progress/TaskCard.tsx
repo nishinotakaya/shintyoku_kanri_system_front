@@ -19,6 +19,9 @@ export type TaskCardHandlers = {
   onUrlChanged?: (taskId: number, url: string) => void
   onAssigneeChanged?: (taskId: number, name: string) => void
   onFlagChanged?: (taskId: number, patch: { did_previous?: boolean; do_today?: boolean }) => void
+  // リビング(Notion)タスクの LINE 報告選択。ハンドラが渡っているときだけチェックボックスを出す
+  onLineSelectChanged?: (taskId: number, selected: boolean) => void
+  lineSelectedIds?: Set<number>
 }
 
 type TaskCardProps = TaskCardHandlers & {
@@ -78,6 +81,8 @@ function TaskCard({
   onUrlChanged,
   onAssigneeChanged,
   onFlagChanged,
+  onLineSelectChanged,
+  lineSelectedIds,
 }: TaskCardProps) {
   const [summaryText, setSummaryDraft] = useDraft(task.summary)
   const [urlText, setUrlDraft] = useDraft(task.url ?? '')
@@ -164,6 +169,13 @@ function TaskCard({
           onChange={(e) => onFlagChanged?.(task.id, { did_previous: e.target.checked })} onClick={stopPropagation} />
         <span className={`font-semibold ${task.did_previous ? 'text-sky-600' : 'text-[var(--color-text-sub)]'}`}>前回行った</span>
       </label>
+      {task.source === 'notion' && onLineSelectChanged && (
+        <label className="flex items-center gap-1 cursor-pointer select-none" onClick={stopPropagation}>
+          <input type="checkbox" checked={!!lineSelectedIds?.has(task.id)} className="accent-emerald-500"
+            onChange={(e) => onLineSelectChanged(task.id, e.target.checked)} onClick={stopPropagation} />
+          <span className={`font-semibold ${lineSelectedIds?.has(task.id) ? 'text-emerald-600' : 'text-[var(--color-text-sub)]'}`}>LINE報告</span>
+        </label>
+      )}
     </div>
   )
 
