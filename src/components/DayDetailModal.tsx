@@ -191,10 +191,11 @@ function LineReportInlineEditor({ before, draft, edited, selected, onToggleSelec
             <option key={statusOption} value={statusOption}>{statusOption}</option>
           ))}
         </select>
-        <span className="text-[var(--color-text-sub)]" title="備考(遅れた理由など)">備考</span>
-        <input value={draft.note} onChange={(e) => onPatch({ note: e.target.value })}
+        <span className="self-start pt-0.5 text-[var(--color-text-sub)]" title="備考(遅れた理由など)">備考</span>
+        <textarea value={draft.note} onChange={(e) => onPatch({ note: e.target.value })}
+          rows={3}
           placeholder="遅れた理由など（空なら文面に入りません）"
-          className="col-span-3 rounded border border-emerald-200 bg-white px-1 py-0.5" />
+          className="col-span-3 resize-y rounded border border-emerald-200 bg-white px-1 py-0.5 leading-snug" />
       </div>
     </div>
   )
