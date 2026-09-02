@@ -570,14 +570,15 @@ export default function DayDetailModal({
       .map((task) => `N-${task.notion_block_id.replace(/-/g, '')}`)
 
   // 勤怠に追加したタスクの枠内で編集する「修正後」の値。未編集なら Notion の現在値がデフォルト。
-  const [lineEditsById, setLineEditsById] = useState<Record<number, { start: string; end: string; ratePercent: number; status: string }>>({})
+  const [lineEditsById, setLineEditsById] = useState<Record<number, { start: string; end: string; ratePercent: number; status: string; note: string }>>({})
   const lineEditFor = (task: NotionTask) => lineEditsById[task.id] ?? {
     start: task.start_date ?? '',
     end: task.end_date ?? '',
     ratePercent: task.progress_rate != null ? Math.round(Number(task.progress_rate) * 100) : 0,
     status: task.status ?? '',
+    note: task.note ?? '',
   }
-  const patchLineEdit = (task: NotionTask, patch: Partial<{ start: string; end: string; ratePercent: number; status: string }>) => {
+  const patchLineEdit = (task: NotionTask, patch: Partial<{ start: string; end: string; ratePercent: number; status: string; note: string }>) => {
     setLineEditsById((previous) => ({ ...previous, [task.id]: { ...lineEditFor(task), ...patch } }))
   }
   // 報告で選べるステータス。Notion(未着手/進行中/完了) + カンバンの「処理済」
@@ -596,7 +597,7 @@ export default function DayDetailModal({
         // ステータスは枠内で選んだ「修正後」を報告する(処理済/完了など)。修正前は前回同期値
         status: edit.status || null,
         statusPrev: task.status_prev ?? task.status,
-        note: task.note,
+        note: edit.note || null,
         before: { start: task.start_date_prev ?? task.start_date, end: task.end_date_prev ?? task.end_date, ratePercent: beforeRate },
         after: { start: edit.start || null, end: edit.end || null, ratePercent: edit.ratePercent },
       }
@@ -1692,6 +1693,10 @@ export default function DayDetailModal({
                                             <option key={statusOption} value={statusOption}>{statusOption}</option>
                                           ))}
                                         </select>
+                                        <span className="text-[var(--color-text-sub)]">備考</span>
+                                        <input value={edit.note} onChange={(e) => patchLineEdit(task, { note: e.target.value })}
+                                          placeholder="備考（空なら文面に入りません）"
+                                          className="col-span-3 rounded border border-emerald-200 bg-white px-1 py-0.5" />
                                       </div>
                                     </div>
                                   )
