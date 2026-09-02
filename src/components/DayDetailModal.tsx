@@ -1567,6 +1567,14 @@ export default function DayDetailModal({
                 >
                   📱 LINE送信 ({lineSelectedIds.size})
                 </button>
+                <button
+                  onClick={() => setLineEditsById({})}
+                  disabled={Object.keys(lineEditsById).length === 0}
+                  className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                  title="全タスクの修正後の編集を取り消して Notion の値に戻す"
+                >
+                  ↩ 変更取消
+                </button>
                 {lineSentMsg && <span className="text-[10px] text-emerald-600 font-semibold">{lineSentMsg}</span>}
                 {notionSyncMsg && <span className="text-[10px] text-[var(--color-text-sub)]">{notionSyncMsg}</span>}
               </>
@@ -1656,11 +1664,25 @@ export default function DayDetailModal({
                                     <div className="mt-1 rounded border border-emerald-200 bg-emerald-50/50 p-1.5 text-[10px] space-y-1" onClick={(e) => e.stopPropagation()}>
                                       <div className="flex items-center justify-between">
                                         <span className="font-semibold text-emerald-700">LINE報告（修正後を編集）</span>
+                                        <div className="flex items-center gap-2">
+                                        {lineEditsById[task.id] != null && (
+                                          <button
+                                            onClick={() => setLineEditsById((previous) => {
+                                              const { [task.id]: _removed, ...rest } = previous
+                                              return rest
+                                            })}
+                                            className="text-[10px] text-gray-400 hover:text-gray-600 underline decoration-dotted"
+                                            title="このタスクの編集を取り消して Notion の値に戻す"
+                                          >
+                                            ↩ 取消
+                                          </button>
+                                        )}
                                         <label className="flex items-center gap-1 cursor-pointer select-none">
                                           <input type="checkbox" className="accent-emerald-500" checked={lineSelectedIds.has(task.id)}
                                             onChange={(e) => toggleLineSelect(task.id, e.target.checked)} />
                                           <span className={`font-semibold ${lineSelectedIds.has(task.id) ? 'text-emerald-600' : 'text-[var(--color-text-sub)]'}`}>報告する</span>
                                         </label>
+                                        </div>
                                       </div>
                                       <div className="grid grid-cols-[3.2rem_1fr_auto_1fr] items-center gap-x-1 gap-y-0.5">
                                         <span className="text-[var(--color-text-sub)]">開始日</span>
