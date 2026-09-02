@@ -570,15 +570,18 @@ export default function DayDetailModal({
       .map((task) => `N-${task.notion_block_id.replace(/-/g, '')}`)
 
   // 勤怠に追加したタスクの枠内で編集する「修正後」の値。未編集なら Notion の現在値がデフォルト。
-  const [lineEditsById, setLineEditsById] = useState<Record<number, { start: string; end: string; ratePercent: number }>>({})
+  const [lineEditsById, setLineEditsById] = useState<Record<number, { start: string; end: string; ratePercent: number; status: string }>>({})
   const lineEditFor = (task: NotionTask) => lineEditsById[task.id] ?? {
     start: task.start_date ?? '',
     end: task.end_date ?? '',
     ratePercent: task.progress_rate != null ? Math.round(Number(task.progress_rate) * 100) : 0,
+    status: task.status ?? '',
   }
-  const patchLineEdit = (task: NotionTask, patch: Partial<{ start: string; end: string; ratePercent: number }>) => {
+  const patchLineEdit = (task: NotionTask, patch: Partial<{ start: string; end: string; ratePercent: number; status: string }>) => {
     setLineEditsById((previous) => ({ ...previous, [task.id]: { ...lineEditFor(task), ...patch } }))
   }
+  // 報告で選べるステータス。Notion(未着手/進行中/完了) + カンバンの「処理済」
+  const LINE_STATUS_OPTIONS = ['未着手', '進行中', '処理済', '完了']
   // LINE 文面は枠内で編集した「修正後」を使ってフロントで組み立てる(修正前は前回同期値 *_prev)
   const buildCalendarLineMessage = () => {
     const selectedTasks = Object.values(notionTasksByAssignee).flat().filter((task) => lineSelectedIds.has(task.id))
@@ -590,8 +593,9 @@ export default function DayDetailModal({
         title: task.title,
         wbsLevel: task.wbs_level,
         url: task.url ?? `https://www.notion.so/21e123f261d2802b93bae6e0f9406682?v=21e123f261d280b29c52000c51b8b437&p=${task.notion_block_id.replace(/-/g, '')}&pm=s`,
-        status: task.status,
-        statusPrev: task.status_prev,
+        // ステータスは枠内で選んだ「修正後」を報告する(処理済/完了など)。修正前は前回同期値
+        status: edit.status || null,
+        statusPrev: task.status_prev ?? task.status,
         note: task.note,
         before: { start: task.start_date_prev ?? task.start_date, end: task.end_date_prev ?? task.end_date, ratePercent: beforeRate },
         after: { start: edit.start || null, end: edit.end || null, ratePercent: edit.ratePercent },
@@ -1676,6 +1680,16 @@ export default function DayDetailModal({
                                           {/* 5%刻み + Notionの現在値(33%等の端数)も選択肢に含めて表示ズレを防ぐ */}
                                           {[...new Set([...Array.from({ length: 21 }, (_, i) => i * 5), edit.ratePercent])].sort((a, b) => a - b).map((pct) => (
                                             <option key={pct} value={pct}>{pct}%</option>
+                                          ))}
+                                        </select>
+                                        <span className="text-[var(--color-text-sub)]">状態</span>
+                                        <span className="text-gray-500">{task.status_prev ?? task.status ?? '-'}</span>
+                                        <span>→</span>
+                                        <select value={edit.status} onChange={(e) => patchLineEdit(task, { status: e.target.value })}
+                                          className="rounded border border-emerald-200 bg-white px-1 py-0.5">
+                                          <option value="">—</option>
+                                          {[...new Set([...LINE_STATUS_OPTIONS, ...(edit.status ? [edit.status] : [])])].map((statusOption) => (
+                                            <option key={statusOption} value={statusOption}>{statusOption}</option>
                                           ))}
                                         </select>
                                       </div>
