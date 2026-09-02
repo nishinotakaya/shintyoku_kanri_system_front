@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import type { WorkReport, Expense, Me } from '../lib/api'
 import { visibleWorkCategories } from '../lib/workCategories'
 import SapLink from './SapLink'
+import NotionLineReportModal from './NotionLineReportModal'
 import Modal from './Modal'
 import BacklogTaskDetailModal from './BacklogTaskDetailModal'
 import TaskMemoEditor from './TaskMemoEditor'
@@ -544,6 +545,24 @@ export default function DayDetailModal({
       alert(`リビング追加失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
   }
+
+  // リビング(Notion)タスクの LINE 報告。「LINE報告」にチェック → 📱 LINE送信 → 文面を確認して西野さんの LINE へ。
+  // 送信 API は issue_key(N-<block_id>)を受けるので、notion_block_id から組み立てる
+  const [lineSelectedIds, setLineSelectedIds] = useState<Set<number>>(new Set())
+  const [lineModalOpen, setLineModalOpen] = useState(false)
+  const [lineSentMsg, setLineSentMsg] = useState<string | null>(null)
+  const toggleLineSelect = (taskId: number, selected: boolean) => {
+    setLineSelectedIds((previous) => {
+      const next = new Set(previous)
+      if (selected) next.add(taskId)
+      else next.delete(taskId)
+      return next
+    })
+  }
+  const selectedLineIssueKeys = () =>
+    Object.values(notionTasksByAssignee).flat()
+      .filter((task) => lineSelectedIds.has(task.id))
+      .map((task) => `N-${task.notion_block_id.replace(/-/g, '')}`)
 
   // Trello (テックリーダー) タスク
   const [trelloTasks, setTrelloTasks] = useState<Record<string, TrelloTask[]>>({})
@@ -1499,6 +1518,15 @@ export default function DayDetailModal({
                 >
                   {notionSyncing ? '同期中…' : '🔄 Notion 同期'}
                 </button>
+                <button
+                  onClick={() => setLineModalOpen(true)}
+                  disabled={lineSelectedIds.size === 0}
+                  className="rounded border border-emerald-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                  title="「LINE報告」にチェックしたタスクの進捗を西野さんのLINEへ送信"
+                >
+                  📱 LINE送信 ({lineSelectedIds.size})
+                </button>
+                {lineSentMsg && <span className="text-[10px] text-emerald-600 font-semibold">{lineSentMsg}</span>}
                 {notionSyncMsg && <span className="text-[10px] text-[var(--color-text-sub)]">{notionSyncMsg}</span>}
               </>
             )}
@@ -1563,13 +1591,18 @@ export default function DayDetailModal({
                                 >
                                   {task.title} ↗
                                 </a>
-                                <div className="text-[10px] text-[var(--color-text-sub)] flex gap-2 flex-wrap">
+                                <div className="text-[10px] text-[var(--color-text-sub)] flex gap-2 flex-wrap items-center">
                                   {task.start_date && <span>{task.start_date}〜{task.end_date ?? ''}</span>}
                                   {task.workload != null && <span>{task.workload}人日</span>}
                                   {task.status && <span className="rounded bg-gray-100 px-1">{task.status}</span>}
                                   {task.progress_rate != null && task.progress_rate > 0 && (
                                     <span>{Math.round(Number(task.progress_rate) * 100)}%</span>
                                   )}
+                                  <label className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
+                                    <input type="checkbox" className="accent-emerald-500" checked={lineSelectedIds.has(task.id)}
+                                      onChange={(e) => toggleLineSelect(task.id, e.target.checked)} onClick={(e) => e.stopPropagation()} />
+                                    <span className={`font-semibold ${lineSelectedIds.has(task.id) ? 'text-emerald-600' : ''}`}>LINE報告</span>
+                                  </label>
                                 </div>
                                 {task.note && <div className="text-[10px] text-gray-500 mt-0.5 truncate" title={task.note}>{task.note}</div>}
                                 <TaskMemoEditor
@@ -1741,6 +1774,18 @@ export default function DayDetailModal({
             </div>
           )}
         </section>
+
+      {lineModalOpen && (
+        <NotionLineReportModal
+          issueKeys={selectedLineIssueKeys()}
+          onClose={() => setLineModalOpen(false)}
+          onSent={() => {
+            setLineModalOpen(false)
+            setLineSelectedIds(new Set())
+            setLineSentMsg('LINEに送信しました')
+          }}
+        />
+      )}
     </Modal>
   )
 }
