@@ -28,7 +28,8 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
   const [loadError, setLoadError] = useState(false)
   const [pageCount, setPageCount] = useState(0)
   const [currentPageNumber, setCurrentPageNumber] = useState(1)
-  const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM_LEVEL)
+  // スマホは幅合わせだと文字が小さすぎるため、初期ズームを1.5倍にする(横はスワイプでパン)
+  const [zoomLevel, setZoomLevel] = useState(() => (window.innerWidth < 640 ? 1.5 : DEFAULT_ZOOM_LEVEL))
   const [containerWidth, setContainerWidth] = useState(0)
 
   // 共有可能な File。blob/filename が変わらない限り作り直さない。
@@ -264,7 +265,7 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
           </div>
         </header>
 
-        <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto bg-gray-100">
+        <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-auto bg-gray-100">
           {loading && (
             <div className="flex h-full items-center justify-center">
               <span className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-sky-500" />
@@ -283,7 +284,7 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
             </div>
           )}
           {!loading && !loadError && (
-            <div className="flex flex-col items-center px-2 py-2" style={{ gap: `${PAGE_GAP}px` }}>
+            <div className="flex w-max min-w-full flex-col items-center px-2 py-2" style={{ gap: `${PAGE_GAP}px` }}>
               {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
                 <div
                   key={pageNumber}

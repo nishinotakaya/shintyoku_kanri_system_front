@@ -420,8 +420,9 @@ export default function Dashboard() {
               >🔍 確認</button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col items-end gap-1">
+          {/* スマホでは w-full で下段に落として左寄せ(ボタンが細切れに改行されるのを防ぐ) */}
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <div className="flex flex-col items-start gap-1 sm:items-end">
               <FolderSaveButtons label="請求書PDF" monthFolderName={monthFolderName} fetchSpec={invoiceFetchSpec} onDownloaded={onInvoicePdfSaved}
                 hint="※PDFをPCのフォルダに保存し、同時に請求書一覧にも登録します。" />
               {invoiceRegMsg && (

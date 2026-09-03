@@ -4,7 +4,7 @@ import { api } from '../lib/api'
 import type { Me, PickableUser } from '../lib/api'
 import { isWorkCategory, visibleWorkCategories } from '../lib/workCategories'
 import { fetchExportBlob } from '../components/FolderSaveButtons'
-import { showPdf } from '../lib/openPdf'
+import { showPdf, showPdfWhileLoading } from '../lib/openPdf'
 import LabopMailModal from '../components/LabopMailModal'
 import Modal from '../components/Modal'
 import { LabeledField, fieldInputCls } from '../components/InvoiceFormFields'
@@ -387,14 +387,27 @@ export default function InvoicesPage() {
   const removeEditItem = (i: number) => setEditForm((p) => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }))
 
   const openPreview = async (s: Submission) => {
+    const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
+    const path = s.kind === 'expense' ? '/exports/expense.pdf' : '/exports/invoice.pdf'
+    const params: Record<string, unknown> = { month: monthParam, category: s.category, as_user_id: s.user_id }
+    params.invoice_submission_id = s.id
+    params._t = Date.now() // キャッシュ無効化: 編集後に必ず最新PDFを取得
+
+    // スマホは iframe が PDF を描画できない(白画面になる)ため、pdf.js のビューアで開く
+    if (window.innerWidth < 640) {
+      const kindLabel = s.kind === 'expense' ? '立替金' : '請求書'
+      try {
+        await showPdfWhileLoading(`${s.user_display_name}_${kindLabel}_${s.year}年${s.month}月.pdf`,
+          async () => (await fetchExportBlob(path, params, 'preview.pdf')).blob)
+      } catch (e: any) {
+        alert(`プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+      }
+      return
+    }
+
     setPreviewSub(s); setPreviewUrl(null); setPreviewLoading(true)
     setPreviewMode('pdf'); setPreviewXlsx(null); setPreviewXlsxSheetIdx(0)
     try {
-      const monthParam = `${s.year}-${String(s.month).padStart(2, '0')}`
-      const path = s.kind === 'expense' ? '/exports/expense.pdf' : '/exports/invoice.pdf'
-      const params: Record<string, unknown> = { month: monthParam, category: s.category, as_user_id: s.user_id }
-      params.invoice_submission_id = s.id
-      params._t = Date.now() // キャッシュ無効化: 編集後に必ず最新PDFを取得
       const { blob } = await fetchExportBlob(path, params, 'preview.pdf')
       setPreviewUrl(URL.createObjectURL(blob))
     } catch (e: any) {
@@ -1431,9 +1444,71 @@ export default function InvoicesPage() {
         <div className="text-sm text-[var(--color-text-sub)]">該当する申請がありません</div>
       ) : (
         <>
-        {/* 一覧は横スクロールさせない。列は画面幅に合わせて詰め、長い値はセル内で折り返す。
+        {/* スマホ: カード一覧(テーブルは画面に収まらないため)。ページ送りは下の共通ページネーションを使う */}
+        <div className="space-y-2 sm:hidden">
+          {visibleIssuedPdfs.map((p) => (
+            <div key={`m-issued-${p.id}`} className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono font-semibold">{p.year}/{String(p.month).padStart(2, '0')}</span>
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">統合</span>
+              </div>
+              <div className="mt-1 font-semibold text-amber-700">{p.user_display_name ?? '—'}</div>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[var(--color-text-sub)]">{p.category ? (CATEGORY_LABELS[p.category] ?? p.category) : '—'}</span>
+                <span className="font-mono tabular-nums font-semibold">{p.total_amount != null ? `¥${p.total_amount.toLocaleString()}` : '—'}</span>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => previewIssuedPdf(p)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 プレビュー</button>
+                <button onClick={() => downloadIssuedPdf(p)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</button>
+              </div>
+            </div>
+          ))}
+          {filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((s) => {
+            const rowKey = `m-${s.kind}-${s.id}`
+            return (
+              <div key={rowKey} className="rounded-xl border border-[var(--color-border)] bg-white p-3 text-xs shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-semibold">{s.year}/{String(s.month).padStart(2, '0')}</span>
+                  <div className="flex items-center gap-1">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      s.kind === 'scanned' ? 'bg-fuchsia-100 text-fuchsia-700' :
+                      s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>{s.kind === 'scanned' ? '📥 PDF取込' : KIND_LABELS[s.kind]}</span>
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[s.status]}`}>
+                      {s.status === 'draft' ? '下書き' : s.status === 'pending' ? '申請中' : s.status === 'approved' ? '承認済' : '却下'}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="font-semibold">{s.user_display_name}</span>
+                  <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-[10px] text-[var(--color-text-sub)]">{formatListDateTime(s.submitted_at) || '未申請'}</span>
+                  <span className="font-mono tabular-nums font-semibold">
+                    {s.total_override != null && s.total_override !== 0 ? `¥${s.total_override.toLocaleString()}` :
+                     s.default_total != null && s.default_total !== 0 ? `¥${s.default_total.toLocaleString()}` : '未設定'}
+                  </span>
+                </div>
+                {s.kind !== 'scanned' && (
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 PDF を見る</button>
+                    <button onClick={() => downloadInvoice(s, 'self')} disabled={busyId === `${s.kind}-${s.id}`}
+                      className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 PDF</button>
+                    {s.status === 'draft' && (me?.admin || me?.id === s.user_id) && (
+                      <button onClick={() => submitOne(s)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 text-[11px] font-semibold text-white shadow">📤 申請</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* PC/タブレット: 従来のテーブル(今のまま)。
+            一覧は横スクロールさせない。列は画面幅に合わせて詰め、長い値はセル内で折り返す。
             overflow-x-auto は極端に狭い画面用の保険（通常幅では収まるのでバーは出ない）。 */}
-        <div className="glass overflow-x-auto rounded-xl shadow-md">
+        <div className="glass hidden overflow-x-auto rounded-xl shadow-md sm:block">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>

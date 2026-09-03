@@ -28,6 +28,9 @@ export default function ContractsPage() {
   const [creating, setCreating] = useState(false)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
   const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null)
+  // 20件を超えたらページ送り(スマホカード・PCテーブル共通)
+  const [listPage, setListPage] = useState(1)
+  const LIST_PAGE_SIZE = 20
   // 契約日フィルター(一覧と一括ダウンロードの両方に効く)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -99,6 +102,10 @@ export default function ContractsPage() {
   }
 
   // PDF はエディタと同じモーダル表示(showPdf: pdf.js 描画なのでスマホでも全ページ見える)
+  useEffect(() => { setListPage(1) }, [dateFrom, dateTo, contracts.length])
+
+  const pagedContracts = contracts.slice((listPage - 1) * LIST_PAGE_SIZE, listPage * LIST_PAGE_SIZE)
+
   const openContractPdf = async (contract: Contract, event: React.MouseEvent) => {
     event.stopPropagation()
     if (pdfLoadingId != null) return
@@ -217,7 +224,7 @@ export default function ContractsPage() {
         <>
           {/* スマホ: カード表示 */}
           <div className="space-y-3 sm:hidden">
-            {contracts.map((contract) => (
+            {pagedContracts.map((contract) => (
               <div
                 key={contract.id}
                 onClick={() => setEditingId(contract.id)}
@@ -262,7 +269,7 @@ export default function ContractsPage() {
                 </tr>
               </thead>
               <tbody>
-                {contracts.map((contract) => (
+                {pagedContracts.map((contract) => (
                   <tr
                     key={contract.id}
                     onClick={() => setEditingId(contract.id)}
@@ -293,6 +300,18 @@ export default function ContractsPage() {
               </tbody>
             </table>
           </div>
+
+          {contracts.length > LIST_PAGE_SIZE && (
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <button onClick={() => setListPage((p) => Math.max(1, p - 1))} disabled={listPage === 1}
+                className="h-10 rounded-md border border-[var(--color-border)] bg-white px-3 disabled:opacity-40">← 前</button>
+              <span className="text-[var(--color-text-sub)]">
+                {(listPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(listPage * LIST_PAGE_SIZE, contracts.length)} / {contracts.length} 件
+              </span>
+              <button onClick={() => setListPage((p) => p + 1)} disabled={listPage * LIST_PAGE_SIZE >= contracts.length}
+                className="h-10 rounded-md border border-[var(--color-border)] bg-white px-3 disabled:opacity-40">次 →</button>
+            </div>
+          )}
         </>
       )}
     </div>
