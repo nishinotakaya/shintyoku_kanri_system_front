@@ -250,7 +250,7 @@ export default function TransportWorkReportTable({
               <th className="px-2 py-1.5 w-16 text-right">稼働時間</th>
               {dailyPay && <th className="px-2 py-1.5 w-16 text-right">時間外</th>}
               <th className="px-2 py-1.5 w-24 text-right">走行距離(km)</th>
-              <th className="px-2 py-1.5">備考</th>
+              <th className="min-w-[200px] px-2 py-1.5">備考</th>
               <th className="px-2 py-1.5 w-16 text-center">検印</th>
               <th className="px-2 py-1.5 w-12 text-center">週払</th>
               <th className="px-2 py-1.5 w-20 text-right">配送件数(件)</th>
@@ -301,8 +301,8 @@ export default function TransportWorkReportTable({
                       <span className="pl-0.5 text-[10px] text-[var(--color-text-sub)]">km</span>
                     </div>
                   </td>
-                  <td className="px-1 py-1">
-                    <input value={row.note} onChange={(e) => set(day.date, 'note', e.target.value)} placeholder="—" className={inputClass} />
+                  <td className="min-w-[200px] px-1 py-1">
+                    <input value={row.note} onChange={(e) => set(day.date, 'note', e.target.value)} placeholder="高速・駐車場代など" className={`${inputClass} text-base sm:text-sm`} />
                   </td>
                   <td className="px-1 py-1 text-center">
                     {report ? (
