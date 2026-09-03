@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   contractToFormInput, updateContract, issueContract, duplicateContract, voidContract,
   fetchContractPdfBlob, formatContractDate, formatContractDateTime,
@@ -86,23 +86,56 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
     }))
   }
   const addArticle = () => {
-    setForm((prev) => ({
-      ...prev,
-      articles: [...prev.articles, { id: generateArticleId(), heading: '', body: '', page_break_before: false }],
-    }))
+    setForm((prev) => {
+      // 一番下の「第N条」を拾って次の条番号をデフォルト入力する(第15条が最後なら 第16条)
+      const lastNumberedHeading = [...prev.articles].reverse()
+        .map((article) => article.heading.match(/第(\d+)条/))
+        .find((match) => match != null)
+      const nextArticleNumber = lastNumberedHeading ? Number(lastNumberedHeading[1]) + 1 : prev.articles.length + 1
+      return {
+        ...prev,
+        articles: [...prev.articles, { id: generateArticleId(), heading: `第${nextArticleNumber}条`, body: '', page_break_before: false }],
+      }
+    })
   }
   const removeArticle = (index: number) => {
     setForm((prev) => ({ ...prev, articles: prev.articles.filter((_, articleIndex) => articleIndex !== index) }))
   }
-  const moveArticle = (index: number, direction: -1 | 1) => {
+  // 条文の並べ替えはドラッグ&ドロップ(⠿ ハンドル)。pointer events なのでスマホのタッチでも動く。
+  // ハンドルに setPointerCapture するので move/up はハンドル側で受ける。
+  const [draggingArticleId, setDraggingArticleId] = useState<string | null>(null)
+  const articleCardRefs = useRef(new Map<string, HTMLDivElement>())
+
+  const startArticleDrag = (event: React.PointerEvent<HTMLButtonElement>, articleId: string) => {
+    if (!editable) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setDraggingArticleId(articleId)
+  }
+
+  const moveArticleDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!draggingArticleId) return
+    const pointerY = event.clientY
     setForm((prev) => {
-      const targetIndex = index + direction
-      if (targetIndex < 0 || targetIndex >= prev.articles.length) return prev
-      const nextArticles = [...prev.articles]
-      ;[nextArticles[index], nextArticles[targetIndex]] = [nextArticles[targetIndex], nextArticles[index]]
+      const currentIndex = prev.articles.findIndex((article) => article.id === draggingArticleId)
+      if (currentIndex < 0) return prev
+      // ドラッグ中以外のカードの中心Yと比べて挿入位置を決める(高さの違う条文でも安定)
+      const otherArticles = prev.articles.filter((article) => article.id !== draggingArticleId)
+      let insertIndex = 0
+      for (const article of otherArticles) {
+        const card = articleCardRefs.current.get(article.id)
+        if (!card) continue
+        const rect = card.getBoundingClientRect()
+        if (pointerY > rect.top + rect.height / 2) insertIndex += 1
+      }
+      if (insertIndex === currentIndex) return prev
+      const nextArticles = [...otherArticles]
+      nextArticles.splice(insertIndex, 0, prev.articles[currentIndex])
       return { ...prev, articles: nextArticles }
     })
   }
+
+  const endArticleDrag = () => setDraggingArticleId(null)
 
   const save = async () => {
     setSaving(true)
@@ -233,7 +266,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
           <fieldset className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
             <legend className="px-1 text-base font-semibold text-[var(--color-text-sub)]">甲</legend>
             <label className="block">
-              <span className={labelCls}>名称</span>
+              <span className={labelCls}>会社名（個人は氏名）</span>
               <input value={form.party_a_name} onChange={(e) => updateField('party_a_name', e.target.value)} disabled={!editable} className={inputCls} />
             </label>
             <label className="block">
@@ -248,7 +281,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
           <fieldset className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
             <legend className="px-1 text-base font-semibold text-[var(--color-text-sub)]">乙</legend>
             <label className="block">
-              <span className={labelCls}>名称</span>
+              <span className={labelCls}>会社名（個人は氏名）</span>
               <input value={form.party_b_name} onChange={(e) => updateField('party_b_name', e.target.value)} disabled={!editable} className={inputCls} />
             </label>
             <label className="block">
@@ -294,15 +327,29 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
             {form.articles.map((article, index) => {
               const articlePageNumber = articlePageNumbers[index]
               return (
-                <div key={article.id}>
+                <div key={article.id}
+                  ref={(element) => {
+                    if (element) articleCardRefs.current.set(article.id, element)
+                    else articleCardRefs.current.delete(article.id)
+                  }}
+                  className={draggingArticleId === article.id ? 'opacity-70' : undefined}>
                   {article.page_break_before && (
                     <div className="mb-2 flex items-center gap-2 border-t-2 border-dashed border-fuchsia-300 pt-2">
                       <span className="text-sm font-semibold text-fuchsia-600">ページ {articlePageNumber}</span>
                       <span className="text-sm text-[var(--color-text-sub)]">（ここから新しいページ）</span>
                     </div>
                   )}
-                  <div className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+                  <div className={`space-y-3 rounded-lg border p-3 ${draggingArticleId === article.id ? 'border-fuchsia-400 ring-2 ring-fuchsia-200' : 'border-[var(--color-border)]'}`}>
                     <div className="flex items-center gap-2">
+                      {editable && (
+                        <button type="button"
+                          onPointerDown={(e) => startArticleDrag(e, article.id)}
+                          onPointerMove={moveArticleDrag}
+                          onPointerUp={endArticleDrag}
+                          onPointerCancel={endArticleDrag}
+                          aria-label="ドラッグして並べ替え" title="ドラッグして並べ替え"
+                          className={`${iconButtonCls} shrink-0 touch-none select-none cursor-grab active:cursor-grabbing`}>⠿</button>
+                      )}
                       <input
                         value={article.heading}
                         onChange={(e) => updateArticle(index, { heading: e.target.value })}
@@ -311,15 +358,9 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
                         className={`${inputCls} flex-1 font-semibold`}
                       />
                       {editable && (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <button type="button" onClick={() => moveArticle(index, -1)} disabled={index === 0}
-                            aria-label="上へ移動" title="上へ移動" className={iconButtonCls}>↑</button>
-                          <button type="button" onClick={() => moveArticle(index, 1)} disabled={index === form.articles.length - 1}
-                            aria-label="下へ移動" title="下へ移動" className={iconButtonCls}>↓</button>
-                          <button type="button" onClick={() => removeArticle(index)}
-                            aria-label="この条文を削除" title="この条文を削除"
-                            className="flex h-11 w-11 items-center justify-center rounded-md border border-red-200 text-red-500 hover:bg-red-50">✕</button>
-                        </div>
+                        <button type="button" onClick={() => removeArticle(index)}
+                          aria-label="この条文を削除" title="この条文を削除"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-red-200 text-red-500 hover:bg-red-50">✕</button>
                       )}
                     </div>
                     <textarea
