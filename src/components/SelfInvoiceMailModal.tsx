@@ -5,6 +5,8 @@ type Props = {
   year: number
   month: number
   category: string
+  // admin(西野)はラボップ宛が既定。それ以外は既定請求先(invoice_clients)からサーバが宛名を補完する
+  isAdmin?: boolean
   onClose: () => void
 }
 
@@ -13,11 +15,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   living: 'リビング',
   techleaders: 'テックリーダーズ',
   resystems: 'REシステムズ',
+  video: '動画編集',
+  proaka: 'プロアカ',
+  transport: '運送',
 }
 
-export default function SelfInvoiceMailModal({ year, month, category, onClose }: Props) {
+export default function SelfInvoiceMailModal({ year, month, category, isAdmin = false, onClose }: Props) {
   const [to, setTo] = useState('')
-  const [recipientName, setRecipientName] = useState('株式会社ラボップ 御中')
+  const [recipientName, setRecipientName] = useState(isAdmin ? '株式会社ラボップ 御中' : '')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
@@ -40,13 +45,15 @@ export default function SelfInvoiceMailModal({ year, month, category, onClose }:
   const requestDraft = async () => {
     setDrafting(true); setMsg(null)
     try {
-      const r = await api.post<{ subject: string; body: string; available_expense_total?: number }>('/emails/self_invoice_draft', {
+      const r = await api.post<{ subject: string; body: string; available_expense_total?: number; recipient_name?: string }>('/emails/self_invoice_draft', {
         month: monthParam, category,
-        recipient_name: recipientName,
+        recipient_name: recipientName.trim() || undefined,
         include_expense: includeExpense,
       })
       setSubject(r.data.subject)
       setBody(r.data.body)
+      // 宛名未入力ならサーバが解決した宛名(既定請求先など)を反映
+      if (r.data.recipient_name) setRecipientName((current) => current.trim() ? current : r.data.recipient_name!)
       setDraftLoaded(true)
       if (typeof r.data.available_expense_total === 'number') {
         setAvailableExpenseTotal(r.data.available_expense_total)

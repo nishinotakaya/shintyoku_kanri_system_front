@@ -52,7 +52,52 @@ export default function InvoiceItemsEditor({ items, category, onUpdate, onAdd, o
         <button type="button" onClick={onAdd}
           className="rounded-md whitespace-nowrap border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">＋ 行追加</button>
       </div>
-      <table className="w-full text-[11px] border-collapse">
+      {/* スマホ: テーブルだと品名が数文字しか見えないため 1明細=1カード。入力は16px(text-base)でiOSの自動ズームも防ぐ */}
+      <div className="space-y-2 sm:hidden">
+        {items.map((it, i) => (
+          <div key={i} className="rounded-lg border border-[var(--color-border)] bg-white p-2">
+            <div className="flex items-center gap-1">
+              <input value={it.label} placeholder="品番・品名"
+                onChange={(e) => onUpdate(i, { label: e.target.value })}
+                className="h-10 w-full rounded-md border border-[var(--color-border)] px-2 text-base" />
+              <button type="button" onClick={() => onRemove(i)}
+                className="h-10 w-10 shrink-0 rounded-md border border-[var(--color-border)] text-gray-400 hover:text-red-500" title="削除">🗑</button>
+            </div>
+            <div className="mt-1 grid grid-cols-2 gap-1">
+              <label className="block">
+                <span className="text-[10px] text-[var(--color-text-sub)]">数量</span>
+                <input type="number" step="0.5" value={it.qty} onChange={(e) => onUpdate(i, { qty: Number(e.target.value) })}
+                  className="h-10 w-full rounded-md border border-[var(--color-border)] px-2 text-right font-mono tabular-nums text-base" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] text-[var(--color-text-sub)]">単位</span>
+                <input value={it.unit} onChange={(e) => onUpdate(i, { unit: e.target.value })}
+                  className="h-10 w-full rounded-md border border-[var(--color-border)] px-2 text-base" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] text-[var(--color-text-sub)]">単価</span>
+                <input type="number" value={it.unit_price} onChange={(e) => onUpdate(i, { unit_price: Number(e.target.value) })}
+                  className="h-10 w-full rounded-md border border-[var(--color-border)] px-2 text-right font-mono tabular-nums text-base" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] text-[var(--color-text-sub)]">金額</span>
+                <input type="number" value={it.amount} onChange={(e) => onUpdate(i, { amount: Number(e.target.value) })}
+                  className="h-10 w-full rounded-md border border-[var(--color-border)] px-2 text-right font-mono tabular-nums text-base" />
+              </label>
+            </div>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <div className="py-1 text-center text-[10px] text-[var(--color-text-sub)]">明細なし（＋行追加 で追加）</div>
+        )}
+        {showTotals && items.length > 0 && (
+          <div className="flex items-baseline justify-between rounded-lg border border-[var(--color-border)] bg-gray-50 px-2 py-1.5 text-[11px]">
+            <span className="text-[var(--color-text-sub)]">小計（税抜）¥{subtotal.toLocaleString()} ／ {taxIncluded ? '内消費税' : '消費税'}{taxRate}% ¥{tax.toLocaleString()}</span>
+            <span className="font-mono tabular-nums font-semibold text-sky-700">¥{total.toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+      <table className="hidden w-full text-[11px] border-collapse sm:table">
         <thead>
           <tr className="text-left text-[var(--color-text-sub)]">
             <th className="py-1 pr-1 font-semibold">品番・品名</th>

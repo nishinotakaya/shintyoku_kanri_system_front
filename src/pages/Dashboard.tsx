@@ -500,7 +500,7 @@ export default function Dashboard() {
       {me?.can_issue_orders && category !== 'transport' && category !== 'proaka' && <PurchaseOrderList me={me} category={category} />}
 
       {selfMailOpen && (
-        <SelfInvoiceMailModal year={year} month={month} category={category} onClose={() => setSelfMailOpen(false)} />
+        <SelfInvoiceMailModal year={year} month={month} category={category} isAdmin={!!me?.admin} onClose={() => setSelfMailOpen(false)} />
       )}
 
       <SettingsModal

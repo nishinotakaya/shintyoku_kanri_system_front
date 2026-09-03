@@ -240,10 +240,11 @@ export default function TransportWorkReportTable({
         {error && <div className="text-[11px] text-red-500">{error}</div>}
       </div>
       <div className="max-h-[520px] overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-gray-50 backdrop-blur">
-            <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)]">
-              <th className="px-3 py-1.5 w-28">日付</th>
+        {/* スマホは横スクロール(min-w)でヘッダーを縦潰れさせない。日付列は sticky で固定 */}
+        <table className="w-full min-w-[900px] text-sm">
+          <thead className="sticky top-0 z-20 bg-gray-50 backdrop-blur">
+            <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)] whitespace-nowrap">
+              <th className="sticky left-0 z-10 bg-gray-50 px-3 py-1.5 w-28">日付</th>
               <th className="px-2 py-1.5 w-20">開始時間</th>
               <th className="px-2 py-1.5 w-20">終了時間</th>
               <th className="px-2 py-1.5 w-16 text-right">稼働時間</th>
@@ -271,7 +272,9 @@ export default function TransportWorkReportTable({
                     day.holiday ? 'bg-red-50' : day.weekend ? 'bg-gray-50/50' : ''
                   } hover:bg-gray-50`}
                 >
-                  <td className={`px-3 py-1 whitespace-nowrap ${colorFor(day)}`}>
+                  <td className={`sticky left-0 z-10 px-3 py-1 whitespace-nowrap ${
+                    day.holiday ? 'bg-red-50' : day.weekend ? 'bg-gray-50' : 'bg-white'
+                  } ${colorFor(day)}`}>
                     {day.month}/{String(day.day).padStart(2, '0')} ({day.weekdayLabel})
                   </td>
                   <td className="px-1 py-1">

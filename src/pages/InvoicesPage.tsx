@@ -47,6 +47,8 @@ type Submission = {
   note: string | null
   total_override: number | null
   default_total: number | null
+  default_transport_expenses?: { date: string | null; label: string; amount: number }[] | null
+  default_transport_expense_total?: number | null
   received_purchase_order_no: string | null
   received_purchase_order_subject: string | null
   purchase_order_no_override?: string | null
@@ -108,8 +110,33 @@ type IssuedPdf = {
   generated_at: string | null
 }
 
+// 運送カテゴリの振込先入力。運送の請求書PDFは bank_info を改行区切りで
+// 金融機関/口座番号/口座名義 の3行に割り当てるため、自由入力ではなく3欄で漏れなく入れる。
+// 保存形式は従来どおり改行区切りの bank_info 1フィールド（他カテゴリ・既存データと互換）。
+function BankInfoFields({ value, onChange, label }: { value: string; onChange: (next: string) => void; label: string }) {
+  const lines = value.split(/\r?\n/)
+  const lineAt = (index: number) => lines[index] ?? ''
+  const setLine = (index: number, text: string) => {
+    const next = [lineAt(0), lineAt(1), lineAt(2)]
+    next[index] = text
+    onChange(next.join('\n').replace(/\n+$/, ''))
+  }
+  return (
+    <div className="block">
+      <div className="text-[11px] font-semibold mb-1">{label}</div>
+      <div className="grid gap-1">
+        <input value={lineAt(0)} onChange={(e) => setLine(0, e.target.value)} placeholder="金融機関（例: ○○銀行 △△支店）" className={fieldInputCls} />
+        <input value={lineAt(1)} onChange={(e) => setLine(1, e.target.value)} placeholder="口座番号（例: 普通 1234567）" className={fieldInputCls} />
+        <input value={lineAt(2)} onChange={(e) => setLine(2, e.target.value)} placeholder="口座名義（例: ﾆｼﾉ ﾕｳﾀﾛｳ）" className={fieldInputCls} />
+      </div>
+    </div>
+  )
+}
+
 export default function InvoicesPage() {
   const [me, setMe] = useState<Me | null>(null)
+  // 一括操作(チェック/統合PDF/メール送付)・メンバー申請の編集承認は admin と サブ管理者(テナント代表)に開放
+  const canBulk = !!(me?.admin || me?.sub_admin)
   const [items, setItems] = useState<Submission[]>([])
   const [issuedPdfs, setIssuedPdfs] = useState<IssuedPdf[]>([])
   const [loading, setLoading] = useState(true)
@@ -300,7 +327,7 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!creating) return
     const params: Record<string, unknown> = { category: createForm.category }
-    if (me?.admin && createForm.target_user_id) params.as_user_id = createForm.target_user_id
+    if (canBulk && createForm.target_user_id) params.as_user_id = createForm.target_user_id
     api.get('/invoice_setting', { params })
       .then((r) => {
         const b = (r.data?.bank_info as string) ?? ''; setCreateBank(b); setCreateBankInitial(b)
@@ -311,7 +338,7 @@ export default function InvoicesPage() {
         setCreateTaxIncluded(!!r.data?.tax_included)
       })
       .catch(() => { setCreateBank(''); setCreateBankInitial(''); setCreateAddress(''); setCreateAddressInitial(''); setCreateTel(''); setCreateTelInitial(''); setCreatePostal(''); setCreatePostalInitial(''); setCreateRegNo(''); setCreateTaxIncluded(false) })
-  }, [creating, createForm.category, createForm.target_user_id, me?.admin])
+  }, [creating, createForm.category, createForm.target_user_id, canBulk])
   useEffect(() => {
     if (!creating) return
     api.get<ReceivedPO[]>('/received_purchase_orders', { params: { year: createForm.year, month: createForm.month } })
@@ -331,7 +358,7 @@ export default function InvoicesPage() {
         if (createTel !== createTelInitial) settingPayload.tel = createTel
         if (createPostal !== createPostalInitial) settingPayload.postal_code = createPostal
         const bankParams: Record<string, unknown> = { invoice_setting: settingPayload, category: createForm.category }
-        if (me?.admin && createForm.target_user_id) bankParams.as_user_id = createForm.target_user_id
+        if (canBulk && createForm.target_user_id) bankParams.as_user_id = createForm.target_user_id
         await api.patch('/invoice_setting', bankParams)
         setCreateBankInitial(createBank); setCreateAddressInitial(createAddress); setCreateTelInitial(createTel); setCreatePostalInitial(createPostal)
       }
@@ -376,7 +403,9 @@ export default function InvoicesPage() {
   const [editingIssued, setEditingIssued] = useState<IssuedPdf | null>(null)
   const [editingMergedRow, setEditingMergedRow] = useState<{ ids: number[]; po: string | null; kind: 'merged_expense' | 'merged_invoice' } | null>(null)
   const [editingSub, setEditingSub] = useState<Submission | null>(null)
-  const [editForm, setEditForm] = useState<{ note: string; purchase_order_no_override: string; total_override: string; subject_override: string; application_date: string; due_date: string; registration_no: string; bank_info: string; address: string; tel: string; postal: string; paid_at: string; invoice_client_id: string; items: ItemRow[] }>({ note: '', purchase_order_no_override: '', total_override: '', subject_override: '', application_date: '', due_date: '', registration_no: '', bank_info: '', address: '', tel: '', postal: '', paid_at: '', invoice_client_id: '', items: [] })
+  // 運送の請求書PDFにある立替金(経費・会社負担)の表。編集モーダルにも同じ内容を出す(読み取り専用)
+  const [editTransportExpenses, setEditTransportExpenses] = useState<{ rows: { date: string | null; label: string; amount: number }[]; total: number }>({ rows: [], total: 0 })
+  const [editForm, setEditForm] = useState<{ note: string; purchase_order_no_override: string; total_override: string; subject_override: string; application_date: string; due_date: string; registration_no: string; bank_info: string; address: string; tel: string; postal: string; paid_at: string; invoice_client_id: string; client_name: string; client_honorific: string; items: ItemRow[] }>({ note: '', purchase_order_no_override: '', total_override: '', subject_override: '', application_date: '', due_date: '', registration_no: '', bank_info: '', address: '', tel: '', postal: '', paid_at: '', invoice_client_id: '', client_name: '', client_honorific: '御中', items: [] })
   // 請求先(宛先)マスタ。編集モーダルを開いた申請の持ち主のぶんを読む
   const [editClients, setEditClients] = useState<InvoiceClient[]>([])
   // 申請者本人の税込/税抜設定(admin は as_user_id で対象ユーザーのぶん)。税込なら明細合計＝税込合計として保存する
@@ -458,6 +487,10 @@ export default function InvoicesPage() {
       const r = await api.get<Submission & { items_override: ItemRow[] | null; default_items: ItemRow[] | null; default_subject: string | null; due_date_override: string | null; default_due_date: string | null }>('/invoice_submissions', { params: { kind: s.kind, status: 'all' } })
       const detail = (r.data as unknown as any[]).find((x) => x.id === s.id) || s
       const items: ItemRow[] = (detail.items_override && detail.items_override.length > 0 ? detail.items_override : (detail.default_items ?? [])) as ItemRow[]
+      setEditTransportExpenses({
+        rows: ((detail as any).default_transport_expenses ?? []) as { date: string | null; label: string; amount: number }[],
+        total: Number((detail as any).default_transport_expense_total ?? 0),
+      })
       setEditForm({
         note: detail.note ?? '',
         purchase_order_no_override: (detail as any).purchase_order_no_override ?? (detail.received_purchase_order_no ?? ''),
@@ -472,9 +505,15 @@ export default function InvoicesPage() {
         postal: String((detail as any).default_postal_code ?? ''),
         paid_at: String((detail as any).paid_at ?? '').slice(0, 10),
         invoice_client_id: (detail as any).invoice_client_id ? String((detail as any).invoice_client_id) : '',
+        client_name: String((detail as any).client_name_override ?? ''),
+        client_honorific: String((detail as any).client_honorific_override ?? '御中'),
         items: items.length > 0 ? items : [],
       })
     } catch {
+      setEditTransportExpenses({
+        rows: (s.default_transport_expenses ?? []) as { date: string | null; label: string; amount: number }[],
+        total: Number(s.default_transport_expense_total ?? 0),
+      })
       setEditForm({
         note: s.note ?? '',
         purchase_order_no_override: s.received_purchase_order_no ?? '',
@@ -489,6 +528,8 @@ export default function InvoicesPage() {
         postal: '',
         paid_at: String((s as any).paid_at ?? '').slice(0, 10),
         invoice_client_id: (s as any).invoice_client_id ? String((s as any).invoice_client_id) : '',
+        client_name: String((s as any).client_name_override ?? ''),
+        client_honorific: String((s as any).client_honorific_override ?? '御中'),
         items: [],
       })
     }
@@ -517,6 +558,16 @@ export default function InvoicesPage() {
         // 宛先: 空文字なら「請求先マスタを使わない(請求書設定の宛名に戻す)」
         invoice_client_id: editForm.invoice_client_id,
       }
+      // 宛名の直接入力: 入力がある時だけ上書きを送る。
+      // 空のまま常送すると、マスタ選択(invoice_client_id)のスナップショットまで消してしまう(サーバは後勝ち)。
+      const clientNameClean = editForm.client_name.trim()
+      if (clientNameClean) {
+        payload.client_name_override = clientNameClean
+        payload.client_honorific_override = editForm.client_honorific
+      } else if (!editForm.invoice_client_id) {
+        payload.client_name_override = null
+        payload.client_honorific_override = null
+      }
       if (itemsClean.length > 0) {
         payload.items_override = itemsClean.map((it) => ({
           label: it.label, qty: Number(it.qty) || 0, unit: it.unit || '式',
@@ -533,7 +584,7 @@ export default function InvoicesPage() {
         postal_code: editForm.postal,
       }
       const settingParams: Record<string, unknown> = { invoice_setting: settingPayload, category: editingSub.category }
-      if (me?.admin && editingSub.user_id) settingParams.as_user_id = editingSub.user_id
+      if (canBulk && editingSub.user_id) settingParams.as_user_id = editingSub.user_id
       await api.patch('/invoice_setting', settingParams).catch(() => {})
       await load()
       closeEdit()
@@ -1283,7 +1334,7 @@ export default function InvoicesPage() {
         <div>
           <div className="text-lg font-semibold tracking-tight">📄 請求書一覧</div>
           <div className="text-[11px] text-[var(--color-text-sub)]">
-            {me?.admin ? '全ユーザーの請求書/立替金 申請' : '自分の請求書/立替金 申請'}
+            {me?.admin ? '全ユーザーの請求書/立替金 申請' : canBulk ? '管理対象ユーザーの請求書/立替金 申請' : '自分の請求書/立替金 申請'}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1309,17 +1360,17 @@ export default function InvoicesPage() {
               📤 選択 {checkedDraftIds.length} 件を一括申請
             </button>
           )}
-          {me?.admin && checkedIds.size >= 2 && (
+          {canBulk && checkedIds.size >= 2 && (
             <button onClick={() => mergeChecked()}
               className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
               title="承認済みの申請のみ 1 PDF に統合できます（同種・同月）。下書き/申請中は対象外です。">
               🔗 承認済 {checkedApprovedCount} 件を統合 PDF
             </button>
           )}
-          {me?.admin && (checkedIds.size + checkedIssuedIds.size + mergedSubmissionIds.size) > 0 && (
+          {canBulk && (checkedIds.size + checkedIssuedIds.size + mergedSubmissionIds.size) > 0 && (
             <button onClick={() => setBulkOpen(true)}
               className="rounded-md bg-gradient-to-r from-rose-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
-              📧 選択 {(() => { const u = new Set<number>(); checkedIds.forEach((k) => u.add(Number(k.split('-')[1]))); mergedSubmissionIds.forEach((id) => u.add(id)); return u.size + checkedIssuedIds.size })()} 件をラボップ送付
+              📧 選択 {(() => { const u = new Set<number>(); checkedIds.forEach((k) => u.add(Number(k.split('-')[1]))); mergedSubmissionIds.forEach((id) => u.add(id)); return u.size + checkedIssuedIds.size })()} 件を{me?.admin ? 'ラボップ送付' : 'メール送付'}
             </button>
           )}
           {me?.admin && checkedIds.size > 0 && (
@@ -1336,7 +1387,7 @@ export default function InvoicesPage() {
               🟦 選択 {freeeBulkTargets.length} 件を freee 一括計上{freeeBulkBusy ? '中…' : ''}
             </button>
           )}
-          {me?.admin && checkedIssuedIds.size > 0 && (
+          {canBulk && checkedIssuedIds.size > 0 && (
             <button onClick={bulkDeleteIssued}
               className="rounded-md bg-gradient-to-r from-red-500 to-rose-500 px-3 py-1.5 text-xs font-semibold text-white shadow">
               🗑 保存済 {checkedIssuedIds.size} 件を一括削除
@@ -1450,7 +1501,7 @@ export default function InvoicesPage() {
             <div key={`m-issued-${p.id}`} className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2 font-mono font-semibold">
-                  {me?.admin && (
+                  {canBulk && (
                     <input type="checkbox" className="h-4 w-4" checked={checkedIssuedIds.has(p.id)} onChange={() => toggleIssuedCheck(p.id)} />
                   )}
                   {p.year}/{String(p.month).padStart(2, '0')}</span>
@@ -1463,7 +1514,7 @@ export default function InvoicesPage() {
               </div>
               <div className="mt-2 flex gap-2">
                 <button onClick={() => previewIssuedPdf(p)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 プレビュー</button>
-                <button onClick={() => downloadIssuedPdf(p)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</button>
+                <button onClick={() => downloadIssuedPdf(p)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow">📥 保存({p.file_format.toUpperCase()})</button>
               </div>
             </div>
           ))}
@@ -1473,7 +1524,7 @@ export default function InvoicesPage() {
               <div key={rowKey} className="rounded-xl border border-[var(--color-border)] bg-white p-3 text-xs shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 font-mono font-semibold">
-                    {me?.admin && (s.status === 'approved' || s.status === 'draft') && (
+                    {canBulk && (s.status === 'approved' || s.status === 'draft') && (
                       <input type="checkbox" className="h-4 w-4" checked={checkedIds.has(`${s.kind}-${s.id}`)} onChange={() => toggleCheck(s)} />
                     )}
                     {s.year}/{String(s.month).padStart(2, '0')}</span>
@@ -1500,14 +1551,18 @@ export default function InvoicesPage() {
                 </div>
                 {s.kind !== 'scanned' && (
                   <div className="mt-2 flex gap-2">
-                    <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 PDF</button>
-                    {(me?.admin || me?.id === s.user_id) && (
+                    <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 プレビュー</button>
+                    {(canBulk || me?.id === s.user_id) && (
                       <button onClick={() => openEdit(s)} className="h-9 flex-1 rounded-md border border-amber-400 bg-white text-[11px] font-semibold text-amber-600">✏️ 編集</button>
                     )}
                     <button onClick={() => downloadInvoice(s, 'self')} disabled={busyId === `${s.kind}-${s.id}`}
-                      className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 PDF</button>
-                    {s.status === 'draft' && (me?.admin || me?.id === s.user_id) && (
+                      className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 保存</button>
+                    {s.status === 'draft' && (canBulk || me?.id === s.user_id) && (
                       <button onClick={() => submitOne(s)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 text-[11px] font-semibold text-white shadow">📤 申請</button>
+                    )}
+                    {s.status === 'pending' && canBulk && (
+                      <button onClick={() => approveOne(s)} disabled={approveBusyId === s.id}
+                        className="h-9 flex-1 rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
                     )}
                   </div>
                 )}
@@ -1523,7 +1578,7 @@ export default function InvoicesPage() {
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
-                {me?.admin && <th className="px-1 py-2 text-center w-6"></th>}
+                {canBulk && <th className="px-1 py-2 text-center w-6"></th>}
                 <th className="px-2 py-2 text-left">年月</th>
                 <th className="px-2 py-2 text-left">種別</th>
                 <th className="px-2 py-2 text-left">カテゴリ</th>
@@ -1546,7 +1601,7 @@ export default function InvoicesPage() {
                 const usersStr = Array.from(new Set(names)).join(' + ') || (p.user_display_name ?? '—')
                 return (
                   <tr key={`issued-${p.id}`} className="border-t border-amber-200 bg-amber-50/40">
-                    {me?.admin && (
+                    {canBulk && (
                       <td className="px-1 py-2 text-center">
                         <input type="checkbox" checked={checkedIssuedIds.has(p.id)} onChange={() => toggleIssuedCheck(p.id)} />
                       </td>
@@ -1580,13 +1635,13 @@ export default function InvoicesPage() {
                       <div className="flex gap-1 justify-center flex-wrap">
                         <button onClick={() => previewIssuedPdf(p)}
                           className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50">🔍</button>
-                        {me?.admin && (
+                        {canBulk && (
                           <button onClick={() => setEditingIssued(p)}
                             className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="編集 → 再生成">✏️</button>
                         )}
                         <button onClick={() => downloadIssuedPdf(p)}
                           className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">📥 {p.file_format.toUpperCase()}</button>
-                        {me?.admin && (
+                        {canBulk && (
                           <button onClick={() => removeIssuedPdf(p.id, p.filename)}
                             className="rounded border border-red-300 bg-white px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-50">🗑</button>
                         )}
@@ -1605,7 +1660,7 @@ export default function InvoicesPage() {
                 }
                 return (
                 <tr key={m.key} className="border-t border-fuchsia-200 bg-fuchsia-50/40">
-                  {me?.admin && (
+                  {canBulk && (
                     <td className="px-1 py-2 text-center">
                       <input type="checkbox" checked={allChecked} onChange={toggleMergedCheck} title="この統合に含まれる申請を全選択" />
                     </td>
@@ -1628,13 +1683,13 @@ export default function InvoicesPage() {
                         className="rounded border border-sky-400 bg-white px-1.5 py-0.5 text-[10px] text-sky-600 hover:bg-sky-50 disabled:opacity-50" title="統合 PDF を確認">
                         {previewBusy ? <Spinner /> : '🔍'}
                       </button>
-                      {me?.admin && (
+                      {canBulk && (
                         <button onClick={() => setEditingMergedRow({ ids: m.ids, po: m.po, kind: m.kind })}
                           className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="注文番号を編集">
                           ✏️
                         </button>
                       )}
-                      {me?.admin && m.kind === 'merged_invoice' && (
+                      {canBulk && m.kind === 'merged_invoice' && (
                         <button onClick={() => setMergedApplicationDate(m)}
                           className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="申請日(PDF左上)を変更">
                           📅 申請日
@@ -1665,7 +1720,7 @@ export default function InvoicesPage() {
               })}
               {issuedRows.map((p) => (
                 <tr key={`issued-${p.id}`} className="border-t border-indigo-200 bg-indigo-50/40">
-                  {me?.admin && <td className="px-1 py-2 text-center" />}
+                  {canBulk && <td className="px-1 py-2 text-center" />}
                   <td className="px-2 py-2 font-mono">{p.year}/{String(p.month ?? 0).padStart(2, '0')}</td>
                   <td className="px-2 py-2">
                     <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-700">
@@ -1685,7 +1740,7 @@ export default function InvoicesPage() {
                       {me?.admin && p.kind === 'invoice' && (
                         <button onClick={() => regenerateIssued(p)} className="rounded border border-fuchsia-400 bg-white px-1.5 py-0.5 text-[10px] text-fuchsia-600 hover:bg-fuchsia-50" title="申請日を変更してPDFを再生成">📅 申請日</button>
                       )}
-                      {me?.admin && (
+                      {canBulk && (
                         <button onClick={() => removeIssuedPdf(p.id, p.filename)} className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300" title="発行済みPDFを削除">🗑</button>
                       )}
                     </div>
@@ -1699,7 +1754,7 @@ export default function InvoicesPage() {
                 const isApproved = s.status === 'approved'
                 return (
                 <tr key={rowKey} className="border-t border-[var(--color-border)]">
-                  {me?.admin && (
+                  {canBulk && (
                     <td className="px-1 py-2 text-center">
                       {(s.status === 'approved' || s.status === 'draft') && (
                         <input type="checkbox" checked={checkedIds.has(rowKey)} onChange={() => toggleCheck(s)} />
@@ -1791,12 +1846,12 @@ export default function InvoicesPage() {
                       </div>
                     ) : (
                       <div className="flex items-center justify-center gap-1">
-                      {s.status === 'draft' && (me?.admin || me?.id === s.user_id) && (
+                      {s.status === 'draft' && (canBulk || me?.id === s.user_id) && (
                         <button onClick={() => submitOne(s)}
                           className="rounded bg-gradient-to-r from-sky-500 to-indigo-500 px-2 py-1 text-[10px] font-semibold text-white shadow"
                           title="この下書きを申請（承認フローへ）">📤 申請</button>
                       )}
-                      {s.status === 'pending' && me?.admin && (
+                      {s.status === 'pending' && canBulk && (
                         <>
                           <button onClick={() => approveOne(s)} disabled={approveBusyId === s.id}
                             className="rounded bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-1 text-[10px] font-semibold text-white shadow disabled:opacity-50"
@@ -1808,8 +1863,8 @@ export default function InvoicesPage() {
                       )}
                       <RowActions
                         onView={() => openPreview(s)}
-                        onEdit={(me?.admin || me?.id === s.user_id) ? () => openEdit(s) : undefined}
-                        onDelete={(me?.admin || me?.id === s.user_id) ? () => removeSubmission(s) : undefined}
+                        onEdit={(canBulk || me?.id === s.user_id) ? () => openEdit(s) : undefined}
+                        onDelete={(canBulk || me?.id === s.user_id) ? () => removeSubmission(s) : undefined}
                         dlItems={[
                           { label: '📥 PDF（申請者ベース）', onClick: () => downloadInvoice(s, 'self'), disabled: busyPdf },
                           ...(s.kind === 'expense' ? [{ label: '📊 Excel（申請者ベース）', onClick: () => downloadExpenseXlsx(s, 'self'), disabled: busyXlsx }] : []),
@@ -1998,11 +2053,11 @@ export default function InvoicesPage() {
       {creating && me && (
         <Modal onClose={() => setCreating(false)} size="md" panelClassName="space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">＋ 請求書/立替金 {me.admin ? '申請を新規作成' : 'を申請'}</div>
+              <div className="text-sm font-semibold">＋ 請求書/立替金 {canBulk ? '申請を新規作成' : 'を申請'}</div>
               <button onClick={() => setCreating(false)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
             </div>
             <div className="space-y-2">
-              {me.admin ? (
+              {canBulk ? (
                 <LabeledField label="申請者ユーザー（受注者）">
                   <select value={createForm.target_user_id} onChange={(e) => setCreateForm({ ...createForm, target_user_id: e.target.value === '' ? '' : Number(e.target.value) })} className={fieldInputCls}>
                     <option value="">— 自分（{me?.display_name ?? '管理者'}） —</option>
@@ -2044,10 +2099,15 @@ export default function InvoicesPage() {
               <LabeledField label="備考（注文番号等）">
                 <textarea value={createForm.note} onChange={(e) => setCreateForm({ ...createForm, note: e.target.value })} rows={2} className={fieldInputCls} />
               </LabeledField>
-              <LabeledField label={`振込先（口座）— ${me.admin && createForm.target_user_id ? 'この申請者' : '自分'}の口座。請求書PDFの「お振込先」に出ます`}>
+              {createForm.kind === 'invoice' && createForm.category === 'transport' ? (
+                <BankInfoFields value={createBank} onChange={setCreateBank}
+                  label={`振込先（口座）— ${canBulk && createForm.target_user_id ? 'この申請者' : '自分'}の口座。請求書PDFの 金融機関/口座番号/口座名義 に出ます`} />
+              ) : (
+              <LabeledField label={`振込先（口座）— ${canBulk && createForm.target_user_id ? 'この申請者' : '自分'}の口座。請求書PDFの「お振込先」に出ます`}>
                 <textarea value={createBank} onChange={(e) => setCreateBank(e.target.value)} rows={2}
                   placeholder="例: ○○銀行 △△支店 普通 1234567 ﾀﾅｶ ﾀﾛｳ" className={fieldInputCls} />
               </LabeledField>
+              )}
               <LabeledField label="郵便番号" hint="7桁を入れて「検索」で住所が途中まで自動入力されます">
                 <div className="flex gap-1">
                   <input value={createPostal} onChange={(e) => setCreatePostal(e.target.value)}
@@ -2120,7 +2180,7 @@ export default function InvoicesPage() {
           total_amount: p.total_amount, year: p.year, month: p.month, category: p.category,
         }))
         return (
-          <LabopMailModal invoices={invs} expenses={exps} issuedPdfs={issued} onClose={() => setBulkOpen(false)} />
+          <LabopMailModal invoices={invs} expenses={exps} issuedPdfs={issued} isAdmin={!!me?.admin} onClose={() => setBulkOpen(false)} />
         )
       })()}
 
@@ -2229,6 +2289,21 @@ export default function InvoicesPage() {
                   </option>
                 ))}
               </select>
+              <div className="mt-1 flex gap-1">
+                <input value={editForm.client_name}
+                  onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })}
+                  placeholder="宛名を直接入力して上書き（例: 株式会社〇〇）"
+                  className={fieldInputCls} />
+                <select value={editForm.client_honorific}
+                  onChange={(e) => setEditForm({ ...editForm, client_honorific: e.target.value })}
+                  className={`${fieldInputCls} w-20 shrink-0`}>
+                  <option value="御中">御中</option>
+                  <option value="様">様</option>
+                </select>
+              </div>
+              <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
+                ここに入力するとこの請求書だけ宛名を上書きします（マスタ未登録でも変更OK）。空欄なら上のセレクト/請求書設定の宛名。
+              </div>
             </LabeledField>
             <LabeledField label="申請日" hint="請求書PDF・一覧に表示される申請日を変更します">
               <input type="date" value={editForm.application_date}
@@ -2245,11 +2320,17 @@ export default function InvoicesPage() {
                 onChange={(e) => setEditForm({ ...editForm, registration_no: e.target.value })}
                 placeholder="例: T1234567890123" className={fieldInputCls} />
             </LabeledField>
+            {editingSub.kind === 'invoice' && editingSub.category === 'transport' ? (
+              <BankInfoFields value={editForm.bank_info}
+                onChange={(next) => setEditForm({ ...editForm, bank_info: next })}
+                label="振込先（お振込先）— 請求書PDFの 金融機関/口座番号/口座名義 に出ます（請求書設定にも連動保存）" />
+            ) : (
             <LabeledField label="振込先（お振込先）" hint="この請求書に反映し、請求書設定にも連動保存されます">
               <textarea value={editForm.bank_info} rows={2}
                 onChange={(e) => setEditForm({ ...editForm, bank_info: e.target.value })}
                 placeholder="例: 〇〇銀行 〇〇支店 普通 0000000 口座名義" className={fieldInputCls} />
             </LabeledField>
+            )}
             <LabeledField label="郵便番号" hint="7桁を入れて「検索」で住所が途中まで自動入力されます">
               <div className="flex gap-1">
                 <input value={editForm.postal} onChange={(e) => setEditForm({ ...editForm, postal: e.target.value })}
@@ -2299,6 +2380,39 @@ export default function InvoicesPage() {
                 <div className="text-[11px] font-semibold mb-1">品番・品名 / 明細</div>
                 <InvoiceItemsEditor items={editForm.items} category={editingSub.category} taxIncluded={editTaxIncluded}
                   onUpdate={updateEditItem} onAdd={addEditItem} onRemove={removeEditItem} />
+              </div>
+            )}
+            {editingSub.kind === 'invoice' && editingSub.category === 'transport' && editTransportExpenses.rows.length > 0 && (
+              <div className="block">
+                <div className="text-[11px] font-semibold mb-1">立替金（高速代・駐車場代など会社負担の経費 — 請求書PDFの立替金表と同じ内容）</div>
+                <div className="overflow-x-auto rounded border border-[var(--color-border)]">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-gray-50 text-[var(--color-text-sub)]">
+                      <tr>
+                        <th className="px-2 py-1 text-left">日付</th>
+                        <th className="px-2 py-1 text-left">内容</th>
+                        <th className="px-2 py-1 text-right">金額</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editTransportExpenses.rows.map((row, index) => (
+                        <tr key={index} className="border-t border-[var(--color-border)]">
+                          <td className="px-2 py-1 font-mono">{row.date ? row.date.slice(5).replace('-', '/') : '—'}</td>
+                          <td className="px-2 py-1">{row.label || '—'}</td>
+                          <td className="px-2 py-1 text-right font-mono tabular-nums">¥{row.amount.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t border-[var(--color-border)] bg-emerald-50/60 font-semibold">
+                        <td className="px-2 py-1" colSpan={2}>立替金 合計</td>
+                        <td className="px-2 py-1 text-right font-mono tabular-nums">¥{editTransportExpenses.total.toLocaleString()}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
+                  ※ 💰経費（会社負担）から自動反映。追加・修正は経費画面で行ってください。
+                  請求合計 ¥{(editingSub.total_override || editingSub.default_total || 0).toLocaleString()} ＋ 立替金 ¥{editTransportExpenses.total.toLocaleString()} ＝ 総額 ¥{((editingSub.total_override || editingSub.default_total || 0) + editTransportExpenses.total).toLocaleString()}
+                </div>
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2 border-t">

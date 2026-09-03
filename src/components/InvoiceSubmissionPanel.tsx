@@ -845,6 +845,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
         <LabopMailModal
           invoices={allApprovedAcrossKinds.filter((s) => s.kind === 'invoice') as any}
           expenses={allApprovedAcrossKinds.filter((s) => s.kind === 'expense') as any}
+          isAdmin={isAdmin}
           onClose={() => setMailModalOpen(false)}
         />
       )}

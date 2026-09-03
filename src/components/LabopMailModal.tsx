@@ -29,6 +29,8 @@ type Props = {
   expenses: Submission[]
   // 保存済み 統合 PDF (IssuedInvoicePdf) — チェック済みのものをそのまま添付できる
   issuedPdfs?: IssuedPdf[]
+  // admin(西野)=ラボップ宛の既定値。サブ管理者(雄太郎等)は自分の請求先マスタからサーバが宛名を補完する
+  isAdmin: boolean
   onClose: () => void
 }
 
@@ -37,17 +39,20 @@ const CATEGORY_LABELS: Record<string, string> = {
   living: 'リビング',
   techleaders: 'テックリーダーズ',
   resystems: 'REシステムズ',
+  video: '動画編集',
+  proaka: 'プロアカ',
+  transport: '運送',
 }
 
-export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], onClose }: Props) {
+export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], isAdmin, onClose }: Props) {
   // 既定で全添付タイプ全選択（請求書PDF / 業務報告書Excel / 立替金PDF / 立替金Excel / 保存済 統合 PDF）
   const [selectedInvoicePdfIds, setSelectedInvoicePdfIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
   const [selectedWorkReportXlsxIds, setSelectedWorkReportXlsxIds] = useState<Set<number>>(() => new Set(invoices.map((s) => s.id)))
   const [selectedExpensePdfIds, setSelectedExpensePdfIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [selectedExpenseXlsxIds, setSelectedExpenseXlsxIds] = useState<Set<number>>(() => new Set(expenses.map((s) => s.id)))
   const [selectedIssuedIds, setSelectedIssuedIds] = useState<Set<number>>(() => new Set(issuedPdfs.map((s) => s.id)))
-  const [to, setTo] = useState('takaya777boxing@gmail.com') // テスト送信先を初期値に
-  const [recipientName, setRecipientName] = useState('株式会社ラボップ 御中')
+  const [to, setTo] = useState(isAdmin ? 'takaya777boxing@gmail.com' : '') // admin はテスト送信先を初期値に
+  const [recipientName, setRecipientName] = useState(isAdmin ? '株式会社ラボップ 御中' : '')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [extraFiles, setExtraFiles] = useState<File[]>([])
@@ -80,6 +85,9 @@ export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], on
       })
       setSubject(r.data.subject)
       setBody(r.data.body)
+      // 宛名未入力ならサーバが解決した宛名(既定請求先など)を反映
+      const resolvedRecipient = (r.data as { recipient_name?: string }).recipient_name
+      if (resolvedRecipient) setRecipientName((current) => current.trim() ? current : resolvedRecipient)
       setDraftLoaded(true)
     } catch (e: any) {
       setMsg(`AI下書き失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
@@ -96,6 +104,7 @@ export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], on
   const removeExtra = (i: number) => setExtraFiles((prev) => prev.filter((_, idx) => idx !== i))
 
   const send = async () => {
+    if (!to.trim()) { setMsg('宛先メールアドレスを入力してください'); return }
     if (!subject.trim() || !body.trim()) { setMsg('件名・本文を入力してください'); return }
     if (totalSelected === 0) { setMsg('送付対象を1件以上選択してください'); return }
     setSending(true); setMsg(null)
@@ -126,7 +135,7 @@ export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], on
       <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-2">
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text)]">📧 ラボップへ一括送付</div>
+            <div className="text-sm font-semibold text-[var(--color-text)]">📧 {isAdmin ? 'ラボップへ一括送付' : '請求書をまとめてメール送付'}</div>
             <div className="text-[11px] text-[var(--color-text-sub)]">
               請求書PDF {selectedInvoicePdfIds.size}/{invoices.length} ／ 業務報告書Excel {selectedWorkReportXlsxIds.size}/{invoices.length} ／ 立替金PDF {selectedExpensePdfIds.size}/{expenses.length} ／ 立替金Excel {selectedExpenseXlsxIds.size}/{expenses.length}
               {issuedPdfs.length > 0 && <> ／ 統合PDF {selectedIssuedIds.size}/{issuedPdfs.length}</>}
@@ -139,14 +148,16 @@ export default function LabopMailModal({ invoices, expenses, issuedPdfs = [], on
           <label className="block">
             <div className="text-[11px] font-semibold mb-0.5">宛先</div>
             <input value={to} onChange={(e) => setTo(e.target.value)} list="labop-mail-to-list" autoComplete="email" className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
-            <datalist id="labop-mail-to-list">
-              <option value="k-osumi@rabop.jp" />
-              <option value="takaya777boxing@gmail.com" />
-              <option value="takaya314boxing@gmail.com" />
-              <option value="calmdownyourlife@gmail.com" />
-            </datalist>
+            {isAdmin && (
+              <datalist id="labop-mail-to-list">
+                <option value="k-osumi@rabop.jp" />
+                <option value="takaya777boxing@gmail.com" />
+                <option value="takaya314boxing@gmail.com" />
+                <option value="calmdownyourlife@gmail.com" />
+              </datalist>
+            )}
             <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
-              テストは <code>takaya777boxing@gmail.com</code> ／ 本番は <code>k-osumi@rabop.jp</code>
+              {isAdmin ? <>テストは <code>takaya777boxing@gmail.com</code> ／ 本番は <code>k-osumi@rabop.jp</code></> : '請求先の担当者メールアドレスを入力してください'}
             </div>
           </label>
           <label className="block">

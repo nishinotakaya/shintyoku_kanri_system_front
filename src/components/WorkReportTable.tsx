@@ -167,10 +167,11 @@ export default function WorkReportTable({
         </div>
       </div>
       <div className="max-h-[520px] overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-gray-50 backdrop-blur">
-            <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)]">
-              <th className="px-4 py-1.5 w-32">日付</th>
+        {/* スマホは横スクロール(min-w)でヘッダーを縦潰れさせない。日付列は sticky で固定 */}
+        <table className="w-full min-w-[640px] text-sm">
+          <thead className="sticky top-0 z-20 bg-gray-50 backdrop-blur">
+            <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)] whitespace-nowrap">
+              <th className="sticky left-0 z-10 bg-gray-50 px-4 py-1.5 w-32">日付</th>
               <th className="px-2 py-1.5">{fieldLabel(category, 'content')}</th>
               <th className="px-2 py-1.5 w-20 text-right">時間</th>
               {category !== 'living' && <th className="px-2 py-1.5 w-32">{fieldLabel(category, 'transit_section')}</th>}
@@ -190,7 +191,9 @@ export default function WorkReportTable({
                     d.holiday ? 'bg-red-50' : d.weekend ? 'bg-gray-50/50' : ''
                   } hover:bg-gray-50`}
                 >
-                  <td className={`px-4 py-1 ${colorFor(d)}`}>
+                  <td className={`sticky left-0 z-10 px-4 py-1 whitespace-nowrap ${
+                    d.holiday ? 'bg-red-50' : d.weekend ? 'bg-gray-50' : 'bg-white'
+                  } ${colorFor(d)}`}>
                     <div className="flex items-baseline gap-2">
                       <span>{d.mm}/{String(d.dd).padStart(2, '0')} ({d.w})</span>
                       {d.holiday && (
