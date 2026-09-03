@@ -5,7 +5,8 @@
 
 // viewId: 開くたびに採番する連番。PdfViewerModal 側で React の key に使い、
 // PDF を差し替えたときに前の描画状態(ページ数・ズーム等)を引きずらず必ず作り直させるため。
-export type PdfViewerState = { blob: Blob; filename: string; viewId: number } | null
+// blob が null の間は「PDFを確認中…」のローディング表示(生成が遅くてもモーダルを先に出す)
+export type PdfViewerState = { blob: Blob | null; filename: string; viewId: number } | null
 
 type PdfViewerListener = (state: PdfViewerState) => void
 
@@ -17,6 +18,26 @@ const listeners = new Set<PdfViewerListener>()
 export function openPdfViewer(state: { blob: Blob; filename: string }): void {
   currentState = { ...state, viewId: nextViewId++ }
   listeners.forEach((listener) => listener(currentState))
+}
+
+// モーダルを先に開いてローディング表示にする。戻り値の viewId を resolve/fail に渡す。
+export function openPdfViewerLoading(filename: string): number {
+  currentState = { blob: null, filename, viewId: nextViewId++ }
+  listeners.forEach((listener) => listener(currentState))
+  return currentState.viewId
+}
+
+// 取得完了。ユーザーが既に閉じた/別の PDF を開いた後なら何もしない。
+export function resolvePdfViewer(viewId: number, blob: Blob): void {
+  if (currentState?.viewId !== viewId) return
+  currentState = { ...currentState, blob }
+  listeners.forEach((listener) => listener(currentState))
+}
+
+// 取得失敗。ローディング中のモーダルが出たままなら閉じる。
+export function failPdfViewer(viewId: number): void {
+  if (currentState?.viewId !== viewId) return
+  closePdfViewer()
 }
 
 // PDF モーダルを閉じる。

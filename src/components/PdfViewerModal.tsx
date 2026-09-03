@@ -302,6 +302,31 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
   )
 }
 
+// 取得中(blob 未着)のローディング表示。モーダルの枠は本体と同じで、✕ や背景クリックで中断できる。
+function PdfViewerLoadingDialog({ filename, onClose }: { filename: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={filename}
+        onClick={(event) => event.stopPropagation()}
+        className="flex h-[100dvh] w-full flex-col bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl sm:h-[92vh] sm:w-[min(960px,96vw)] sm:rounded-2xl"
+      >
+        <header className="flex flex-none items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+          <div className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-base font-semibold text-[var(--color-text)] sm:text-lg">{filename}</div>
+          <button type="button" onClick={onClose} aria-label="閉じる"
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-md text-xl text-[var(--color-text-sub)] hover:bg-gray-100">✕</button>
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-gray-100">
+          <span className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-sky-500" />
+          <div className="text-sm text-[var(--color-text-sub)]">PDF を確認中…</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ストアを購読して描画するホスト。src/main.tsx のルートに 1 回だけマウントする。
 export default function PdfViewerModal() {
   const [state, setState] = useState<PdfViewerState>(null)
@@ -309,5 +334,6 @@ export default function PdfViewerModal() {
   useEffect(() => subscribePdfViewer(setState), [])
 
   if (!state) return null
+  if (!state.blob) return <PdfViewerLoadingDialog filename={state.filename} onClose={closePdfViewer} />
   return <PdfViewerDialog key={state.viewId} blob={state.blob} filename={state.filename} onClose={closePdfViewer} />
 }

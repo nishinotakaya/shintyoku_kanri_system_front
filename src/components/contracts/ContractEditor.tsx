@@ -5,7 +5,7 @@ import {
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS,
 } from '../../lib/contracts'
 import type { Contract, ContractFormInput, ContractArticle } from '../../lib/contracts'
-import { showPdf } from '../../lib/openPdf'
+import { showPdfWhileLoading } from '../../lib/openPdf'
 import ContractEmailModal from './ContractEmailModal'
 
 type Props = {
@@ -170,8 +170,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
   // PDF はモーダル表示(showPdf)。以前の別タブ方式(openPdfWindow)は廃止。
   const previewPdf = async () => {
     try {
-      const blob = await fetchContractPdfBlob(contract.id)
-      showPdf(blob, `${contract.title}.pdf`)
+      await showPdfWhileLoading(`${contract.title}.pdf`, () => fetchContractPdfBlob(contract.id))
     } catch (error: any) {
       alert(`PDF 取得失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     }

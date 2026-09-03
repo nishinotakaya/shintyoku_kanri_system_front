@@ -5,7 +5,7 @@ import {
   formatContractDate, formatContractDateTime,
 } from '../lib/contracts'
 import type { ContractParty, PublicContract } from '../lib/contracts'
-import { showPdf } from '../lib/openPdf'
+import { showPdfWhileLoading } from '../lib/openPdf'
 import SignaturePad from '../components/contracts/SignaturePad'
 
 // 相手(乙)が開く署名ページ。検索エンジンに拾われたくないので noindex を head に足す。
@@ -77,8 +77,7 @@ export default function ContractSignPage() {
   const openContractPdf = async () => {
     if (!token) return
     try {
-      const blob = await fetchPublicContractPdfBlob(token)
-      showPdf(blob, `${contract?.title ?? '契約書'}.pdf`)
+      await showPdfWhileLoading(`${contract?.title ?? '契約書'}.pdf`, () => fetchPublicContractPdfBlob(token))
     } catch {
       alert('PDF の取得に失敗しました')
     }

@@ -5,7 +5,7 @@ import {
   fetchContracts, createContract, fetchContractPdfBlob, fetchContractsZipBlob,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
-import { showPdf } from '../lib/openPdf'
+import { showPdfWhileLoading } from '../lib/openPdf'
 import type { Contract, ContractTemplate } from '../lib/contracts'
 import ContractEditor from '../components/contracts/ContractEditor'
 import Modal from '../components/Modal'
@@ -104,8 +104,7 @@ export default function ContractsPage() {
     if (pdfLoadingId != null) return
     setPdfLoadingId(contract.id)
     try {
-      const blob = await fetchContractPdfBlob(contract.id)
-      showPdf(blob, `${contract.title}.pdf`)
+      await showPdfWhileLoading(`${contract.title}.pdf`, () => fetchContractPdfBlob(contract.id))
     } catch (error: any) {
       alert(`PDF 取得失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
