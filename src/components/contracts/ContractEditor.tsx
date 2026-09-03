@@ -102,8 +102,10 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
     setForm((prev) => ({ ...prev, articles: prev.articles.filter((_, articleIndex) => articleIndex !== index) }))
   }
   // 条文の並べ替えはドラッグ&ドロップ(⠿ ハンドル)。pointer events なのでスマホのタッチでも動く。
-  // ハンドルに setPointerCapture するので move/up はハンドル側で受ける。
+  // ドラッグ中はリストを動かさず「ここに入る」線だけ出し、指を離した瞬間に確定する
+  // (ドラッグ中に入れ替えると各カードの座標が変わって判定が暴れるため)。
   const [draggingArticleId, setDraggingArticleId] = useState<string | null>(null)
+  const [dropInsertIndex, setDropInsertIndex] = useState<number | null>(null)
   const articleCardRefs = useRef(new Map<string, HTMLDivElement>())
 
   const startArticleDrag = (event: React.PointerEvent<HTMLButtonElement>, articleId: string) => {
@@ -111,31 +113,40 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     setDraggingArticleId(articleId)
+    setDropInsertIndex(null)
+  }
+
+  // 挿入位置 = ドラッグ中以外のカードのうち、中心Yがポインタより上にある数(リスト全体の並びで数える)
+  const computeInsertIndex = (pointerY: number): number => {
+    let insertIndex = 0
+    for (const article of form.articles) {
+      if (article.id === draggingArticleId) continue
+      const card = articleCardRefs.current.get(article.id)
+      if (!card) continue
+      const rect = card.getBoundingClientRect()
+      if (pointerY > rect.top + rect.height / 2) insertIndex += 1
+    }
+    return insertIndex
   }
 
   const moveArticleDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (!draggingArticleId) return
-    const pointerY = event.clientY
-    setForm((prev) => {
-      const currentIndex = prev.articles.findIndex((article) => article.id === draggingArticleId)
-      if (currentIndex < 0) return prev
-      // ドラッグ中以外のカードの中心Yと比べて挿入位置を決める(高さの違う条文でも安定)
-      const otherArticles = prev.articles.filter((article) => article.id !== draggingArticleId)
-      let insertIndex = 0
-      for (const article of otherArticles) {
-        const card = articleCardRefs.current.get(article.id)
-        if (!card) continue
-        const rect = card.getBoundingClientRect()
-        if (pointerY > rect.top + rect.height / 2) insertIndex += 1
-      }
-      if (insertIndex === currentIndex) return prev
-      const nextArticles = [...otherArticles]
-      nextArticles.splice(insertIndex, 0, prev.articles[currentIndex])
-      return { ...prev, articles: nextArticles }
-    })
+    setDropInsertIndex(computeInsertIndex(event.clientY))
   }
 
-  const endArticleDrag = () => setDraggingArticleId(null)
+  const endArticleDrag = () => {
+    if (draggingArticleId && dropInsertIndex != null) {
+      setForm((prev) => {
+        const currentIndex = prev.articles.findIndex((article) => article.id === draggingArticleId)
+        if (currentIndex < 0) return prev
+        const nextArticles = prev.articles.filter((article) => article.id !== draggingArticleId)
+        nextArticles.splice(dropInsertIndex, 0, prev.articles[currentIndex])
+        return { ...prev, articles: nextArticles }
+      })
+    }
+    setDraggingArticleId(null)
+    setDropInsertIndex(null)
+  }
 
   const save = async () => {
     setSaving(true)
@@ -326,6 +337,10 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
           <div className="space-y-4">
             {form.articles.map((article, index) => {
               const articlePageNumber = articlePageNumbers[index]
+              // ドラッグ中: 自分より前にある「ドラッグ中以外」のカード数 = このカードの挿入前位置
+              const positionAmongOthers = form.articles.slice(0, index).filter((a) => a.id !== draggingArticleId).length
+              const showDropLineBefore = draggingArticleId != null && article.id !== draggingArticleId
+                && dropInsertIndex === positionAmongOthers
               return (
                 <div key={article.id}
                   ref={(element) => {
@@ -333,6 +348,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
                     else articleCardRefs.current.delete(article.id)
                   }}
                   className={draggingArticleId === article.id ? 'opacity-70' : undefined}>
+                  {showDropLineBefore && <div className="mb-2 h-1 rounded bg-fuchsia-400" />}
                   {article.page_break_before && (
                     <div className="mb-2 flex items-center gap-2 border-t-2 border-dashed border-fuchsia-300 pt-2">
                       <span className="text-sm font-semibold text-fuchsia-600">ページ {articlePageNumber}</span>
@@ -384,6 +400,9 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
                 </div>
               )
             })}
+            {draggingArticleId != null
+              && dropInsertIndex === form.articles.filter((a) => a.id !== draggingArticleId).length
+              && <div className="h-1 rounded bg-fuchsia-400" />}
             {form.articles.length === 0 && (
               <div className="text-sm text-[var(--color-text-sub)]">条文がありません（＋ 条文を追加 で追加）</div>
             )}

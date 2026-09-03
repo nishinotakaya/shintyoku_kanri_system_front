@@ -5,6 +5,7 @@ import {
   fetchContracts, createContract, fetchContractPdfBlob, fetchContractsZipBlob,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
+import { showPdf } from '../lib/openPdf'
 import type { Contract, ContractTemplate } from '../lib/contracts'
 import ContractEditor from '../components/contracts/ContractEditor'
 import Modal from '../components/Modal'
@@ -97,20 +98,15 @@ export default function ContractsPage() {
     }
   }
 
-  // PDF を別タブで開く(ブラウザの PDF ビューアからそのままダウンロードできる)。
-  // ポップアップブロック対策で、クリック直後に空タブを確保してから blob を流し込む。
+  // PDF はエディタと同じモーダル表示(showPdf: pdf.js 描画なのでスマホでも全ページ見える)
   const openContractPdf = async (contract: Contract, event: React.MouseEvent) => {
     event.stopPropagation()
     if (pdfLoadingId != null) return
-    const newTab = window.open('', '_blank')
     setPdfLoadingId(contract.id)
     try {
       const blob = await fetchContractPdfBlob(contract.id)
-      const url = URL.createObjectURL(new File([blob], `${contract.title}.pdf`, { type: 'application/pdf' }))
-      if (newTab) newTab.location.href = url
-      else window.open(url, '_blank')
+      showPdf(blob, `${contract.title}.pdf`)
     } catch (error: any) {
-      newTab?.close()
       alert(`PDF 取得失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
       setPdfLoadingId(null)
@@ -246,7 +242,7 @@ export default function ContractsPage() {
                   disabled={pdfLoadingId != null}
                   className="mt-3 h-10 w-full rounded-md border border-fuchsia-300 bg-white px-3 text-sm font-semibold text-fuchsia-600 active:bg-fuchsia-50 disabled:opacity-50"
                 >
-                  {pdfLoadingId === contract.id ? 'PDF 生成中…' : '📄 PDF を開く（別タブ）'}
+                  {pdfLoadingId === contract.id ? 'PDF 生成中…' : '📄 PDF を開く'}
                 </button>
               </div>
             ))}
