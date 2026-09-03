@@ -141,8 +141,8 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex gap-1.5">
+    <div className="flex flex-col items-start gap-1 sm:items-end">
+      <div className="flex flex-wrap gap-1.5">
         {savedDirName && (
           <button
             onClick={saveToRemembered}
@@ -178,10 +178,10 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
         </button>
       )}
       {hint && (
-        <div className="max-w-[420px] text-right text-[10px] text-amber-600">{hint}</div>
+        <div className="max-w-[420px] text-left text-[10px] text-amber-600 sm:text-right">{hint}</div>
       )}
       {(lastSavedTo || msg) && (
-        <div className="max-w-[420px] text-right text-[10px] text-[var(--color-text-sub)] break-all">
+        <div className="max-w-[420px] text-left text-[10px] text-[var(--color-text-sub)] break-all sm:text-right">
           {msg && <div className={msg.startsWith('保存しました') || msg.startsWith('ダウンロードしました') ? 'text-emerald-600' : 'text-red-500'}>{msg}</div>}
           {lastSavedTo && <div className="font-mono">{lastSavedTo}</div>}
         </div>

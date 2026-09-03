@@ -1279,14 +1279,14 @@ export default function InvoicesPage() {
     <div className="space-y-3">
       <ScannedInvoiceUploader onUploaded={() => load()} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-lg font-semibold tracking-tight">📄 請求書一覧</div>
           <div className="text-[11px] text-[var(--color-text-sub)]">
             {me?.admin ? '全ユーザーの請求書/立替金 申請' : '自分の請求書/立替金 申請'}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {me && (
             <button onClick={() => {
                 // 非admin(須崎さん等)は「動画編集」をデフォルトに。work_categories を設定されたユーザー(運送の雄太郎等)は
@@ -1449,7 +1449,11 @@ export default function InvoicesPage() {
           {visibleIssuedPdfs.map((p) => (
             <div key={`m-issued-${p.id}`} className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono font-semibold">{p.year}/{String(p.month).padStart(2, '0')}</span>
+                <span className="flex items-center gap-2 font-mono font-semibold">
+                  {me?.admin && (
+                    <input type="checkbox" className="h-4 w-4" checked={checkedIssuedIds.has(p.id)} onChange={() => toggleIssuedCheck(p.id)} />
+                  )}
+                  {p.year}/{String(p.month).padStart(2, '0')}</span>
                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">統合</span>
               </div>
               <div className="mt-1 font-semibold text-amber-700">{p.user_display_name ?? '—'}</div>
@@ -1468,7 +1472,11 @@ export default function InvoicesPage() {
             return (
               <div key={rowKey} className="rounded-xl border border-[var(--color-border)] bg-white p-3 text-xs shadow-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono font-semibold">{s.year}/{String(s.month).padStart(2, '0')}</span>
+                  <span className="flex items-center gap-2 font-mono font-semibold">
+                    {me?.admin && (s.status === 'approved' || s.status === 'draft') && (
+                      <input type="checkbox" className="h-4 w-4" checked={checkedIds.has(`${s.kind}-${s.id}`)} onChange={() => toggleCheck(s)} />
+                    )}
+                    {s.year}/{String(s.month).padStart(2, '0')}</span>
                   <div className="flex items-center gap-1">
                     <span className={`rounded px-1.5 py-0.5 text-[10px] ${
                       s.kind === 'scanned' ? 'bg-fuchsia-100 text-fuchsia-700' :
@@ -1492,7 +1500,10 @@ export default function InvoicesPage() {
                 </div>
                 {s.kind !== 'scanned' && (
                   <div className="mt-2 flex gap-2">
-                    <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 PDF を見る</button>
+                    <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 PDF</button>
+                    {(me?.admin || me?.id === s.user_id) && (
+                      <button onClick={() => openEdit(s)} className="h-9 flex-1 rounded-md border border-amber-400 bg-white text-[11px] font-semibold text-amber-600">✏️ 編集</button>
+                    )}
                     <button onClick={() => downloadInvoice(s, 'self')} disabled={busyId === `${s.kind}-${s.id}`}
                       className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 PDF</button>
                     {s.status === 'draft' && (me?.admin || me?.id === s.user_id) && (

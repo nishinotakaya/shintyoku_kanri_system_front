@@ -390,8 +390,10 @@ export default function Dashboard() {
         {/* 狭い画面では見出し側と操作ボタン側を上下に積む。
             min-w-0 が無いと flex アイテムが縮まず、中の長い文字列の幅まで
             カードが広がってページ全体が横に溢れる */}
-        <div className="flex flex-wrap items-center justify-between gap-y-2">
-          <div className="min-w-0 flex-1">
+        {/* スマホは縦積み(flex-col)。flex-1 min-w-0 を横並びのまま残すと
+            タイトル側が数pxまで潰されて1文字ずつ縦書きになる */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="sm:min-w-0 sm:flex-1">
             <div className="text-[10px] uppercase tracking-widest text-[var(--color-text-sub)]">請求書プレビュー — {WORK_CATEGORY_LABELS[category]}</div>
             <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
               {invoiceQ.data?.invoice_no && <>請求番号: {invoiceQ.data.invoice_no} ／ </>}

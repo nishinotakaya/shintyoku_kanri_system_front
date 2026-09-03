@@ -28,8 +28,8 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
   const [loadError, setLoadError] = useState(false)
   const [pageCount, setPageCount] = useState(0)
   const [currentPageNumber, setCurrentPageNumber] = useState(1)
-  // スマホは幅合わせだと文字が小さすぎるため、初期ズームを1.5倍にする(横はスワイプでパン)
-  const [zoomLevel, setZoomLevel] = useState(() => (window.innerWidth < 640 ? 1.5 : DEFAULT_ZOOM_LEVEL))
+  // 初期は「幅に合わせる」(はみ出しゼロ)。スマホはピンチ or ダブルタップで拡大し、指でパンする
+  const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM_LEVEL)
   const [containerWidth, setContainerWidth] = useState(0)
 
   // 共有可能な File。blob/filename が変わらない限り作り直さない。
@@ -90,6 +90,67 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
       pdfDocument?.loadingTask.destroy()
     }
   }, [blob])
+
+  // ピンチズーム(スマホ)。2本指の間隔の変化をジェスチャ中は CSS transform で見せ、
+  // 指を離した瞬間に zoomLevel を確定して canvas を高解像度で描き直す。
+  // ダブルタップは 等倍 ⇔ 2倍 のトグル。
+  // (React の touch イベントは passive で preventDefault が効かないため、素の addEventListener を使う)
+  const zoomLevelRef = useRef(zoomLevel)
+  useEffect(() => { zoomLevelRef.current = zoomLevel }, [zoomLevel])
+  const pagesWrapperRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    let pinch: { startDistance: number; startZoom: number; ratio: number } | null = null
+    let lastTapAt = 0
+    const distance = (touches: TouchList) =>
+      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return
+      event.preventDefault()
+      pinch = { startDistance: distance(event.touches), startZoom: zoomLevelRef.current, ratio: 1 }
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      if (!pinch || event.touches.length !== 2) return
+      event.preventDefault()
+      pinch.ratio = distance(event.touches) / pinch.startDistance
+      const wrapper = pagesWrapperRef.current
+      if (wrapper) {
+        wrapper.style.transformOrigin = 'top left'
+        wrapper.style.transform = `scale(${pinch.ratio})`
+      }
+    }
+    const onTouchEnd = (event: TouchEvent) => {
+      if (pinch) {
+        if (event.touches.length > 0) return
+        const nextZoom = Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, pinch.startZoom * pinch.ratio))
+        pinch = null
+        const wrapper = pagesWrapperRef.current
+        if (wrapper) wrapper.style.transform = ''
+        setZoomLevel(Math.round(nextZoom * 100) / 100)
+        return
+      }
+      if (event.changedTouches.length === 1 && event.touches.length === 0) {
+        const now = Date.now()
+        if (now - lastTapAt < 300) {
+          lastTapAt = 0
+          setZoomLevel((previous) => (previous > 1.01 ? DEFAULT_ZOOM_LEVEL : 2))
+        } else {
+          lastTapAt = now
+        }
+      }
+    }
+    container.addEventListener('touchstart', onTouchStart, { passive: false })
+    container.addEventListener('touchmove', onTouchMove, { passive: false })
+    container.addEventListener('touchend', onTouchEnd)
+    container.addEventListener('touchcancel', onTouchEnd)
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart)
+      container.removeEventListener('touchmove', onTouchMove)
+      container.removeEventListener('touchend', onTouchEnd)
+      container.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [])
 
   // スクロール領域の幅を監視する (リサイズ・画面回転のたびに「幅に合わせる」を再計算するため)
   useEffect(() => {
@@ -284,7 +345,7 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
             </div>
           )}
           {!loading && !loadError && (
-            <div className="flex w-max min-w-full flex-col items-center px-2 py-2" style={{ gap: `${PAGE_GAP}px` }}>
+            <div ref={pagesWrapperRef} className="flex w-max min-w-full flex-col items-center px-2 py-2" style={{ gap: `${PAGE_GAP}px` }}>
               {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
                 <div
                   key={pageNumber}
