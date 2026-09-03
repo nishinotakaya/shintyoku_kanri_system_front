@@ -61,6 +61,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   living: 'タマリビング',
   techleaders: 'テックリーダーズ',
   resystems: 'REシステムズ',
+  proaka: 'プロアカ',
   transport: '運送',
   video: '動画編集',
 }

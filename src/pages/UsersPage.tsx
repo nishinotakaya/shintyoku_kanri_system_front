@@ -47,6 +47,8 @@ export default function UsersPage() {
   const [meAdmin, setMeAdmin] = useState(false)
   const [meSubAdmin, setMeSubAdmin] = useState(false)
   const [inviteBusyId, setInviteBusyId] = useState<number | null>(null)
+  // サブ管理者が配れる勤怠カテゴリ = 自分に見えるカテゴリだけ(雄太郎なら運送のみ)。admin は全カテゴリ
+  const [meWorkCategories, setMeWorkCategories] = useState<string[] | null>(null)
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
   const [editingFeatures, setEditingFeatures] = useState<number | null>(null)
   const [editingWorkCategories, setEditingWorkCategories] = useState<number | null>(null)
@@ -56,7 +58,7 @@ export default function UsersPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin); setMeSubAdmin(!!r.data.sub_admin) })
+    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin); setMeSubAdmin(!!r.data.sub_admin); setMeWorkCategories(r.data.work_categories ?? null) })
     api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
       .then((r) => { setUsers(r.data.users); setCalendarPersonCandidates(r.data.calendar_person_candidates) })
       .catch((e) => setErr(e?.response?.data?.error ?? e?.message ?? '取得失敗'))
@@ -143,10 +145,19 @@ export default function UsersPage() {
   // work_categories 未設定(null)のユーザーは従来どおり全カテゴリが見えている扱いにする
   const workCategoryChecked = (u: AdminUser, key: WorkCategory) => visibleWorkCategories(u).includes(key)
 
+  // チェックボックスに出すカテゴリ。admin=全カテゴリ / サブ管理者=自分に見えるカテゴリだけ
+  const assignableWorkCategories: readonly WorkCategory[] =
+    meAdmin ? WORK_CATEGORY_KEYS : visibleWorkCategories({ work_categories: meWorkCategories })
+
   const toggleWorkCategory = (u: AdminUser, key: WorkCategory) => {
     const current = visibleWorkCategories(u)
     const next = current.includes(key) ? current.filter((category) => category !== key) : [...current, key]
-    // 全解除(0件)なら null に戻す = 従来どおり全カテゴリ
+    // サブ管理者の全解除は「全カテゴリ開放」になるためサーバでも拒否される。最後の1つは外せない
+    if (!meAdmin && next.length === 0) {
+      alert('カテゴリを空にはできません（全解除は管理者のみ）')
+      return
+    }
+    // 全解除(0件)なら null に戻す = 従来どおり全カテゴリ(admin のみ)
     patchUser(u.id, { work_categories: next.length === 0 ? null : next })
   }
 
@@ -259,10 +270,11 @@ export default function UsersPage() {
                 </td>
                 <td className="px-3 py-2">
                   <AccordionCell summary={workCategorySummary(u)} label="勤怠カテゴリ" width="w-32"
+                    editable={meAdmin || u.id !== meId}
                     open={editingWorkCategories === u.id}
                     onToggle={() => setEditingWorkCategories(editingWorkCategories === u.id ? null : u.id)}>
                     <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] p-2">
-                      {WORK_CATEGORY_KEYS.map((key) => (
+                      {assignableWorkCategories.map((key) => (
                         <label key={key} className="flex items-center gap-1.5 text-[11px]">
                           <input type="checkbox" checked={workCategoryChecked(u, key)} onChange={() => toggleWorkCategory(u, key)} />
                           {WORK_CATEGORY_LABELS[key]}

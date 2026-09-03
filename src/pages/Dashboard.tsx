@@ -493,8 +493,8 @@ export default function Dashboard() {
         <div className={`text-right text-[10px] ${expenseRegMsg.startsWith('✅') ? 'text-emerald-600' : 'text-red-500'}`}>{expenseRegMsg}</div>
       )}
 
-      {/* 注文書(PurchaseOrderList)は wings/living/techleaders/resystems 専用。運送(transport)には対象の注文書が無い */}
-      {me?.can_issue_orders && category !== 'transport' && <PurchaseOrderList me={me} category={category} />}
+      {/* 注文書(PurchaseOrderList)は wings/living/techleaders/resystems 専用。運送(transport)・プロアカ(proaka)には対象の注文書が無い */}
+      {me?.can_issue_orders && category !== 'transport' && category !== 'proaka' && <PurchaseOrderList me={me} category={category} />}
 
       {selfMailOpen && (
         <SelfInvoiceMailModal year={year} month={month} category={category} onClose={() => setSelfMailOpen(false)} />

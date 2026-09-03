@@ -88,6 +88,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   living: 'タマリビング',
   techleaders: 'テックリーダーズ',
   resystems: 'REシステムズ',
+  proaka: 'プロアカ',
 }
 
 export default function PurchaseOrdersPage() {

@@ -1,8 +1,8 @@
 // ユーザーごとに見える勤怠カテゴリ（work_categories）の定義。
 // work_categories が未設定(null/undefined)のユーザーは従来どおり DEFAULT_WORK_CATEGORIES(4つ)が見える。
 
-// 既存4カテゴリ + 運送(transport)
-export const WORK_CATEGORY_KEYS = ['wings', 'living', 'techleaders', 'resystems', 'transport'] as const
+// 既存4カテゴリ + プロアカ(proaka) + 運送(transport)
+export const WORK_CATEGORY_KEYS = ['wings', 'living', 'techleaders', 'resystems', 'proaka', 'transport'] as const
 
 export type WorkCategory = (typeof WORK_CATEGORY_KEYS)[number]
 
@@ -16,6 +16,7 @@ export const WORK_CATEGORY_LABELS: Record<WorkCategory, string> = {
   living: 'リビング',
   techleaders: 'テックリーダーズ',
   resystems: 'REシステムズ',
+  proaka: 'プロアカ',
   transport: '運送',
 }
 
