@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import {
-  fetchContracts, createContract, fetchContractPdfBlob, fetchContractsZipBlob,
+  fetchContracts, createContract, duplicateContract, fetchContractPdfBlob, fetchContractsZipBlob,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
 import { showPdfWhileLoading } from '../lib/openPdf'
@@ -109,12 +109,24 @@ export default function ContractsPage() {
     }
   }
 
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null)
+  const duplicateFromList = async (contract: Contract, event: React.MouseEvent) => {
+    event.stopPropagation()
+    if (duplicatingId != null) return
+    setDuplicatingId(contract.id)
+    try {
+      const created = await duplicateContract(contract.id)
+      setContracts((prev) => [created, ...prev])
+      setEditingId(created.id)
+    } catch (error: any) {
+      alert(`複製失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
+    } finally {
+      setDuplicatingId(null)
+    }
+  }
+
   const handleUpdated = (updated: Contract) => {
     setContracts((prev) => prev.map((contract) => (contract.id === updated.id ? updated : contract)))
-  }
-  const handleDuplicated = (created: Contract) => {
-    setContracts((prev) => [created, ...prev])
-    setEditingId(created.id)
   }
 
   if (editingContract) {
@@ -122,7 +134,6 @@ export default function ContractsPage() {
       <ContractEditor
         contract={editingContract}
         onUpdated={handleUpdated}
-        onDuplicated={handleDuplicated}
         onClose={() => setEditingId(null)}
       />
     )
@@ -210,14 +221,31 @@ export default function ContractsPage() {
                   <span>契約日: {formatContractDate(contract.contract_date)}</span>
                   <span>更新: {formatContractDate(contract.updated_at)}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={(event) => openContractPdf(contract, event)}
-                  disabled={pdfLoadingId != null}
-                  className="mt-3 h-10 w-full rounded-md border border-fuchsia-300 bg-white px-3 text-sm font-semibold text-fuchsia-600 active:bg-fuchsia-50 disabled:opacity-50"
-                >
-                  {pdfLoadingId === contract.id ? 'PDF 生成中…' : '📄 PDF を開く'}
-                </button>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); setEditingId(contract.id) }}
+                    className="h-10 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 text-sm font-semibold text-white shadow active:opacity-80"
+                  >
+                    ✏️ 編集
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => duplicateFromList(contract, event)}
+                    disabled={duplicatingId != null}
+                    className="h-10 rounded-md border border-gray-300 bg-white px-2 text-sm font-semibold text-[var(--color-text)] active:bg-gray-50 disabled:opacity-50"
+                  >
+                    {duplicatingId === contract.id ? '複製中…' : '📑 複製'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => openContractPdf(contract, event)}
+                    disabled={pdfLoadingId != null}
+                    className="h-10 rounded-md border border-fuchsia-300 bg-white px-2 text-sm font-semibold text-fuchsia-600 active:bg-fuchsia-50 disabled:opacity-50"
+                  >
+                    {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -232,7 +260,7 @@ export default function ContractsPage() {
                   <th className="px-3 py-3 text-left">状態</th>
                   <th className="px-3 py-3 text-left">契約日</th>
                   <th className="px-3 py-3 text-left">更新日</th>
-                  <th className="px-3 py-3 text-left">PDF</th>
+                  <th className="px-3 py-3 text-left">操作</th>
                   {me?.admin && <th className="px-3 py-3 text-left">作成者</th>}
                 </tr>
               </thead>
@@ -253,14 +281,31 @@ export default function ContractsPage() {
                     <td className="px-3 py-3 text-[var(--color-text-sub)]">{formatContractDate(contract.contract_date)}</td>
                     <td className="px-3 py-3 text-[var(--color-text-sub)]">{formatContractDate(contract.updated_at)}</td>
                     <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        onClick={(event) => openContractPdf(contract, event)}
-                        disabled={pdfLoadingId != null}
-                        className="rounded-md border border-fuchsia-300 bg-white px-3 py-1.5 text-sm font-semibold text-fuchsia-600 hover:bg-fuchsia-50 disabled:opacity-50"
-                      >
-                        {pdfLoadingId === contract.id ? '生成中…' : '📄 開く'}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); setEditingId(contract.id) }}
+                          className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-sm font-semibold text-white shadow hover:opacity-90"
+                        >
+                          ✏️ 編集
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => duplicateFromList(contract, event)}
+                          disabled={duplicatingId != null}
+                          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {duplicatingId === contract.id ? '複製中…' : '📑 複製'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => openContractPdf(contract, event)}
+                          disabled={pdfLoadingId != null}
+                          className="rounded-md border border-fuchsia-300 bg-white px-3 py-1.5 text-sm font-semibold text-fuchsia-600 hover:bg-fuchsia-50 disabled:opacity-50"
+                        >
+                          {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
+                        </button>
+                      </div>
                     </td>
                     {me?.admin && <td className="px-3 py-3 text-[var(--color-text-sub)]">{contract.user_name}</td>}
                   </tr>

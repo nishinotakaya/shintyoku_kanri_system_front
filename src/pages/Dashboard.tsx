@@ -6,6 +6,7 @@ import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import { DEFAULT_WORK_CATEGORIES, WORK_CATEGORY_LABELS, visibleWorkCategories } from '../lib/workCategories'
 import type { WorkCategory } from '../lib/workCategories'
 import ClockCard from '../components/ClockCard'
+import UserPickerSelect from '../components/UserPickerSelect'
 import WorkReportTable from '../components/WorkReportTable'
 import TransportWorkReportTable from '../components/TransportWorkReportTable'
 import ExpenseTable from '../components/ExpenseTable'
@@ -313,16 +314,12 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canPickUsers && pickableUsers.length > 1 && (
-            <select
+            <UserPickerSelect
+              users={pickableUsers}
               value={asUserId ?? me?.id ?? 0}
-              onChange={(e) => setAsUserId(Number(e.target.value))}
-              className="rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
-              title="閲覧対象ユーザー"
-            >
-              {pickableUsers.map((u) => (
-                <option key={u.id} value={u.id}>👤 {u.display_name}{u.id === me?.id ? '（自分）' : ''}</option>
-              ))}
-            </select>
+              meId={me?.id}
+              onChange={setAsUserId}
+            />
           )}
           <div className="flex gap-1">
             {visibleCategories.map((key) => (

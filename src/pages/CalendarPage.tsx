@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import CalendarView from '../components/CalendarView'
+import UserPickerSelect from '../components/UserPickerSelect'
 import DayDetailModal from '../components/DayDetailModal'
 import { billingMonthForToday } from '../lib/billingMonth'
 import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
@@ -47,15 +48,17 @@ export default function CalendarPage() {
   const isAdmin = !!me?.admin
   const isOsumi = (me?.display_name ?? '').includes('大隅')
 
-  // 管理者のみ: 「他ユーザーとして閲覧」セレクトボックスで切替
+  // admin / サブ管理者(テナント代表): 「他ユーザーとして閲覧」で管理対象のカレンダーに切替。
+  // 候補はサーバ(/users/pickable)が管理対象に絞って返す
+  const canPickUsers = !!me?.admin || !!me?.sub_admin
   const [asUserId, setAsUserId] = useState<number | null>(null)
   const [pickableUsers, setPickableUsers] = useState<{ id: number; display_name: string; email: string; admin: boolean }[]>([])
   useEffect(() => {
-    if (!me?.admin) return
+    if (!canPickUsers) return
     api.get('/users/pickable').then((r) => setPickableUsers(r.data)).catch(() => {})
-  }, [me?.admin])
+  }, [canPickUsers])
 
-  const asUserParam = isAdmin && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
+  const asUserParam = canPickUsers && asUserId && asUserId !== me?.id ? { as_user_id: asUserId } : {}
   // 閲覧対象ユーザーの苗字（admin が他人をセレクトしてる時は切替先の苗字、それ以外は自分）
   const viewingUser = pickableUsers.find((u) => u.id === asUserId) ?? me
   const viewingSurname = (viewingUser?.display_name ?? '').split(/[\s　]/)[0] ?? ''
@@ -204,19 +207,13 @@ export default function CalendarPage() {
           <button onClick={() => monthShift(1)} className="rounded-md bg-white px-2 py-0.5 text-[var(--color-text-sub)] hover:bg-gray-50 border border-[var(--color-border)]">→</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && pickableUsers.length > 0 && (
-            <select
+          {canPickUsers && pickableUsers.length > 1 && (
+            <UserPickerSelect
+              users={pickableUsers}
               value={asUserId ?? me?.id ?? 0}
-              onChange={(e) => setAsUserId(Number(e.target.value))}
-              className="rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]"
-              title="閲覧対象ユーザー"
-            >
-              {pickableUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  👤 {u.display_name}{u.id === me?.id ? '（自分）' : ''}
-                </option>
-              ))}
-            </select>
+              meId={me?.id}
+              onChange={setAsUserId}
+            />
           )}
           {importMsg && <span className="text-xs text-emerald-600">{importMsg}</span>}
           <button

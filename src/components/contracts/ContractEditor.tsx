@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  contractToFormInput, updateContract, issueContract, duplicateContract, voidContract,
+  contractToFormInput, updateContract, issueContract, voidContract,
   fetchContractPdfBlob, formatContractDate, formatContractDateTime,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS,
 } from '../../lib/contracts'
@@ -11,7 +11,6 @@ import ContractEmailModal from './ContractEmailModal'
 type Props = {
   contract: Contract
   onUpdated: (contract: Contract) => void
-  onDuplicated: (contract: Contract) => void
   onClose: () => void
 }
 
@@ -51,12 +50,11 @@ const inputCls = 'w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 
 const labelCls = 'mb-1 block text-base font-semibold text-[var(--color-text-sub)]'
 const iconButtonCls = 'flex h-11 w-11 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-30'
 
-export default function ContractEditor({ contract, onUpdated, onDuplicated, onClose }: Props) {
+export default function ContractEditor({ contract, onUpdated, onClose }: Props) {
   const [form, setForm] = useState<EditorFormState>(() => buildEditorFormState(contract))
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [issuing, setIssuing] = useState(false)
-  const [duplicating, setDuplicating] = useState(false)
   const [voiding, setVoiding] = useState(false)
   const [voidConfirming, setVoidConfirming] = useState(false)
   const [emailModalOpen, setEmailModalOpen] = useState(false)
@@ -205,18 +203,6 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
     if (!shareUrl) return
     const shareMessage = `${contract.title}\n下記のリンクからご確認・署名をお願いいたします。\n${shareUrl}`
     window.open(`https://line.me/R/share?text=${encodeURIComponent(shareMessage)}`, '_blank', 'noopener,noreferrer')
-  }
-
-  const duplicate = async () => {
-    setDuplicating(true)
-    try {
-      const created = await duplicateContract(contract.id)
-      onDuplicated(created)
-    } catch (error: any) {
-      alert(`複製失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
-    } finally {
-      setDuplicating(false)
-    }
   }
 
   const confirmVoid = async () => {
@@ -412,6 +398,10 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
             {saving ? '保存中…' : '💾 保存'}
           </button>
         )}
+        <button type="button" onClick={onClose}
+          className="h-11 rounded-md border border-gray-300 bg-white px-4 text-base font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">
+          キャンセル
+        </button>
         <button type="button" onClick={previewPdf}
           className="h-11 rounded-md border border-[var(--color-border)] bg-white px-4 text-base font-semibold text-[var(--color-text)] hover:bg-gray-50">
           {contract.status === 'signed' ? '📄 署名済 PDF' : '📄 PDF プレビュー'}
@@ -428,10 +418,6 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
             📧 メールで送付
           </button>
         )}
-        <button type="button" onClick={duplicate} disabled={duplicating}
-          className="h-11 rounded-md border border-[var(--color-border)] bg-white px-4 text-base font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50">
-          {duplicating ? '複製中…' : '📑 複製'}
-        </button>
         {contract.status === 'sent' && (
           voidConfirming ? (
             <div className="flex flex-wrap items-center gap-3">
