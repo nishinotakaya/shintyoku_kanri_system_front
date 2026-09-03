@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import {
-  fetchContracts, createContract, fetchContractPdfBlob,
+  fetchContracts, createContract, fetchContractPdfBlob, fetchContractsZipBlob,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
 import type { Contract, ContractTemplate } from '../lib/contracts'
@@ -27,12 +27,16 @@ export default function ContractsPage() {
   const [creating, setCreating] = useState(false)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
   const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null)
+  // 契約日フィルター(一覧と一括ダウンロードの両方に効く)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [zipBusy, setZipBusy] = useState(false)
 
-  const load = async () => {
+  const load = async (filter?: { contractDateFrom?: string; contractDateTo?: string }) => {
     setLoading(true)
     setLoadError(false)
     try {
-      const data = await fetchContracts()
+      const data = await fetchContracts(filter)
       setContracts(data)
     } catch {
       setLoadError(true)
@@ -43,8 +47,36 @@ export default function ContractsPage() {
 
   useEffect(() => {
     api.get<Me>('/me').then((r) => setMe(r.data)).catch(() => {})
-    load().catch(() => {})
   }, [])
+
+  useEffect(() => {
+    load({ contractDateFrom: dateFrom || undefined, contractDateTo: dateTo || undefined }).catch(() => {})
+  }, [dateFrom, dateTo])
+
+  // フィルターに合致する契約書PDFをzipでまとめて保存する
+  const downloadZip = async () => {
+    setZipBusy(true)
+    try {
+      const blob = await fetchContractsZipBlob({ contractDateFrom: dateFrom || undefined, contractDateTo: dateTo || undefined })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `契約書一括_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.zip`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error: any) {
+      const data = error?.response?.data
+      let messageText = error?.message ?? ''
+      if (data instanceof Blob) {
+        try { messageText = JSON.parse(await data.text())?.error ?? messageText } catch { /* JSONでなければそのまま */ }
+      } else if (data?.error) {
+        messageText = data.error
+      }
+      alert(`一括ダウンロード失敗: ${messageText}`)
+    } finally {
+      setZipBusy(false)
+    }
+  }
 
   // 編集対象は id で覚えて contracts から都度引く。save/issue/void 後の onUpdated が
   // contracts 配列を更新するだけで、開いている編集画面にも自動で最新状態が反映される。
@@ -121,6 +153,33 @@ export default function ContractsPage() {
         </button>
       </div>
 
+      <div className="flex flex-col gap-2 rounded-xl border border-gray-300 bg-white p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-[var(--color-text-sub)]">契約日（から）</span>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+            className="h-11 w-full rounded-md border border-gray-300 px-2 text-base sm:w-44" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-[var(--color-text-sub)]">契約日（まで）</span>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+            className="h-11 w-full rounded-md border border-gray-300 px-2 text-base sm:w-44" />
+        </label>
+        {(dateFrom || dateTo) && (
+          <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }}
+            className="h-11 rounded-md border border-gray-300 bg-white px-3 text-base text-[var(--color-text-sub)] hover:bg-gray-50">
+            フィルター解除
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={downloadZip}
+          disabled={zipBusy || contracts.length === 0}
+          className="h-11 rounded-md border border-sky-300 bg-white px-4 text-base font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50 sm:ml-auto"
+        >
+          {zipBusy ? 'zip作成中…' : `🗂 一括ダウンロード (${contracts.length}件)`}
+        </button>
+      </div>
+
       {templateModalOpen && (
         <Modal onClose={() => setTemplateModalOpen(false)} size="sm" panelClassName="space-y-4">
           <div className="flex items-center justify-between">
@@ -167,7 +226,7 @@ export default function ContractsPage() {
               <div
                 key={contract.id}
                 onClick={() => setEditingId(contract.id)}
-                className="block w-full cursor-pointer rounded-xl border border-[var(--color-border)] bg-white p-4 text-left shadow-sm active:scale-[0.99]"
+                className="block w-full cursor-pointer rounded-xl border-2 border-gray-300 bg-white p-4 text-left shadow-sm active:scale-[0.99]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-lg font-semibold text-[var(--color-text)]">{contract.title}</div>
@@ -194,9 +253,9 @@ export default function ContractsPage() {
           </div>
 
           {/* sm以上: テーブル表示 */}
-          <div className="hidden overflow-x-auto rounded-xl border border-[var(--color-border)] bg-white shadow-sm sm:block">
+          <div className="hidden overflow-x-auto rounded-xl border-2 border-gray-300 bg-white shadow-sm sm:block">
             <table className="w-full text-base">
-              <thead className="bg-gray-50 text-[var(--color-text-sub)]">
+              <thead className="bg-gray-100 text-[var(--color-text-sub)]">
                 <tr>
                   <th className="px-3 py-3 text-left">タイトル</th>
                   <th className="px-3 py-3 text-left">乙</th>
@@ -212,7 +271,7 @@ export default function ContractsPage() {
                   <tr
                     key={contract.id}
                     onClick={() => setEditingId(contract.id)}
-                    className="cursor-pointer border-t border-[var(--color-border)] hover:bg-fuchsia-50/40"
+                    className="cursor-pointer border-t border-gray-300 hover:bg-fuchsia-50/40"
                   >
                     <td className="px-3 py-3 font-semibold text-[var(--color-text)]">{contract.title}</td>
                     <td className="px-3 py-3">{contract.party_b.name || '—'}</td>

@@ -11,6 +11,7 @@ export type ContractParty = {
   name: string
   address: string
   representative: string
+  email?: string // 乙のみ。メール送付の宛先既定値
 }
 
 export type ContractArticle = {
@@ -75,6 +76,7 @@ export type ContractFormInput = {
   party_b_name: string
   party_b_address: string
   party_b_representative: string
+  party_b_email: string
   contract_date: string
   start_on: string
   end_on: string
@@ -91,6 +93,7 @@ export function contractToFormInput(contract: Contract): ContractFormInput {
     party_b_name: contract.party_b.name,
     party_b_address: contract.party_b.address,
     party_b_representative: contract.party_b.representative,
+    party_b_email: contract.party_b.email ?? '',
     contract_date: contract.contract_date ?? '',
     start_on: contract.start_on ?? '',
     end_on: contract.end_on ?? '',
@@ -109,8 +112,47 @@ export function formatContractDateTime(value: string | null | undefined): string
   return new Date(value).toLocaleString('ja-JP')
 }
 
-export async function fetchContracts(): Promise<Contract[]> {
-  const res = await api.get<Contract[]>('/contracts')
+// 一覧・一括DLで共通の契約日フィルター
+export type ContractFilter = {
+  contractDateFrom?: string
+  contractDateTo?: string
+}
+
+function contractFilterParams(filter?: ContractFilter): Record<string, string> {
+  const params: Record<string, string> = {}
+  if (filter?.contractDateFrom) params.contract_date_from = filter.contractDateFrom
+  if (filter?.contractDateTo) params.contract_date_to = filter.contractDateTo
+  return params
+}
+
+export async function fetchContracts(filter?: ContractFilter): Promise<Contract[]> {
+  const res = await api.get<Contract[]>('/contracts', { params: contractFilterParams(filter) })
+  return res.data
+}
+
+// フィルターに合致する契約書PDFのzip一括ダウンロード
+export async function fetchContractsZipBlob(filter?: ContractFilter): Promise<Blob> {
+  const res = await api.get('/contracts/bulk_pdf', { params: contractFilterParams(filter), responseType: 'blob' })
+  return res.data as Blob
+}
+
+// メール本文にこの文字列を書くと、送信時にサーバが実際の署名リンクへ置き換える
+export const SIGN_URL_PLACEHOLDER = '{署名URL}'
+
+export async function sendContractEmail(
+  id: number,
+  payload: { to: string; subject: string; body: string },
+): Promise<Contract & { email_sent: boolean }> {
+  const res = await api.post<Contract & { email_sent: boolean }>(`/contracts/${id}/send_email`, payload)
+  return res.data
+}
+
+// AI添削。OPENAI 未設定・失敗時は polished: false で入力がそのまま返る
+export async function polishContractEmail(
+  id: number,
+  payload: { subject: string; body: string },
+): Promise<{ subject: string; body: string; polished: boolean }> {
+  const res = await api.post<{ subject: string; body: string; polished: boolean }>(`/contracts/${id}/polish_email`, payload)
   return res.data
 }
 
@@ -139,6 +181,7 @@ export async function updateContract(id: number, form: ContractFormInput): Promi
       party_b_name: form.party_b_name,
       party_b_address: form.party_b_address,
       party_b_representative: form.party_b_representative,
+      party_b_email: form.party_b_email,
       contract_date: form.contract_date || null,
       start_on: form.start_on || null,
       end_on: form.end_on || null,

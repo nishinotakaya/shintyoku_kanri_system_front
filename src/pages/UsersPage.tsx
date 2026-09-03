@@ -45,6 +45,8 @@ export default function UsersPage() {
   // admin だけに出す列・操作(案件データ・カレンダー人物・管理対象・なりすまし)。サブ管理者(テナント代表)は
   // 自分の外注・メンバーの一覧と、閲覧できる画面・勤怠カテゴリの設定だけ
   const [meAdmin, setMeAdmin] = useState(false)
+  const [meSubAdmin, setMeSubAdmin] = useState(false)
+  const [inviteBusyId, setInviteBusyId] = useState<number | null>(null)
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
   const [editingFeatures, setEditingFeatures] = useState<number | null>(null)
   const [editingWorkCategories, setEditingWorkCategories] = useState<number | null>(null)
@@ -54,7 +56,7 @@ export default function UsersPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin) })
+    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin); setMeSubAdmin(!!r.data.sub_admin) })
     api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
       .then((r) => { setUsers(r.data.users); setCalendarPersonCandidates(r.data.calendar_person_candidates) })
       .catch((e) => setErr(e?.response?.data?.error ?? e?.message ?? '取得失敗'))
@@ -63,6 +65,20 @@ export default function UsersPage() {
 
   // 「として閲覧」= 管理者のまま as_user_id で見るだけ。データは触れるが自分のログインのまま。
   const viewAs = (u: AdminUser) => navigate(`/attendance?as_user_id=${u.id}`)
+
+  // 登録URL(Googleログイン案内)の招待メールを送る。admin=誰にでも / サブ管理者=自分の管理対象だけ
+  const sendInvite = async (u: AdminUser) => {
+    if (!confirm(`${u.display_name}（${u.email}）に登録URL（Googleログイン案内）の招待メールを送りますか？`)) return
+    setInviteBusyId(u.id)
+    try {
+      await api.post(`/admin/users/${u.id}/invite`)
+      alert(`✅ ${u.email} に招待メールを送信しました`)
+    } catch (e: any) {
+      alert(`招待メール送信失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally {
+      setInviteBusyId(null)
+    }
+  }
 
   // 「なりすましログイン」= そのユーザーの JWT に差し替えて、本人としてアプリを開き直す。
   // ログアウト or 上部バナーの「管理者に戻る」で元のアカウントに戻る。
@@ -298,14 +314,19 @@ export default function UsersPage() {
                 <td className="px-3 py-2 text-center">
                   {meId !== u.id ? (
                     <div className="flex flex-col items-stretch gap-1">
-                      {meAdmin && (
+                      {(meAdmin || meSubAdmin) && (
                       <button onClick={() => setImpersonateTarget(u)}
                         className="rounded-md whitespace-nowrap bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 py-1 text-[10px] font-semibold text-white shadow"
-                        title={`${u.display_name} としてログインする（ログアウトで管理者に戻る）`}>🔑 なりすまし</button>
+                        title={`${u.display_name} としてログインする（ログアウトで元のアカウントに戻る）`}>🔑 なりすまし</button>
                       )}
                       <button onClick={() => viewAs(u)}
                         className="rounded-md whitespace-nowrap border border-[var(--color-border)] px-2 py-1 text-[10px] text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
                         title={`${u.display_name} の勤怠を管理者のまま閲覧`}>👤 として閲覧</button>
+                      {(meAdmin || meSubAdmin) && (
+                      <button onClick={() => sendInvite(u)} disabled={inviteBusyId != null}
+                        className="rounded-md whitespace-nowrap border border-sky-300 px-2 py-1 text-[10px] text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+                        title={`${u.email} に登録URL（Googleログイン案内）を送る`}>{inviteBusyId === u.id ? '送信中…' : '📧 招待メール'}</button>
+                      )}
                     </div>
                   ) : (
                     <span className="text-[10px] text-[var(--color-text-sub)]">自分</span>

@@ -6,6 +6,7 @@ import {
 } from '../../lib/contracts'
 import type { Contract, ContractFormInput, ContractArticle } from '../../lib/contracts'
 import { showPdf } from '../../lib/openPdf'
+import ContractEmailModal from './ContractEmailModal'
 
 type Props = {
   contract: Contract
@@ -58,6 +59,7 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
   const [duplicating, setDuplicating] = useState(false)
   const [voiding, setVoiding] = useState(false)
   const [voidConfirming, setVoidConfirming] = useState(false)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [copyFeedback, setCopyFeedback] = useState(false)
 
@@ -257,6 +259,10 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
               <span className={labelCls}>代表者</span>
               <input value={form.party_b_representative} onChange={(e) => updateField('party_b_representative', e.target.value)} disabled={!editable} className={inputCls} />
             </label>
+            <label className="block">
+              <span className={labelCls}>メールアドレス（メール送付の宛先）</span>
+              <input type="email" value={form.party_b_email} onChange={(e) => updateField('party_b_email', e.target.value)} disabled={!editable} className={inputCls} />
+            </label>
           </fieldset>
         </div>
 
@@ -340,6 +346,12 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
             {form.articles.length === 0 && (
               <div className="text-sm text-[var(--color-text-sub)]">条文がありません（＋ 条文を追加 で追加）</div>
             )}
+            {editable && form.articles.length > 0 && (
+              <button type="button" onClick={addArticle}
+                className="h-11 w-full rounded-md border border-dashed border-fuchsia-300 text-base font-semibold text-fuchsia-600 hover:bg-fuchsia-50">
+                ＋ 条文を追加
+              </button>
+            )}
           </div>
         </div>
 
@@ -364,6 +376,12 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
           <button type="button" onClick={issueLink} disabled={issuing}
             className="h-11 rounded-md bg-gradient-to-r from-sky-500 to-cyan-500 px-4 text-base font-semibold text-white shadow disabled:opacity-50">
             {issuing ? '発行中…' : '🔗 署名リンクを発行'}
+          </button>
+        )}
+        {canIssue && (
+          <button type="button" onClick={() => setEmailModalOpen(true)}
+            className="h-11 rounded-md bg-gradient-to-r from-sky-500 to-blue-500 px-4 text-base font-semibold text-white shadow">
+            📧 メールで送付
           </button>
         )}
         <button type="button" onClick={duplicate} disabled={duplicating}
@@ -408,6 +426,16 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
             </button>
           </div>
         </div>
+      )}
+      {emailModalOpen && (
+        <ContractEmailModal
+          contract={contract}
+          onClose={() => setEmailModalOpen(false)}
+          onSent={(updated) => {
+            onUpdated(updated)
+            setShareUrl(updated.share_url ?? null)
+          }}
+        />
       )}
     </div>
   )
