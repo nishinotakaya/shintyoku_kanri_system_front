@@ -47,7 +47,7 @@ function buildEditorFormState(contract: Contract): EditorFormState {
 }
 
 // タップ領域44px以上・iOSの入力ズーム回避(16px基準)を発行者ページでも徹底する
-const inputCls = 'w-full rounded-md border border-[var(--color-border)] px-3 py-2.5 text-base disabled:bg-gray-50'
+const inputCls = 'w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-base disabled:bg-gray-100'
 const labelCls = 'mb-1 block text-base font-semibold text-[var(--color-text-sub)]'
 const iconButtonCls = 'flex h-11 w-11 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-text-sub)] hover:bg-gray-50 disabled:opacity-30'
 
@@ -266,14 +266,14 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
         </div>
       )}
 
-      <div className="space-y-4 rounded-xl border border-[var(--color-border)] p-4 sm:p-5">
+      <div className="space-y-4 rounded-xl border-2 border-gray-300 bg-white p-4 shadow-sm sm:p-5">
         <label className="block">
           <span className={labelCls}>タイトル</span>
           <input value={form.title} onChange={(e) => updateField('title', e.target.value)} disabled={!editable} className={inputCls} />
         </label>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <fieldset className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+          <fieldset className="space-y-3 rounded-lg border border-gray-300 bg-white p-3">
             <legend className="px-1 text-base font-semibold text-[var(--color-text-sub)]">甲</legend>
             <label className="block">
               <span className={labelCls}>会社名（個人は氏名）</span>
@@ -288,19 +288,15 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
               <input value={form.party_a_representative} onChange={(e) => updateField('party_a_representative', e.target.value)} disabled={!editable} className={inputCls} />
             </label>
           </fieldset>
-          <fieldset className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+          <fieldset className="space-y-3 rounded-lg border border-gray-300 bg-white p-3">
             <legend className="px-1 text-base font-semibold text-[var(--color-text-sub)]">乙</legend>
             <label className="block">
-              <span className={labelCls}>会社名（個人は氏名）</span>
+              <span className={labelCls}>氏名</span>
               <input value={form.party_b_name} onChange={(e) => updateField('party_b_name', e.target.value)} disabled={!editable} className={inputCls} />
             </label>
             <label className="block">
               <span className={labelCls}>住所</span>
               <input value={form.party_b_address} onChange={(e) => updateField('party_b_address', e.target.value)} disabled={!editable} className={inputCls} />
-            </label>
-            <label className="block">
-              <span className={labelCls}>代表者</span>
-              <input value={form.party_b_representative} onChange={(e) => updateField('party_b_representative', e.target.value)} disabled={!editable} className={inputCls} />
             </label>
             <label className="block">
               <span className={labelCls}>メールアドレス（メール送付の宛先）</span>
@@ -351,10 +347,9 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
                   {article.page_break_before && (
                     <div className="mb-2 flex items-center gap-2 border-t-2 border-dashed border-fuchsia-300 pt-2">
                       <span className="text-sm font-semibold text-fuchsia-600">ページ {articlePageNumber}</span>
-                      <span className="text-sm text-[var(--color-text-sub)]">（ここから新しいページ）</span>
                     </div>
                   )}
-                  <div className={`space-y-3 rounded-lg border p-3 ${draggingArticleId === article.id ? 'border-fuchsia-400 ring-2 ring-fuchsia-200' : 'border-[var(--color-border)]'}`}>
+                  <div className={`space-y-3 rounded-lg border bg-white p-3 ${draggingArticleId === article.id ? 'border-fuchsia-400 ring-2 ring-fuchsia-200' : 'border-gray-300'}`}>
                     <div className="flex items-center gap-2">
                       {editable && (
                         <button type="button"
@@ -385,16 +380,6 @@ export default function ContractEditor({ contract, onUpdated, onDuplicated, onCl
                       rows={4}
                       className={inputCls}
                     />
-                    <label className="flex items-center gap-2 text-sm text-[var(--color-text-sub)]">
-                      <input
-                        type="checkbox"
-                        checked={article.page_break_before ?? false}
-                        onChange={(e) => updateArticle(index, { page_break_before: e.target.checked })}
-                        disabled={!editable}
-                        className="accent-fuchsia-500"
-                      />
-                      ここから新しいページ
-                    </label>
                   </div>
                 </div>
               )

@@ -63,6 +63,7 @@ export type WorkReport = {
   distance_km: number | null
   delivery_count: number | null
   meter_start: number | null
+  meter_photo_kinds?: string[]
   meter_end: number | null
   note: string | null
   weekly_payment: boolean | null

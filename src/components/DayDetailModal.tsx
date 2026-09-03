@@ -833,6 +833,95 @@ export default function DayDetailModal({
   const [transportSaving, setTransportSaving] = useState(false)
   const [transportApproving, setTransportApproving] = useState(false)
   const [transportError, setTransportError] = useState<string | null>(null)
+
+  // 開始/終了メーターは「写真を撮る→AIが数値を読み取って自動入力」。写真が無い間は手入力不可で、
+  // 写真をクリアすると値もクリアして再び入力不可に戻す(写真と値がずれた申告を作らせない)。
+  type MeterPhotoState = {
+    preview: string | null    // サムネイル表示用 (dataURL or objectURL)
+    persisted: boolean        // サーバに保存済みの写真があるか
+    newDataUrl: string | null // 今回新しく撮った写真 (保存時に送る)
+    removed: boolean          // 保存済み写真をクリアした (保存時に削除を送る)
+    reading: boolean          // AI読み取り中
+  }
+  const emptyMeterPhoto: MeterPhotoState = { preview: null, persisted: false, newDataUrl: null, removed: false, reading: false }
+  const [meterPhotos, setMeterPhotos] = useState<{ start: MeterPhotoState; end: MeterPhotoState }>(
+    { start: emptyMeterPhoto, end: emptyMeterPhoto },
+  )
+  const hasMeterPhoto = (kind: 'start' | 'end') => {
+    const photo = meterPhotos[kind]
+    return (photo.preview != null || photo.persisted) && !photo.removed
+  }
+
+  useEffect(() => {
+    const report = existingTransportReport
+    const buildPhotoState = (kind: 'start' | 'end'): MeterPhotoState =>
+      ({ ...emptyMeterPhoto, persisted: !!report?.meter_photo_kinds?.includes(kind) })
+    setMeterPhotos({ start: buildPhotoState('start'), end: buildPhotoState('end') })
+    if (!report) return
+    ;(['start', 'end'] as const).forEach((kind) => {
+      if (!report.meter_photo_kinds?.includes(kind)) return
+      api.get(`/work_reports/${report.id}/meter_photo`, { params: { ...asUserParam, kind }, responseType: 'blob' })
+        .then((res) => {
+          const objectUrl = URL.createObjectURL(res.data)
+          setMeterPhotos((prev) => ({ ...prev, [kind]: { ...prev[kind], preview: objectUrl } }))
+        })
+        .catch(() => {})
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, existingTransportReport?.id])
+
+  // スマホ写真は数MBあるので、AI読み取り/保存の前に長辺1280pxのJPEGへ縮小する
+  const downscaleImageToDataUrl = (file: File, maxSize: number, quality: number): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const image = new Image()
+        image.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(image.width, image.height))
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.round(image.width * scale)
+          canvas.height = Math.round(image.height * scale)
+          const context = canvas.getContext('2d')
+          if (!context) { resolve(String(reader.result)); return }
+          context.drawImage(image, 0, 0, canvas.width, canvas.height)
+          resolve(canvas.toDataURL('image/jpeg', quality))
+        }
+        image.onerror = () => reject(new Error('画像を読み込めませんでした'))
+        image.src = String(reader.result)
+      }
+      reader.onerror = () => reject(new Error('画像を読み込めませんでした'))
+      reader.readAsDataURL(file)
+    })
+
+  const captureMeterPhoto = async (kind: 'start' | 'end', file: File) => {
+    setTransportError(null)
+    let dataUrl: string
+    try {
+      dataUrl = await downscaleImageToDataUrl(file, 1280, 0.85)
+    } catch (e: any) {
+      setTransportError(e?.message ?? '画像を読み込めませんでした')
+      return
+    }
+    setMeterPhotos((prev) => ({ ...prev, [kind]: { preview: dataUrl, persisted: false, newDataUrl: dataUrl, removed: false, reading: true } }))
+    try {
+      const blob = await (await fetch(dataUrl)).blob()
+      const formData = new FormData()
+      formData.append('file', blob, 'meter.jpg')
+      const res = await api.post('/work_reports/read_meter', formData, { params: asUserParam })
+      const value = res.data?.value
+      setTransportDraft((prev) => ({ ...prev, [kind === 'start' ? 'meterStart' : 'meterEnd']: value != null ? String(value) : '' }))
+      if (value == null) setTransportError('メーターの数値を読み取れませんでした。手入力してください')
+    } catch (e: any) {
+      setTransportError(e?.response?.data?.error ?? 'メーターの読み取りに失敗しました。手入力してください')
+    } finally {
+      setMeterPhotos((prev) => ({ ...prev, [kind]: { ...prev[kind], reading: false } }))
+    }
+  }
+
+  const clearMeterPhoto = (kind: 'start' | 'end') => {
+    setMeterPhotos((prev) => ({ ...prev, [kind]: { preview: null, persisted: false, newDataUrl: null, removed: true, reading: false } }))
+    setTransportDraft((prev) => ({ ...prev, [kind === 'start' ? 'meterStart' : 'meterEnd']: '' }))
+  }
   const transportMeterInvalid =
     transportDraft.meterStart !== '' && transportDraft.meterEnd !== '' &&
     Number(transportDraft.meterEnd) < Number(transportDraft.meterStart)
@@ -868,6 +957,10 @@ export default function DayDetailModal({
       delivery_count: transportDraft.deliveryCount === '' ? null : Number(transportDraft.deliveryCount),
       meter_start: transportDraft.meterStart === '' ? null : Number(transportDraft.meterStart),
       meter_end: transportDraft.meterEnd === '' ? null : Number(transportDraft.meterEnd),
+      meter_start_photo_base64: meterPhotos.start.newDataUrl ?? undefined,
+      meter_end_photo_base64: meterPhotos.end.newDataUrl ?? undefined,
+      remove_meter_start_photo: meterPhotos.start.removed && !meterPhotos.start.newDataUrl ? true : undefined,
+      remove_meter_end_photo: meterPhotos.end.removed && !meterPhotos.end.newDataUrl ? true : undefined,
     }
     setTransportSaving(true)
     try {
@@ -876,6 +969,10 @@ export default function DayDetailModal({
       } else {
         await api.post('/work_reports', payload, { params: asUserParam })
       }
+      setMeterPhotos((prev) => ({
+        start: { ...prev.start, persisted: prev.start.preview != null, newDataUrl: null, removed: false },
+        end: { ...prev.end, persisted: prev.end.preview != null, newDataUrl: null, removed: false },
+      }))
       onChanged?.()
     } catch (e: any) {
       setTransportError(e?.response?.data?.error ?? e?.message ?? '保存に失敗しました')
@@ -1300,30 +1397,70 @@ export default function DayDetailModal({
           </label>
 
           <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">開始メーター (km)</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                value={transportDraft.meterStart}
-                onChange={(e) => setTransportDraft((prev) => ({ ...prev, meterStart: e.target.value }))}
-                disabled={fieldDisabled}
-                className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">終了メーター (km)</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                value={transportDraft.meterEnd}
-                onChange={(e) => setTransportDraft((prev) => ({ ...prev, meterEnd: e.target.value }))}
-                disabled={fieldDisabled}
-                className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
-              />
-            </label>
+            {(['start', 'end'] as const).map((kind) => {
+              const photo = meterPhotos[kind]
+              const photoAttached = hasMeterPhoto(kind)
+              const meterValue = kind === 'start' ? transportDraft.meterStart : transportDraft.meterEnd
+              return (
+                <div key={kind}>
+                  <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">
+                    {kind === 'start' ? '開始' : '終了'}メーター (km)
+                  </span>
+                  {photoAttached ? (
+                    <div className="relative mb-1">
+                      {photo.preview ? (
+                        <img src={photo.preview} alt={`${kind === 'start' ? '開始' : '終了'}メーター写真`}
+                          className="h-20 w-full rounded border border-[var(--color-border)] object-cover" />
+                      ) : (
+                        <div className="flex h-20 w-full items-center justify-center rounded border border-[var(--color-border)] bg-gray-50 text-[11px] text-[var(--color-text-sub)]">
+                          写真を読込中…
+                        </div>
+                      )}
+                      {photo.reading && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded bg-black/50 text-[11px] font-semibold text-white">
+                          🤖 AI読取中…
+                        </div>
+                      )}
+                      {!fieldDisabled && !photo.reading && (
+                        <button
+                          type="button"
+                          onClick={() => clearMeterPhoto(kind)}
+                          aria-label="写真をクリア"
+                          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs text-white"
+                        >✕</button>
+                      )}
+                    </div>
+                  ) : (
+                    <label className={`mb-1 flex h-20 w-full flex-col items-center justify-center gap-0.5 rounded border border-dashed border-[var(--color-border)] text-[11px] ${fieldDisabled ? 'bg-gray-100 text-gray-400' : 'cursor-pointer bg-gray-50 text-[var(--color-text-sub)] active:bg-gray-100'}`}>
+                      <span className="text-base">📷</span>
+                      <span>メーターを撮影</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        disabled={fieldDisabled}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) captureMeterPhoto(kind, file)
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                  )}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    value={meterValue}
+                    onChange={(e) => setTransportDraft((prev) => ({ ...prev, [kind === 'start' ? 'meterStart' : 'meterEnd']: e.target.value }))}
+                    disabled={fieldDisabled || !photoAttached || photo.reading}
+                    placeholder={photoAttached ? '' : '撮影で入力可に'}
+                    className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                  />
+                </div>
+              )
+            })}
           </div>
           {transportMeterInvalid && (
             <div className="text-[11px] text-red-500">終了メーターは開始メーターより小さい値にできません</div>

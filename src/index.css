@@ -61,3 +61,23 @@ html, body, #root {
   .ttc-float, .ttc-pop, .ttc-sparkle { animation: none !important; }
   .ttc-inner { transition: none !important; }
 }
+
+/* iOS Safari の入力欄補正:
+   - 内蔵スタイル(内側の影・角丸・高さ)でテキスト入力の見た目がズレるのを無効化
+   - date/time 入力の値が中央寄せ表示になって他の入力とズレて見えるのを左寄せに
+   @supports (-webkit-touch-callout: none) は iOS Safari だけに効くガード。 */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+  textarea {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input::-webkit-date-and-time-value {
+    text-align: left;
+  }
+  input[type="date"],
+  input[type="time"],
+  input[type="month"] {
+    min-height: 2.5rem;
+  }
+}

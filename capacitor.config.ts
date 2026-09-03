@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
-// Android ネイティブアプリ設定。
+// Android / iOS ネイティブアプリ設定。
 // server.url に本番(Vercel)を指定した「リモートURLモード」= アプリはシェルとして本番サイトを表示する。
 // → フロントを Vercel にデプロイするだけでアプリ側も常に最新（APK 再ビルド不要）。
 const config: CapacitorConfig = {
@@ -16,6 +16,11 @@ const config: CapacitorConfig = {
     // 標準 Chrome の UA に上書きして Google ログインを通す。
     overrideUserAgent:
       'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+  },
+  ios: {
+    // iOS も同様: WKWebView の UA を Safari 相当にして Google ログインを通す。
+    overrideUserAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
   },
 }
 
