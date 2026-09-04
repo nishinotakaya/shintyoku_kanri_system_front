@@ -871,7 +871,8 @@ export default function DayDetailModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, existingTransportReport?.id])
 
-  // スマホ写真は数MBあるので、AI読み取り/保存の前に長辺1280pxのJPEGへ縮小する
+  // スマホ写真は数MBあるので縮小してから扱う。AI読み取り用は数字が潰れないよう高解像度(2048px)、
+  // DB保存・サムネ用は容量を抑えた1280pxと使い分ける
   const downscaleImageToDataUrl = (file: File, maxSize: number, quality: number): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -896,16 +897,18 @@ export default function DayDetailModal({
 
   const captureMeterPhoto = async (kind: 'start' | 'end', file: File) => {
     setTransportError(null)
-    let dataUrl: string
+    let readingDataUrl: string
+    let storedDataUrl: string
     try {
-      dataUrl = await downscaleImageToDataUrl(file, 1280, 0.85)
+      readingDataUrl = await downscaleImageToDataUrl(file, 2048, 0.92)
+      storedDataUrl = await downscaleImageToDataUrl(file, 1280, 0.85)
     } catch (e: any) {
       setTransportError(e?.message ?? '画像を読み込めませんでした')
       return
     }
-    setMeterPhotos((prev) => ({ ...prev, [kind]: { preview: dataUrl, persisted: false, newDataUrl: dataUrl, removed: false, reading: true } }))
+    setMeterPhotos((prev) => ({ ...prev, [kind]: { preview: storedDataUrl, persisted: false, newDataUrl: storedDataUrl, removed: false, reading: true } }))
     try {
-      const blob = await (await fetch(dataUrl)).blob()
+      const blob = await (await fetch(readingDataUrl)).blob()
       const formData = new FormData()
       formData.append('file', blob, 'meter.jpg')
       const res = await api.post('/work_reports/read_meter', formData, { params: asUserParam })
