@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 // 入力要素（input / select / textarea）共通のクラス
 export const fieldInputCls =
-  'w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm'
+  'w-full rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:py-1 sm:text-sm'
 
 // ラベル + 任意の補足説明でフィールドを囲むラッパー。
 export function LabeledField({
@@ -21,7 +21,7 @@ export function LabeledField({
 }) {
   return (
     <label className={`block ${className}`}>
-      <div className="text-[11px] font-semibold mb-0.5">{label}</div>
+      <div className="text-xs font-semibold mb-0.5 sm:text-[11px]">{label}</div>
       {children}
       {hint && <div className="text-[10px] text-[var(--color-text-sub)] mt-0.5">{hint}</div>}
     </label>
