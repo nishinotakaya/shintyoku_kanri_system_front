@@ -2205,7 +2205,7 @@ export default function InvoicesPage() {
                     className={fieldInputCls} />
                   <select value={createClientHonorific}
                     onChange={(e) => setCreateClientHonorific(e.target.value)}
-                    className={`${fieldInputCls} w-20 shrink-0`}>
+                    className="w-24 shrink-0 rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:py-1 sm:text-sm">
                     <option value="御中">御中</option>
                     <option value="様">様</option>
                   </select>
@@ -2383,7 +2383,7 @@ export default function InvoicesPage() {
                   className={fieldInputCls} />
                 <select value={editForm.client_honorific}
                   onChange={(e) => setEditForm({ ...editForm, client_honorific: e.target.value })}
-                  className={`${fieldInputCls} w-20 shrink-0`}>
+                  className="w-24 shrink-0 rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:py-1 sm:text-sm">
                   <option value="御中">御中</option>
                   <option value="様">様</option>
                 </select>
