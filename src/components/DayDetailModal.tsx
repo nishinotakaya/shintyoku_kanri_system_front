@@ -1453,7 +1453,7 @@ export default function DayDetailModal({
               onChange={(e) => setTransportDraft((prev) => ({ ...prev, note: e.target.value }))}
               disabled={fieldDisabled}
               rows={2}
-              placeholder="高速代・駐車場代の合計を記入してください"
+              placeholder="連絡事項・特記事項があれば記入"
               className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
             />
           </label>
