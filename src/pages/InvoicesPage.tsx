@@ -1550,21 +1550,29 @@ export default function InvoicesPage() {
                   </span>
                 </div>
                 {s.kind !== 'scanned' && (
-                  <div className="mt-2 flex gap-2">
-                    <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 プレビュー</button>
+                  <>
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => openPreview(s)} className="h-9 flex-1 rounded-md border border-sky-400 bg-white text-[11px] font-semibold text-sky-600">🔍 プレビュー</button>
+                      {(canBulk || me?.id === s.user_id) && (
+                        <button onClick={() => openEdit(s)} className="h-9 flex-1 rounded-md border border-amber-400 bg-white text-[11px] font-semibold text-amber-600">✏️ 編集</button>
+                      )}
+                      <button onClick={() => downloadInvoice(s, 'self')} disabled={busyId === `${s.kind}-${s.id}`}
+                        className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 保存</button>
+                    </div>
                     {(canBulk || me?.id === s.user_id) && (
-                      <button onClick={() => openEdit(s)} className="h-9 flex-1 rounded-md border border-amber-400 bg-white text-[11px] font-semibold text-amber-600">✏️ 編集</button>
+                      <div className="mt-2 flex gap-2">
+                        {s.status === 'draft' && (
+                          <button onClick={() => submitOne(s)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 text-[11px] font-semibold text-white shadow">📤 申請</button>
+                        )}
+                        {s.status === 'pending' && canBulk && (
+                          <button onClick={() => approveOne(s)} disabled={approveBusyId === s.id}
+                            className="h-9 flex-1 rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
+                        )}
+                        <button onClick={() => removeSubmission(s)}
+                          className="h-9 w-24 ml-auto rounded-md border border-red-300 bg-white text-[11px] font-semibold text-red-500 active:bg-red-50">🗑 削除</button>
+                      </div>
                     )}
-                    <button onClick={() => downloadInvoice(s, 'self')} disabled={busyId === `${s.kind}-${s.id}`}
-                      className="h-9 flex-1 rounded-md bg-gradient-to-r from-sky-500 to-indigo-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">📥 保存</button>
-                    {s.status === 'draft' && (canBulk || me?.id === s.user_id) && (
-                      <button onClick={() => submitOne(s)} className="h-9 flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 text-[11px] font-semibold text-white shadow">📤 申請</button>
-                    )}
-                    {s.status === 'pending' && canBulk && (
-                      <button onClick={() => approveOne(s)} disabled={approveBusyId === s.id}
-                        className="h-9 flex-1 rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 text-[11px] font-semibold text-white shadow disabled:opacity-50">✅ 承認</button>
-                    )}
-                  </div>
+                  </>
                 )}
               </div>
             )

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import {
-  fetchContracts, createContract, duplicateContract, fetchContractPdfBlob, fetchContractsZipBlob,
+  fetchContracts, createContract, duplicateContract, deleteContract, fetchContractPdfBlob, fetchContractsZipBlob,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
 import { showPdfWhileLoading } from '../lib/openPdf'
@@ -125,6 +125,19 @@ export default function ContractsPage() {
     }
   }
 
+  // 削除できるのは下書きのみ(サーバ側も同じ制約)。発行済み・署名済みは「無効化」を使う
+  const deleteFromList = async (contract: Contract, event: React.MouseEvent) => {
+    event.stopPropagation()
+    if (!confirm(`「${contract.title}」を削除しますか？`)) return
+    try {
+      await deleteContract(contract.id)
+      setContracts((prev) => prev.filter((c) => c.id !== contract.id))
+      if (editingId === contract.id) setEditingId(null)
+    } catch (error: any) {
+      alert(`削除失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
+    }
+  }
+
   const handleUpdated = (updated: Contract) => {
     setContracts((prev) => prev.map((contract) => (contract.id === updated.id ? updated : contract)))
   }
@@ -221,7 +234,7 @@ export default function ContractsPage() {
                   <span>契約日: {formatContractDate(contract.contract_date)}</span>
                   <span>更新: {formatContractDate(contract.updated_at)}</span>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className={`mt-3 grid gap-2 ${contract.status === 'draft' ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); setEditingId(contract.id) }}
@@ -245,6 +258,15 @@ export default function ContractsPage() {
                   >
                     {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
                   </button>
+                  {contract.status === 'draft' && (
+                    <button
+                      type="button"
+                      onClick={(event) => deleteFromList(contract, event)}
+                      className="h-10 rounded-md border border-red-300 bg-white px-2 text-sm font-semibold text-red-500 active:bg-red-50"
+                    >
+                      🗑 削除
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -305,6 +327,15 @@ export default function ContractsPage() {
                         >
                           {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
                         </button>
+                        {contract.status === 'draft' && (
+                          <button
+                            type="button"
+                            onClick={(event) => deleteFromList(contract, event)}
+                            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-500 hover:bg-red-50"
+                          >
+                            🗑 削除
+                          </button>
+                        )}
                       </div>
                     </td>
                     {me?.admin && <td className="px-3 py-3 text-[var(--color-text-sub)]">{contract.user_name}</td>}
