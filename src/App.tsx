@@ -22,6 +22,7 @@ import { isAuthed, signOut } from './lib/auth'
 import { stopImpersonation, startImpersonation, fetchImpersonationCandidates,
   type ImpersonationCandidate } from './lib/impersonation'
 import { useMe, clearMeCache } from './lib/useMe'
+import ToastHost from './components/ToastHost'
 import { api } from './lib/api'
 import type { Me } from './lib/api'
 
@@ -411,6 +412,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <>
+    <ToastHost />
     <Routes>
       <Route path="/sign_in" element={<SignIn />} />
       <Route path="/sign_up" element={<SignUp />} />
@@ -588,5 +591,6 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }

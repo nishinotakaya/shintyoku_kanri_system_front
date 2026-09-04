@@ -7,6 +7,7 @@ import {
 import type { Contract, ContractFormInput, ContractArticle } from '../../lib/contracts'
 import { showPdfWhileLoading } from '../../lib/openPdf'
 import ContractEmailModal from './ContractEmailModal'
+import { toast } from '../../lib/toast'
 
 type Props = {
   contract: Contract
@@ -158,6 +159,7 @@ export default function ContractEditor({ contract, onUpdated, onClose }: Props) 
       const updated = await updateContract(contract.id, payload)
       onUpdated(updated)
       setMessage('保存しました')
+      toast.success('保存しました')
     } catch (error: any) {
       alert(`保存失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
@@ -181,6 +183,7 @@ export default function ContractEditor({ contract, onUpdated, onClose }: Props) 
       onUpdated(updated)
       setShareUrl(updated.share_url ?? null)
       setCopyFeedback(false)
+      toast.success('署名リンクを発行しました')
     } catch (error: any) {
       alert(`発行失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
@@ -213,6 +216,7 @@ export default function ContractEditor({ contract, onUpdated, onClose }: Props) 
       setVoidConfirming(false)
       // 無効化後は直前に発行したリンクの表示も消す(コピー/LINEボタンごと相手に送れる状態を残さない)
       setShareUrl(null)
+      toast.info('契約書を無効化しました')
     } catch (error: any) {
       alert(`無効化失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {

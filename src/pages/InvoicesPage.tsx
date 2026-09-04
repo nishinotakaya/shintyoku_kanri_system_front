@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { api } from '../lib/api'
+import { toast } from '../lib/toast'
 import type { Me, PickableUser } from '../lib/api'
 import { isWorkCategory, visibleWorkCategories } from '../lib/workCategories'
 import { fetchExportBlob } from '../components/FolderSaveButtons'
@@ -252,7 +253,7 @@ export default function InvoicesPage() {
 
   const removeIssuedPdf = async (id: number, filename: string) => {
     if (!confirm(`保存済 ${filename} を削除しますか？`)) return
-    try { await api.delete(`/issued_invoice_pdfs/${id}`); await load() }
+    try { await api.delete(`/issued_invoice_pdfs/${id}`); await load(); toast.success('保存済PDFを削除しました') }
     catch (e: any) { alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
   }
   const downloadIssuedPdf = async (p: IssuedPdf) => {
@@ -286,9 +287,11 @@ export default function InvoicesPage() {
     if (checkedIssuedIds.size === 0) return
     if (!confirm(`選択した保存済 ${checkedIssuedIds.size} 件を削除しますか？`)) return
     try {
+      const bulkCount = checkedIssuedIds.size
       await Promise.all(Array.from(checkedIssuedIds).map((id) => api.delete(`/issued_invoice_pdfs/${id}`)))
       setCheckedIssuedIds(new Set())
       await load()
+      toast.success(`保存済 ${bulkCount} 件を削除しました`)
     } catch (e: any) { alert(`一括削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`) }
   }
   // 新規申請モーダル (admin が他ユーザー宛も含めて申請を作れる)
@@ -316,6 +319,11 @@ export default function InvoicesPage() {
   const [createPostalInitial, setCreatePostalInitial] = useState('')
   // 請求書単体で持てる項目: インボイス番号 / 申請日 / 支払期限
   const [createRegNo, setCreateRegNo] = useState('')
+  // 請求先(宛先): マスタ選択 or 直接入力(編集モーダルと同じ優先順で、直接入力が勝つ)
+  const [createClients, setCreateClients] = useState<InvoiceClient[]>([])
+  const [createClientId, setCreateClientId] = useState('')
+  const [createClientName, setCreateClientName] = useState('')
+  const [createClientHonorific, setCreateClientHonorific] = useState('御中')
   // 対象ユーザー×カテゴリの税込/税抜設定。明細フッタの合計計算に使う(税込なら明細合計がそのまま税込合計)
   const [createTaxIncluded, setCreateTaxIncluded] = useState(false)
   const [createAppDate, setCreateAppDate] = useState('')
@@ -341,6 +349,16 @@ export default function InvoicesPage() {
       })
       .catch(() => { setCreateBank(''); setCreateBankInitial(''); setCreateAddress(''); setCreateAddressInitial(''); setCreateTel(''); setCreateTelInitial(''); setCreatePostal(''); setCreatePostalInitial(''); setCreateRegNo(''); setCreateTaxIncluded(false) })
   }, [creating, createForm.category, createForm.target_user_id, canBulk])
+  // 対象ユーザーの請求先(宛先)マスタを読み込む
+  useEffect(() => {
+    if (!creating) return
+    const params: Record<string, unknown> = {}
+    if (canBulk && createForm.target_user_id) params.as_user_id = createForm.target_user_id
+    api.get<InvoiceClient[]>('/invoice_clients', { params })
+      .then((r) => setCreateClients(r.data))
+      .catch(() => setCreateClients([]))
+    setCreateClientId('')
+  }, [creating, createForm.target_user_id, canBulk])
   useEffect(() => {
     if (!creating) return
     api.get<ReceivedPO[]>('/received_purchase_orders', { params: { year: createForm.year, month: createForm.month } })
@@ -378,13 +396,18 @@ export default function InvoicesPage() {
         registration_no_override: createRegNo.trim() || null,
         application_date_override: createAppDate || null,
         due_date_override: createDueDate || null,
+        invoice_client_id: createClientId || null,
+        client_name_override: createClientName.trim() || null,
+        client_honorific_override: createClientName.trim() ? createClientHonorific : null,
       })
       setCreating(false)
       setCreateSubject(''); setCreateItems([]); setCreateBank(''); setCreateBankInitial('')
       setCreateAddress(''); setCreateAddressInitial(''); setCreateTel(''); setCreateTelInitial('')
       setCreatePostal(''); setCreatePostalInitial('')
       setCreateRegNo(''); setCreateAppDate(''); setCreateDueDate('')
+      setCreateClientId(''); setCreateClientName(''); setCreateClientHonorific('御中')
       await load()
+      toast.success('下書きを作成しました')
     } catch (e: any) {
       alert(`作成失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
@@ -590,6 +613,7 @@ export default function InvoicesPage() {
       await api.patch('/invoice_setting', settingParams).catch(() => {})
       await load()
       closeEdit()
+      toast.success('更新しました')
     } catch (e: any) {
       alert(`保存失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setEditBusy(false) }
@@ -841,6 +865,7 @@ export default function InvoicesPage() {
     try {
       await api.delete(`/invoice_submissions/${s.id}`)
       await load()
+      toast.success(`${s.kind === 'invoice' ? '請求書' : '立替金'}を削除しました`)
     } catch (e: any) {
       alert(`削除失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
@@ -1224,7 +1249,9 @@ export default function InvoicesPage() {
       } else {
         await api.post('/invoice_submissions/submit_bulk', { ids: submitRows.map((r) => r.id) })
       }
+      const submitCount = submitRows.length
       setSubmitRows(null); setCheckedIds(new Set()); await load()
+      toast.success(submitCount === 1 ? '申請しました' : `${submitCount} 件を申請しました`)
     } catch (e: any) {
       alert(`申請失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setSubmitBusy(false) }
@@ -1237,6 +1264,7 @@ export default function InvoicesPage() {
     try {
       await api.patch(`/invoice_submissions/${s.id}`, { status: 'approved' })
       await load()
+      toast.success('承認しました')
     } catch (e: any) {
       alert(`承認失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setApproveBusyId(null) }
@@ -1248,6 +1276,7 @@ export default function InvoicesPage() {
     try {
       await api.patch(`/invoice_submissions/${s.id}`, { status: 'rejected', review_comment: comment.trim() })
       await load()
+      toast.info('却下しました')
     } catch (e: any) {
       alert(`却下失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setApproveBusyId(null) }
@@ -2158,6 +2187,33 @@ export default function InvoicesPage() {
                     placeholder="例) 090-0000-0000" className={fieldInputCls} />
                 </LabeledField>
               </div>
+              <LabeledField label="請求先（宛先）" hint="⚙ 設定 → 請求書設定 で取引先を登録すると、ここで選べます">
+                <select value={createClientId}
+                  onChange={(e) => setCreateClientId(e.target.value)}
+                  className={fieldInputCls}>
+                  <option value="">請求書設定の宛名を使う</option>
+                  {createClients.map((client) => (
+                    <option key={client.id} value={String(client.id)}>
+                      {client.name} {client.honorific}{client.is_default ? '（既定）' : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-1 flex gap-1">
+                  <input value={createClientName}
+                    onChange={(e) => setCreateClientName(e.target.value)}
+                    placeholder="宛名を直接入力して上書き（例: 株式会社〇〇）"
+                    className={fieldInputCls} />
+                  <select value={createClientHonorific}
+                    onChange={(e) => setCreateClientHonorific(e.target.value)}
+                    className={`${fieldInputCls} w-20 shrink-0`}>
+                    <option value="御中">御中</option>
+                    <option value="様">様</option>
+                  </select>
+                </div>
+                <div className="mt-0.5 text-[10px] text-[var(--color-text-sub)]">
+                  直接入力するとこの請求書だけ宛名を上書きします（マスタ未登録でも変更OK）。
+                </div>
+              </LabeledField>
               <LabeledField label="インボイス番号（適格請求書発行事業者登録番号）">
                 <input value={createRegNo} onChange={(e) => setCreateRegNo(e.target.value)} placeholder="例: T1234567890123" className={fieldInputCls} />
               </LabeledField>

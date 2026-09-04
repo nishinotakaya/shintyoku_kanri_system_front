@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { api } from '../lib/api'
+import { toast } from '../lib/toast'
 import type { WorkReport, Expense, Me } from '../lib/api'
 import { visibleWorkCategories } from '../lib/workCategories'
 import SapLink from './SapLink'
@@ -935,6 +936,7 @@ export default function DayDetailModal({
       try {
         await api.delete(`/work_reports/${existingTransportReport.id}`, { params: asUserParam })
         onChanged?.()
+        toast.success('この日の稼働報告を削除しました')
       } catch (e: any) {
         setTransportError(e?.response?.data?.error ?? e?.message ?? '削除に失敗しました')
       } finally {
@@ -974,6 +976,7 @@ export default function DayDetailModal({
         end: { ...prev.end, persisted: prev.end.preview != null, newDataUrl: null, removed: false },
       }))
       onChanged?.()
+      toast.success('稼働報告を保存しました')
     } catch (e: any) {
       setTransportError(e?.response?.data?.error ?? e?.message ?? '保存に失敗しました')
     } finally {

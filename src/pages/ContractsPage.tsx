@@ -8,6 +8,7 @@ import {
 import { showPdfWhileLoading } from '../lib/openPdf'
 import type { Contract } from '../lib/contracts'
 import ContractEditor from '../components/contracts/ContractEditor'
+import { toast } from '../lib/toast'
 
 // 新規作成は HAUKUR運送の業務委託契約書(全29条)のみ。テンプレート選択モーダルは廃止した。
 const TRANSPORT_DEFAULT_TITLE = '運送業務委託契約書'
@@ -88,6 +89,7 @@ export default function ContractsPage() {
       const created = await createContract('transport', TRANSPORT_DEFAULT_TITLE)
       setContracts((prev) => [created, ...prev])
       setEditingId(created.id)
+      toast.success('契約書を作成しました')
     } catch (error: any) {
       alert(`作成失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
@@ -128,6 +130,7 @@ export default function ContractsPage() {
       const created = await duplicateContract(contract.id)
       setContracts((prev) => [created, ...prev])
       setEditingId(created.id)
+      toast.success('複製しました')
     } catch (error: any) {
       alert(`複製失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     } finally {
@@ -143,6 +146,7 @@ export default function ContractsPage() {
       await deleteContract(contract.id)
       setContracts((prev) => prev.filter((c) => c.id !== contract.id))
       if (editingId === contract.id) setEditingId(null)
+      toast.success('契約書を削除しました')
     } catch (error: any) {
       alert(`削除失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
     }
