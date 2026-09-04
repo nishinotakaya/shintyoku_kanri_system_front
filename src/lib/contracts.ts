@@ -62,6 +62,9 @@ export type Contract = {
   has_signed_pdf: boolean
   editable: boolean
   user_name: string
+  // 署名済みのみ: 乙が登録済みユーザーか・招待メール送信済みか(「📨 招待」ボタンの表示制御用)
+  party_b_registered?: boolean
+  party_b_invited_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -199,6 +202,12 @@ export async function deleteContract(id: number): Promise<void> {
 // 署名リンクを発行(再発行時は旧リンクを無効化)。応答にのみ share_url を含む。
 export async function issueContract(id: number): Promise<Contract> {
   const res = await api.post<Contract>(`/contracts/${id}/issue`)
+  return res.data
+}
+
+// 署名済み契約書の乙をユーザー登録し、登録用の招待メールを送る(登録済みなら再送)
+export async function invitePartyB(id: number): Promise<Contract> {
+  const res = await api.post<Contract>(`/contracts/${id}/invite_party_b`)
   return res.data
 }
 

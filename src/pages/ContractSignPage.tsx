@@ -188,6 +188,9 @@ export default function ContractSignPage() {
             <div className="text-xl font-bold text-emerald-600">✅ 署名が完了しました</div>
             <div>署名者: {contract.signer_name ?? '—'}</div>
             <div>署名日時: {formatContractDateTime(contract.signed_at)}</div>
+            <div className="text-sm text-[var(--color-text-sub)]">
+              発行者が内容を確認した後、登録用の招待メールが届きます。届いたらメール記載のURLからログインしてください。
+            </div>
             <button
               type="button"
               onClick={openContractPdf}

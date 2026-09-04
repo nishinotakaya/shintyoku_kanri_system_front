@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import type { Me } from '../lib/api'
 import {
-  fetchContracts, createContract, duplicateContract, deleteContract, fetchContractPdfBlob, fetchContractsZipBlob,
+  fetchContracts, createContract, duplicateContract, deleteContract, invitePartyB, fetchContractPdfBlob, fetchContractsZipBlob,
   CONTRACT_STATUS_LABEL, CONTRACT_STATUS_BADGE_CLASS, formatContractDate,
 } from '../lib/contracts'
 import { showPdfWhileLoading } from '../lib/openPdf'
@@ -138,6 +138,28 @@ export default function ContractsPage() {
     }
   }
 
+  // 署名済み契約書の乙をユーザー登録して招待メールを送る(甲による承認アクション)。登録済みなら再送になる
+  const [invitingId, setInvitingId] = useState<number | null>(null)
+  const canInvite = (contract: Contract) => contract.status === 'signed' && !!contract.party_b.email
+  const inviteFromList = async (contract: Contract, event: React.MouseEvent) => {
+    event.stopPropagation()
+    if (invitingId != null) return
+    const resend = !!contract.party_b_invited_at
+    const confirmText = `${contract.party_b.name || '乙'}（${contract.party_b.email}）に招待メールを${resend ? '再送' : '送信'}しますか？`
+      + (resend ? '' : '\n送信すると、この方がユーザーとして登録されます。')
+    if (!confirm(confirmText)) return
+    setInvitingId(contract.id)
+    try {
+      const updated = await invitePartyB(contract.id)
+      handleUpdated(updated)
+      toast.success(resend ? '招待メールを再送しました' : '招待メールを送り、ユーザー登録しました')
+    } catch (error: any) {
+      alert(`招待失敗: ${error?.response?.data?.error ?? error?.message ?? ''}`)
+    } finally {
+      setInvitingId(null)
+    }
+  }
+
   // 削除できるのは下書きのみ(サーバ側も同じ制約)。発行済み・署名済みは「無効化」を使う
   const deleteFromList = async (contract: Contract, event: React.MouseEvent) => {
     event.stopPropagation()
@@ -266,13 +288,16 @@ export default function ContractsPage() {
                     {CONTRACT_STATUS_LABEL[contract.status]}
                   </span>
                 </div>
-                <div className="mt-2 text-sm text-[var(--color-text-sub)]">乙: {contract.party_b.name || '—'}</div>
+                <div className="mt-2 text-sm text-[var(--color-text-sub)]">
+                  乙: {contract.party_b.name || '—'}
+                  {contract.party_b_registered && <span className="ml-1 font-semibold text-emerald-600">✅登録済</span>}
+                </div>
                 {me?.admin && <div className="mt-1 text-sm text-[var(--color-text-sub)]">作成者: {contract.user_name}</div>}
                 <div className="mt-1 flex items-center justify-between text-sm text-[var(--color-text-sub)]">
                   <span>契約日: {formatContractDate(contract.contract_date)}</span>
                   <span>更新: {formatContractDate(contract.updated_at)}</span>
                 </div>
-                <div className={`mt-3 grid gap-2 ${contract.status === 'draft' ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                <div className={`mt-3 grid gap-2 ${contract.status === 'draft' || canInvite(contract) ? 'grid-cols-4' : 'grid-cols-3'}`}>
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); setEditingId(contract.id) }}
@@ -296,6 +321,16 @@ export default function ContractsPage() {
                   >
                     {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
                   </button>
+                  {canInvite(contract) && (
+                    <button
+                      type="button"
+                      onClick={(event) => inviteFromList(contract, event)}
+                      disabled={invitingId != null}
+                      className="h-10 rounded-md border border-emerald-300 bg-white px-2 text-sm font-semibold text-emerald-600 active:bg-emerald-50 disabled:opacity-50"
+                    >
+                      {invitingId === contract.id ? '送信中…' : contract.party_b_invited_at ? '📨 再送' : '📨 招待'}
+                    </button>
+                  )}
                   {contract.status === 'draft' && (
                     <button
                       type="button"
@@ -332,7 +367,10 @@ export default function ContractsPage() {
                     className="cursor-pointer border-t border-gray-300 hover:bg-fuchsia-50/40"
                   >
                     <td className="px-3 py-3 font-semibold text-[var(--color-text)]">{contract.title}</td>
-                    <td className="px-3 py-3">{contract.party_b.name || '—'}</td>
+                    <td className="px-3 py-3">
+                      {contract.party_b.name || '—'}
+                      {contract.party_b_registered && <span className="ml-1 text-sm font-semibold text-emerald-600">✅登録済</span>}
+                    </td>
                     <td className="px-3 py-3">
                       <span className={`rounded px-2 py-0.5 text-sm font-semibold ${CONTRACT_STATUS_BADGE_CLASS[contract.status]}`}>
                         {CONTRACT_STATUS_LABEL[contract.status]}
@@ -365,6 +403,16 @@ export default function ContractsPage() {
                         >
                           {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
                         </button>
+                        {canInvite(contract) && (
+                          <button
+                            type="button"
+                            onClick={(event) => inviteFromList(contract, event)}
+                            disabled={invitingId != null}
+                            className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                          >
+                            {invitingId === contract.id ? '送信中…' : contract.party_b_invited_at ? '📨 再送' : '📨 招待'}
+                          </button>
+                        )}
                         {contract.status === 'draft' && (
                           <button
                             type="button"
