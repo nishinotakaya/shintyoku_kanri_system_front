@@ -2177,7 +2177,7 @@ export default function InvoicesPage() {
                     className="whitespace-nowrap rounded-md border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">🔍 検索</button>
                 </div>
               </LabeledField>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <LabeledField label="住所" hint="請求書設定にも保存され、以後の既定になります">
                   <input value={createAddress} onChange={(e) => setCreateAddress(e.target.value)}
                     placeholder="例) 〇〇県〇〇市〇〇1-2-3" className={fieldInputCls} />
@@ -2198,14 +2198,14 @@ export default function InvoicesPage() {
                     </option>
                   ))}
                 </select>
-                <div className="mt-1 flex gap-1">
+                <div className="mt-1 flex flex-col gap-1 sm:flex-row">
                   <input value={createClientName}
                     onChange={(e) => setCreateClientName(e.target.value)}
-                    placeholder="宛名を直接入力して上書き（例: 株式会社〇〇）"
+                    placeholder="宛名を直接入力（例: 株式会社〇〇）"
                     className={fieldInputCls} />
                   <select value={createClientHonorific}
                     onChange={(e) => setCreateClientHonorific(e.target.value)}
-                    className="w-24 shrink-0 rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:py-1 sm:text-sm">
+                    className="w-full rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:w-24 sm:shrink-0 sm:py-1 sm:text-sm">
                     <option value="御中">御中</option>
                     <option value="様">様</option>
                   </select>
@@ -2217,7 +2217,7 @@ export default function InvoicesPage() {
               <LabeledField label="インボイス番号（適格請求書発行事業者登録番号）">
                 <input value={createRegNo} onChange={(e) => setCreateRegNo(e.target.value)} placeholder="例: T1234567890123" className={fieldInputCls} />
               </LabeledField>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <LabeledField label="申請日（請求書の発行日。空欄なら申請時の日付）">
                   <input type="date" value={createAppDate} onChange={(e) => setCreateAppDate(e.target.value)} className={fieldInputCls} />
                 </LabeledField>
@@ -2376,14 +2376,14 @@ export default function InvoicesPage() {
                   </option>
                 ))}
               </select>
-              <div className="mt-1 flex gap-1">
+              <div className="mt-1 flex flex-col gap-1 sm:flex-row">
                 <input value={editForm.client_name}
                   onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })}
-                  placeholder="宛名を直接入力して上書き（例: 株式会社〇〇）"
+                  placeholder="宛名を直接入力（例: 株式会社〇〇）"
                   className={fieldInputCls} />
                 <select value={editForm.client_honorific}
                   onChange={(e) => setEditForm({ ...editForm, client_honorific: e.target.value })}
-                  className="w-24 shrink-0 rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:py-1 sm:text-sm">
+                  className="w-full rounded-md border border-[var(--color-border)] px-2 py-2 text-base sm:w-24 sm:shrink-0 sm:py-1 sm:text-sm">
                   <option value="御中">御中</option>
                   <option value="様">様</option>
                 </select>
@@ -2427,7 +2427,7 @@ export default function InvoicesPage() {
                   className="whitespace-nowrap rounded-md border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50">🔍 検索</button>
               </div>
             </LabeledField>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <LabeledField label="住所" hint="請求書設定に連動保存されます">
                 <input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
                   placeholder="例) 〇〇県〇〇市〇〇1-2-3" className={fieldInputCls} />
