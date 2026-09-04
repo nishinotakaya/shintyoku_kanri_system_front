@@ -16,6 +16,7 @@ import PurchaseOrdersPage from './pages/PurchaseOrdersPage'
 import InvoicesPage from './pages/InvoicesPage'
 import ContractsPage from './pages/ContractsPage'
 import ContractSignPage from './pages/ContractSignPage'
+import InvitePage from './pages/InvitePage'
 import SettingsModal from './components/SettingsModal'
 import BusinessExpensesPage from './pages/BusinessExpensesPage'
 import { isAuthed, signOut } from './lib/auth'
@@ -420,6 +421,7 @@ export default function App() {
       <Route path="/auth/callback" element={<AuthCallback />} />
       {/* 相手(乙)向けの契約書署名ページ。ログイン不要のためRequireAuthの外に置く */}
       <Route path="/sign/contracts/:token" element={<ContractSignPage />} />
+      <Route path="/invite/:token" element={<InvitePage />} />
       <Route
         path="/"
         element={

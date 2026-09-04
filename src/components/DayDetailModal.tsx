@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -814,6 +814,7 @@ export default function DayDetailModal({
     deliveryCount: string
     meterStart: string
     meterEnd: string
+    transitFee: string
   }
   const buildTransportDraft = (report: WorkReport | null): TransportDraft => ({
     worked: !!report,
@@ -825,6 +826,7 @@ export default function DayDetailModal({
     deliveryCount: report?.delivery_count != null ? String(report.delivery_count) : '',
     meterStart: report?.meter_start != null ? String(report.meter_start) : '',
     meterEnd: report?.meter_end != null ? String(report.meter_end) : '',
+    transitFee: report?.transit_fee != null ? String(report.transit_fee) : '',
   })
   const [transportDraft, setTransportDraft] = useState<TransportDraft>(() => buildTransportDraft(existingTransportReport))
   useEffect(() => {
@@ -870,6 +872,62 @@ export default function DayDetailModal({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, existingTransportReport?.id])
+
+  // 実費レシート写真(複数枚)。撮影→AIが金額を読取→「実費合計」へ自動入力する。写真は日報に添付保存
+  type ExpenseReceiptState = {
+    id: number | null         // サーバ保存済みなら写真の id
+    tempKey?: number          // 未保存行の識別用
+    preview: string | null    // サムネイル (dataURL or objectURL)
+    newDataUrl: string | null // 今回新しく撮った写真 (保存時に送る)
+    amount: string            // 金額(円)。AI読取結果を手修正できる
+    label: string             // 内容 (高速代・駐車場代など)
+    reading: boolean          // AI読み取り中
+  }
+  const [expenseReceipts, setExpenseReceipts] = useState<ExpenseReceiptState[]>([])
+  const [removedExpensePhotoIds, setRemovedExpensePhotoIds] = useState<number[]>([])
+  // レシートを触った後だけ実費合計を自動計算する(読み込み直後に保存済みの手入力値を潰さない)
+  const receiptsTouchedRef = useRef(false)
+
+  useEffect(() => {
+    const report = existingTransportReport
+    receiptsTouchedRef.current = false
+    setRemovedExpensePhotoIds([])
+    setExpenseReceipts((report?.expense_photos ?? []).map((photo) => ({
+      id: photo.id, preview: null, newDataUrl: null,
+      amount: photo.amount != null ? String(photo.amount) : '',
+      label: photo.label ?? '', reading: false,
+    })))
+    if (!report) return
+    ;(report.expense_photos ?? []).forEach((photo) => {
+      api.get(`/work_reports/${report.id}/expense_photo`, { params: { ...asUserParam, photo_id: photo.id }, responseType: 'blob' })
+        .then((res) => {
+          const objectUrl = URL.createObjectURL(res.data)
+          setExpenseReceipts((prev) => prev.map((row) => (row.id === photo.id ? { ...row, preview: objectUrl } : row)))
+        })
+        .catch(() => {})
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, existingTransportReport?.id])
+
+  // レシートの増減・金額修正に追随して実費合計を計算し直す
+  const receiptAmountsSignature = expenseReceipts.map((row) => row.amount).join(',')
+  useEffect(() => {
+    if (!receiptsTouchedRef.current) return
+    const total = expenseReceipts.reduce((sum, row) => sum + (row.amount === '' ? 0 : Number(row.amount)), 0)
+    setTransportDraft((prev) => ({ ...prev, transitFee: expenseReceipts.length === 0 ? '' : String(total) }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receiptAmountsSignature, expenseReceipts.length])
+
+  const updateExpenseReceiptAmount = (target: ExpenseReceiptState, amount: string) => {
+    receiptsTouchedRef.current = true
+    setExpenseReceipts((prev) => prev.map((row) => (row === target ? { ...row, amount } : row)))
+  }
+
+  const removeExpenseReceipt = (target: ExpenseReceiptState) => {
+    receiptsTouchedRef.current = true
+    if (target.id != null) setRemovedExpensePhotoIds((prev) => [...prev, target.id as number])
+    setExpenseReceipts((prev) => prev.filter((row) => row !== target))
+  }
 
   // スマホ写真は数MBあるので縮小してから扱う。AI読み取り用は数字が潰れないよう高解像度(2048px)、
   // DB保存・サムネ用は容量を抑えた1280pxと使い分ける
@@ -922,6 +980,37 @@ export default function DayDetailModal({
     }
   }
 
+  const captureExpensePhoto = async (file: File) => {
+    setTransportError(null)
+    let readingDataUrl: string
+    let storedDataUrl: string
+    try {
+      readingDataUrl = await downscaleImageToDataUrl(file, 2048, 0.92)
+      storedDataUrl = await downscaleImageToDataUrl(file, 1280, 0.85)
+    } catch (e: any) {
+      setTransportError(e?.message ?? '画像を読み込めませんでした')
+      return
+    }
+    receiptsTouchedRef.current = true
+    const tempKey = Date.now() + Math.random()
+    setExpenseReceipts((prev) => [ ...prev,
+      { id: null, tempKey, preview: storedDataUrl, newDataUrl: storedDataUrl, amount: '', label: '', reading: true } ])
+    try {
+      const blob = await (await fetch(readingDataUrl)).blob()
+      const formData = new FormData()
+      formData.append('file', blob, 'receipt.jpg')
+      const res = await api.post('/work_reports/read_expense', formData, { params: asUserParam })
+      const amount = res.data?.amount
+      const label = res.data?.label ?? ''
+      setExpenseReceipts((prev) => prev.map((row) => (row.tempKey === tempKey
+        ? { ...row, amount: amount != null ? String(amount) : '', label, reading: false } : row)))
+      if (amount == null) setTransportError('レシートの金額を読み取れませんでした。金額を手入力してください')
+    } catch (e: any) {
+      setExpenseReceipts((prev) => prev.map((row) => (row.tempKey === tempKey ? { ...row, reading: false } : row)))
+      setTransportError(e?.response?.data?.error ?? 'レシートの読み取りに失敗しました。金額を手入力してください')
+    }
+  }
+
   const clearMeterPhoto = (kind: 'start' | 'end') => {
     setMeterPhotos((prev) => ({ ...prev, [kind]: { preview: null, persisted: false, newDataUrl: null, removed: true, reading: false } }))
     setTransportDraft((prev) => ({ ...prev, [kind === 'start' ? 'meterStart' : 'meterEnd']: '' }))
@@ -965,18 +1054,37 @@ export default function DayDetailModal({
       meter_end_photo_base64: meterPhotos.end.newDataUrl ?? undefined,
       remove_meter_start_photo: meterPhotos.start.removed && !meterPhotos.start.newDataUrl ? true : undefined,
       remove_meter_end_photo: meterPhotos.end.removed && !meterPhotos.end.newDataUrl ? true : undefined,
+      transit_fee: transportDraft.transitFee === '' ? null : Number(transportDraft.transitFee),
+      expense_photos_add: expenseReceipts.filter((row) => row.newDataUrl).map((row) => ({
+        data_base64: row.newDataUrl,
+        amount: row.amount === '' ? null : Number(row.amount),
+        label: row.label || null,
+      })),
+      remove_expense_photo_ids: removedExpensePhotoIds.length > 0 ? removedExpensePhotoIds : undefined,
     }
     setTransportSaving(true)
     try {
+      let saved
       if (existingTransportReport) {
-        await api.patch(`/work_reports/${existingTransportReport.id}`, payload, { params: asUserParam })
+        saved = await api.patch(`/work_reports/${existingTransportReport.id}`, payload, { params: asUserParam })
       } else {
-        await api.post('/work_reports', payload, { params: asUserParam })
+        saved = await api.post('/work_reports', payload, { params: asUserParam })
       }
       setMeterPhotos((prev) => ({
         start: { ...prev.start, persisted: prev.start.preview != null, newDataUrl: null, removed: false },
         end: { ...prev.end, persisted: prev.end.preview != null, newDataUrl: null, removed: false },
       }))
+      // 保存後はサーバ採番の写真 id を反映する(並びは既存→追加の順で一致する)
+      const savedPhotos: { id: number; amount: number | null; label: string | null }[] = saved?.data?.expense_photos ?? []
+      setExpenseReceipts((prev) => savedPhotos.map((photo, index) => ({
+        id: photo.id,
+        preview: prev[index]?.preview ?? null,
+        newDataUrl: null,
+        amount: photo.amount != null ? String(photo.amount) : '',
+        label: photo.label ?? '',
+        reading: false,
+      })))
+      setRemovedExpensePhotoIds([])
       onChanged?.()
       toast.success('稼働報告を保存しました')
     } catch (e: any) {
@@ -1456,6 +1564,77 @@ export default function DayDetailModal({
               )
             })}
           </div>
+          {/* 実費レシート: 撮影→AIが金額を読取→実費合計へ自動入力。写真は日報に添付保存される */}
+          <div>
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">実費レシート（高速代・駐車場代など）</span>
+            {expenseReceipts.length > 0 && (
+              <div className="mb-1 space-y-1">
+                {expenseReceipts.map((receipt, index) => (
+                  <div key={receipt.id ?? receipt.tempKey ?? index} className="flex items-center gap-2 rounded border border-[var(--color-border)] bg-gray-50 p-1.5">
+                    {receipt.preview ? (
+                      <img src={receipt.preview} alt="実費レシート" className="h-10 w-10 shrink-0 rounded border border-[var(--color-border)] object-cover" />
+                    ) : (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-[var(--color-border)] bg-white text-sm">🧾</div>
+                    )}
+                    <div className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[var(--color-text-sub)]">
+                      {receipt.reading ? '🤖 AI読取中…' : (receipt.label || 'レシート')}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        value={receipt.amount}
+                        onChange={(e) => updateExpenseReceiptAmount(receipt, e.target.value)}
+                        disabled={fieldDisabled || receipt.reading}
+                        placeholder="金額"
+                        className="w-20 rounded border border-[var(--color-border)] px-2 py-1 text-right text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                      />
+                      <span className="text-[11px] text-[var(--color-text-sub)]">円</span>
+                    </div>
+                    {!fieldDisabled && !receipt.reading && (
+                      <button
+                        type="button"
+                        onClick={() => removeExpenseReceipt(receipt)}
+                        aria-label="レシートを削除"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/60 text-xs text-white"
+                      >✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className={`flex h-10 w-full items-center justify-center gap-1 rounded border border-dashed border-[var(--color-border)] text-[11px] ${fieldDisabled ? 'bg-gray-100 text-gray-400' : 'cursor-pointer bg-gray-50 text-[var(--color-text-sub)] active:bg-gray-100'}`}>
+              <span className="text-base">📷</span>
+              <span>レシートを撮影して金額を自動入力</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                disabled={fieldDisabled}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) captureExpensePhoto(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">実費合計 (円)</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={transportDraft.transitFee}
+              onChange={(e) => setTransportDraft((prev) => ({ ...prev, transitFee: e.target.value }))}
+              disabled={fieldDisabled}
+              className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            />
+          </label>
+
           {transportMeterInvalid && (
             <div className="text-[11px] text-red-500">終了メーターは開始メーターより小さい値にできません</div>
           )}
