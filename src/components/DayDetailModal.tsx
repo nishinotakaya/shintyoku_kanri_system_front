@@ -955,7 +955,6 @@ export default function DayDetailModal({
       clock_out: transportDraft.clockOut || null,
       distance_km: transportDraft.distanceKm === '' ? null : Number(transportDraft.distanceKm),
       note: transportDraft.note || null,
-      weekly_payment: transportDraft.weeklyPayment,
       delivery_count: transportDraft.deliveryCount === '' ? null : Number(transportDraft.deliveryCount),
       meter_start: transportDraft.meterStart === '' ? null : Number(transportDraft.meterStart),
       meter_end: transportDraft.meterEnd === '' ? null : Number(transportDraft.meterEnd),
@@ -1374,17 +1373,6 @@ export default function DayDetailModal({
               </button>
             )}
           </div>
-
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={transportDraft.weeklyPayment}
-              onChange={(e) => setTransportDraft((prev) => ({ ...prev, weeklyPayment: e.target.checked }))}
-              disabled={fieldDisabled}
-              className="h-4 w-4"
-            />
-            <span>週払</span>
-          </label>
 
           <label className="block">
             <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">配送件数 (件)</span>

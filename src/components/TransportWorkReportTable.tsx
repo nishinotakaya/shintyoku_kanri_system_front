@@ -8,7 +8,7 @@ import type { TransportPaySetting } from '../lib/transportPay'
 
 // 運送(transport)の勤怠表。紙の「稼働報告書」と同じ列を締日期間ぶん並べ、
 // カレンダー(DayDetailModal)から入れた内容がそのまま出る・ここから直しても同じ勤怠に入る。
-// 列: 日付 / 開始時間 / 終了時間 / 稼働時間 / 走行距離(km) / 備考 / 検印 / 週払 / 配送件数(件) / 開始メーター(km) / 終了メーター(km)
+// 列: 日付 / 開始時間 / 終了時間 / 稼働時間 / 走行距離(km) / 備考 / 検印 / 配送件数(件) / 開始メーター(km) / 終了メーター(km)
 
 const WEEKDAY_LABELS = '日月火水木金土'
 
@@ -146,7 +146,6 @@ export default function TransportWorkReportTable({
         clock_out: row.clockOut || null,
         distance_km: row.distanceKm === '' ? null : Number(row.distanceKm),
         note: row.note || null,
-        weekly_payment: row.weeklyPayment,
         delivery_count: row.deliveryCount === '' ? null : Number(row.deliveryCount),
         meter_start: row.meterStart === '' ? null : Number(row.meterStart),
         meter_end: row.meterEnd === '' ? null : Number(row.meterEnd),
@@ -252,7 +251,6 @@ export default function TransportWorkReportTable({
               <th className="px-2 py-1.5 w-24 text-right">走行距離(km)</th>
               <th className="min-w-[200px] px-2 py-1.5">備考</th>
               <th className="px-2 py-1.5 w-16 text-center">検印</th>
-              <th className="px-2 py-1.5 w-12 text-center">週払</th>
               <th className="px-2 py-1.5 w-20 text-right">配送件数(件)</th>
               <th className="px-2 py-1.5 w-24 text-right">開始メーター(km)</th>
               <th className="px-2 py-1.5 w-24 text-right">終了メーター(km)</th>
@@ -321,9 +319,6 @@ export default function TransportWorkReportTable({
                     ) : (
                       <span className="text-[10px] text-gray-300">—</span>
                     )}
-                  </td>
-                  <td className="px-1 py-1 text-center">
-                    <input type="checkbox" checked={row.weeklyPayment} onChange={(e) => set(day.date, 'weeklyPayment', e.target.checked)} className="h-3.5 w-3.5 accent-fuchsia-500" />
                   </td>
                   <td className="px-1 py-1">
                     <div className="flex items-baseline">
