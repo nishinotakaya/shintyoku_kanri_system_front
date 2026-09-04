@@ -27,6 +27,10 @@ export default function ContractsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [zipBusy, setZipBusy] = useState(false)
+  // 乙(相手方)・タイトルの部分一致検索(クライアント側で絞り込み)
+  const [searchText, setSearchText] = useState('')
+  // スマホはフィルターをアコーディオンに畳む。PCは常時展開
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const load = async (filter?: { contractDateFrom?: string; contractDateTo?: string }) => {
     setLoading(true)
@@ -92,9 +96,15 @@ export default function ContractsPage() {
   }
 
   // PDF はエディタと同じモーダル表示(showPdf: pdf.js 描画なのでスマホでも全ページ見える)
-  useEffect(() => { setListPage(1) }, [dateFrom, dateTo, contracts.length])
+  useEffect(() => { setListPage(1) }, [dateFrom, dateTo, searchText, contracts.length])
 
-  const pagedContracts = contracts.slice((listPage - 1) * LIST_PAGE_SIZE, listPage * LIST_PAGE_SIZE)
+  const searchKeyword = searchText.trim().toLowerCase()
+  const filteredContracts = searchKeyword
+    ? contracts.filter((contract) =>
+        (contract.party_b.name ?? '').toLowerCase().includes(searchKeyword)
+        || contract.title.toLowerCase().includes(searchKeyword))
+    : contracts
+  const pagedContracts = filteredContracts.slice((listPage - 1) * LIST_PAGE_SIZE, listPage * LIST_PAGE_SIZE)
 
   const openContractPdf = async (contract: Contract, event: React.MouseEvent) => {
     event.stopPropagation()
@@ -169,7 +179,31 @@ export default function ContractsPage() {
         </button>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-xl border border-gray-300 bg-white p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-end">
+      <div className="flex items-center gap-2 sm:hidden">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((prev) => !prev)}
+          className="flex h-9 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-[var(--color-text-sub)]"
+        >
+          🔎 フィルター{(() => {
+            const activeCount = ((dateFrom || dateTo) ? 1 : 0) + (searchText.trim() ? 1 : 0)
+            return activeCount > 0 ? `（${activeCount}）` : ''
+          })()} {filtersOpen ? '▴' : '▾'}
+        </button>
+        <span className="text-[11px] text-[var(--color-text-sub)]">{filteredContracts.length} / {contracts.length} 件</span>
+      </div>
+
+      <div className={`${filtersOpen ? 'flex' : 'hidden'} flex-col gap-2 rounded-xl border border-gray-300 bg-white p-3 shadow-sm sm:flex sm:flex-row sm:flex-wrap sm:items-end`}>
+        <label className="block">
+          <span className="mb-1 block text-sm font-semibold text-[var(--color-text-sub)]">乙・タイトルで検索</span>
+          <input
+            type="search"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="🔍 相手の氏名・タイトル"
+            className="h-11 w-full rounded-md border border-gray-300 px-3 text-base sm:w-56"
+          />
+        </label>
         <label className="block">
           <span className="mb-1 block text-sm font-semibold text-[var(--color-text-sub)]">契約日（から）</span>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
@@ -180,8 +214,8 @@ export default function ContractsPage() {
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="h-11 w-full rounded-md border border-gray-300 px-2 text-base sm:w-44" />
         </label>
-        {(dateFrom || dateTo) && (
-          <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }}
+        {(dateFrom || dateTo || searchText) && (
+          <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); setSearchText('') }}
             className="h-11 rounded-md border border-gray-300 bg-white px-3 text-base text-[var(--color-text-sub)] hover:bg-gray-50">
             フィルター解除
           </button>
@@ -210,8 +244,8 @@ export default function ContractsPage() {
             再試行
           </button>
         </div>
-      ) : contracts.length === 0 ? (
-        <div className="text-base text-[var(--color-text-sub)]">契約書がまだありません</div>
+      ) : filteredContracts.length === 0 ? (
+        <div className="text-base text-[var(--color-text-sub)]">{contracts.length === 0 ? '契約書がまだありません' : '検索に一致する契約書がありません'}</div>
       ) : (
         <>
           {/* スマホ: カード表示 */}
@@ -345,14 +379,14 @@ export default function ContractsPage() {
             </table>
           </div>
 
-          {contracts.length > LIST_PAGE_SIZE && (
+          {filteredContracts.length > LIST_PAGE_SIZE && (
             <div className="mt-2 flex items-center justify-between text-sm">
               <button onClick={() => setListPage((p) => Math.max(1, p - 1))} disabled={listPage === 1}
                 className="h-10 rounded-md border border-[var(--color-border)] bg-white px-3 disabled:opacity-40">← 前</button>
               <span className="text-[var(--color-text-sub)]">
-                {(listPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(listPage * LIST_PAGE_SIZE, contracts.length)} / {contracts.length} 件
+                {(listPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(listPage * LIST_PAGE_SIZE, filteredContracts.length)} / {filteredContracts.length} 件
               </span>
-              <button onClick={() => setListPage((p) => p + 1)} disabled={listPage * LIST_PAGE_SIZE >= contracts.length}
+              <button onClick={() => setListPage((p) => p + 1)} disabled={listPage * LIST_PAGE_SIZE >= filteredContracts.length}
                 className="h-10 rounded-md border border-[var(--color-border)] bg-white px-3 disabled:opacity-40">次 →</button>
             </div>
           )}

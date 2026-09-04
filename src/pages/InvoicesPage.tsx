@@ -150,6 +150,8 @@ export default function InvoicesPage() {
   const [filterText, setFilterText] = useState<string>('')
   // デフォルトは「請求月の新しい順」
   const [sortKey, setSortKey] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'submitted_desc' | 'submitted_asc'>('date_desc')
+  // スマホはフィルターをアコーディオンに畳む(縦に長すぎるため)。PCは常時展開
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 20
 
@@ -1396,7 +1398,28 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {(() => {
+        const activeFilterCount =
+          (filterKind !== 'all' ? 1 : 0) + (filterStatus !== 'all' ? 1 : 0) + (filterMonth ? 1 : 0) +
+          (filterUserKeys.length > 0 ? 1 : 0) + (filterText.trim() ? 1 : 0) + (sortKey !== 'date_desc' ? 1 : 0)
+        return (
+          <div className="flex items-center gap-2 sm:hidden">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((prev) => !prev)}
+              className="flex h-9 items-center gap-1 rounded-md border border-[var(--color-border)] bg-white px-3 text-xs font-semibold text-[var(--color-text-sub)]"
+            >
+              🔎 フィルター{activeFilterCount > 0 ? `（${activeFilterCount}）` : ''} {filtersOpen ? '▴' : '▾'}
+            </button>
+            <span className="text-[11px] text-[var(--color-text-sub)]">{filtered.length} / {items.length} 件</span>
+            <span className="ml-auto rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-2.5 py-1 text-xs font-bold text-white shadow">
+              💰 ¥{filteredTotals.total.toLocaleString()}
+            </span>
+          </div>
+        )
+      })()}
+
+      <div className={`${filtersOpen ? 'flex' : 'hidden'} flex-wrap items-center gap-2 sm:flex`}>
         <div className="flex gap-1">
           {(['all', 'invoice', 'expense'] as const).map((k) => (
             <button key={k} onClick={() => setFilterKind(k)}
@@ -1468,7 +1491,7 @@ export default function InvoicesPage() {
           <option value="submitted_desc">📤 送信日（新しい順）</option>
           <option value="submitted_asc">📤 送信日（古い順）</option>
         </select>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto hidden flex-wrap items-center gap-2 sm:flex">
           <span className="text-[11px] text-[var(--color-text-sub)]">
             {filtered.length} / {items.length} 件
           </span>
