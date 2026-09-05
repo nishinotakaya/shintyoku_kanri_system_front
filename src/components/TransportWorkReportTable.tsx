@@ -235,7 +235,7 @@ export default function TransportWorkReportTable({
             <span className="text-[var(--color-text-sub)]">配送件数 <span className="font-semibold text-fuchsia-600">{totalDeliveryCount}件</span></span>
           </div>
         </div>
-        <div className="text-[10px] text-[var(--color-text-sub)]">※各締日にご担当者様の検印を頂いて下さい／高速・駐車場代の合計は備考欄に記入</div>
+        <div className="text-[10px] text-[var(--color-text-sub)]">※各締日にご担当者様の検印を頂いて下さい／ガソリン代の合計は備考欄に記入</div>
         {error && <div className="text-[11px] text-red-500">{error}</div>}
       </div>
       <div className="max-h-[520px] overflow-auto">
@@ -300,7 +300,7 @@ export default function TransportWorkReportTable({
                     </div>
                   </td>
                   <td className="min-w-[200px] px-1 py-1">
-                    <input value={row.note} onChange={(e) => set(day.date, 'note', e.target.value)} placeholder="高速・駐車場代など" className={`${inputClass} text-base sm:text-sm`} />
+                    <input value={row.note} onChange={(e) => set(day.date, 'note', e.target.value)} placeholder="ガソリン代など" className={`${inputClass} text-base sm:text-sm`} />
                   </td>
                   <td className="px-1 py-1 text-center">
                     {report ? (

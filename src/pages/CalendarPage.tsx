@@ -52,6 +52,8 @@ export default function CalendarPage() {
   // 候補はサーバ(/users/pickable)が管理対象に絞って返す
   const canPickUsers = !!me?.admin || !!me?.sub_admin
   const [asUserId, setAsUserId] = useState<number | null>(null)
+  // 複数チェックで同時表示する追加ユーザー(メインの閲覧対象とは別)
+  const [extraUserIds, setExtraUserIds] = useState<number[]>([])
   const [pickableUsers, setPickableUsers] = useState<{ id: number; display_name: string; email: string; admin: boolean }[]>([])
   useEffect(() => {
     if (!canPickUsers) return
@@ -88,6 +90,32 @@ export default function CalendarPage() {
       return { period: current.data.period, reports }
     },
   })
+  // 複数チェックされた追加ユーザーの稼働(メインと同じく当月+翌月ペアで取得)
+  const primaryUserId = asUserId ?? me?.id ?? null
+  const activeExtraIds = extraUserIds.filter((userId) => userId !== primaryUserId && pickableUsers.some((u) => u.id === userId))
+  const extraReportsQ = useQuery({
+    queryKey: ['work_reports_extra', mp, nmp, activeExtraIds.join(',')],
+    enabled: canPickUsers && activeExtraIds.length > 0,
+    queryFn: async () =>
+      Promise.all(activeExtraIds.map(async (userId) => {
+        const [current, next] = await Promise.all([
+          api.get<WorkReportResponse>('/work_reports', { params: { month: mp, as_user_id: userId } }),
+          api.get<WorkReportResponse>('/work_reports', { params: { month: nmp, as_user_id: userId } }),
+        ])
+        const seen = new Set<number>()
+        const merged = [...current.data.reports, ...next.data.reports].filter((r) => {
+          if (seen.has(r.id)) return false
+          seen.add(r.id)
+          return true
+        })
+        return {
+          userId,
+          userName: pickableUsers.find((u) => u.id === userId)?.display_name ?? `ユーザー${userId}`,
+          reports: merged,
+        }
+      })),
+  })
+
   const expensesQ = useQuery({
     queryKey: ['expenses', mp, asUserId],
     queryFn: async () => (await api.get<ExpenseResponse>('/expenses', { params: { month: mp, ...asUserParam } })).data,
@@ -212,7 +240,14 @@ export default function CalendarPage() {
               users={pickableUsers}
               value={asUserId ?? me?.id ?? 0}
               meId={me?.id}
-              onChange={setAsUserId}
+              onChange={(userId) => {
+                setAsUserId(userId)
+                setExtraUserIds((prev) => prev.filter((id) => id !== userId))
+              }}
+              multiIds={extraUserIds}
+              onToggleMulti={(userId) => {
+                setExtraUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]))
+              }}
             />
           )}
           {importMsg && <span className="text-xs text-emerald-600">{importMsg}</span>}
@@ -248,6 +283,7 @@ export default function CalendarPage() {
         canEditPerson={canEditPerson}
         currentSurname={viewingSurname}
         visiblePersons={me?.calendar_persons}
+        extraUserReports={activeExtraIds.length > 0 ? (extraReportsQ.data ?? []) : []}
         me={me}
       />
 

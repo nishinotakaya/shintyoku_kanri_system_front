@@ -880,7 +880,7 @@ export default function DayDetailModal({
     preview: string | null    // サムネイル (dataURL or objectURL)
     newDataUrl: string | null // 今回新しく撮った写真 (保存時に送る)
     amount: string            // 金額(円)。AI読取結果を手修正できる
-    label: string             // 内容 (高速代・駐車場代など)
+    label: string             // 内容 (ガソリン代など)
     reading: boolean          // AI読み取り中
   }
   const [expenseReceipts, setExpenseReceipts] = useState<ExpenseReceiptState[]>([])
@@ -1566,7 +1566,7 @@ export default function DayDetailModal({
           </div>
           {/* 実費レシート: 撮影→AIが金額を読取→実費合計へ自動入力。写真は日報に添付保存される */}
           <div>
-            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">実費レシート（高速代・駐車場代など）</span>
+            <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">実費レシート（ガソリン代）</span>
             {expenseReceipts.length > 0 && (
               <div className="mb-1 space-y-1">
                 {expenseReceipts.map((receipt, index) => (

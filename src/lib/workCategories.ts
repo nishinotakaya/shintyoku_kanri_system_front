@@ -47,7 +47,7 @@ export const FIELD_LABELS_BY_CATEGORY: Partial<Record<WorkCategory, Partial<Reco
   transport: {
     content: '配送内容・件数',
     transit_section: 'コース・エリア',
-    transit_fee: '高速代・駐車場代など実費',
+    transit_fee: 'ガソリン代',
   },
 }
 

@@ -37,6 +37,8 @@ type Props = {
   canEditPerson?: (person: string) => boolean
   currentSurname?: string
   visiblePersons?: string[]
+  // 複数チェックで同時表示する追加ユーザーの稼働(日セルにチップ表示する)
+  extraUserReports?: { userId: number; userName: string; reports: WorkReport[] }[]
   /** 締日・見えるカテゴリの判定に使う。未取得(null)時は締日25日・既定4カテゴリにフォールバックする */
   me?: Me | null
 }
@@ -70,7 +72,7 @@ function statusClass(status: string) {
   return 'bg-amber-100 text-amber-700'
 }
 
-export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, visiblePersons, me }: Props) {
+export default function CalendarView({ year, month, reports, expenses, teamSchedules = [], onDayClick, onUpdateTeamSchedule, onCreateTeamSchedule, canEditPerson, currentSurname, visiblePersons, extraUserReports = [], me }: Props) {
   // 締日は me.closing_day を使う。未取得(null/undefined)のうちだけ 25 にフォールバック
   const closingDay = me?.closing_day ?? 25
   const visibleCategories = useMemo(() => visibleWorkCategories(me), [me])
@@ -98,6 +100,23 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
   // 未取得(undefined)のうちは1人も出さない。既定リストを先に描くと、見えてはいけない人が
   // 一瞬表示されてしまうため。取込データから動的に足すこともしない(設定で隠せなくなる)。
   const persons = visiblePersons ?? []
+
+  // 追加ユーザーの稼働を日付ごとにまとめる(チップ表示用)。時間が無い日は「稼働」とだけ出す
+  const extraByDate = useMemo(() => {
+    const map = new Map<string, { userId: number; userName: string; totalH: number }[]>()
+    extraUserReports.forEach(({ userId, userName, reports: userReports }) => {
+      const hoursByDate = new Map<string, number>()
+      userReports.forEach((r) => {
+        hoursByDate.set(r.work_date, (hoursByDate.get(r.work_date) ?? 0) + (r.hours ?? 0))
+      })
+      hoursByDate.forEach((totalH, dateStr) => {
+        const list = map.get(dateStr) ?? []
+        list.push({ userId, userName, totalH: Math.round(totalH * 10) / 10 })
+        map.set(dateStr, list)
+      })
+    })
+    return map
+  }, [extraUserReports])
 
   // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）。
   // 運送(transport)ユーザーはタマ向けの既定ステータス（出社 / リビング リモート / TL@… ）が
@@ -374,6 +393,17 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                   />
                 </div>
               )}
+
+              {/* 複数チェックされた他ユーザーの稼働チップ */}
+              {(extraByDate.get(c.date) ?? []).map((extra) => (
+                <div
+                  key={extra.userId}
+                  className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-sky-100 px-1 text-[9px] leading-4 text-sky-700"
+                  title={`${extra.userName} ${extra.totalH > 0 ? `${extra.totalH}h` : '稼働'}`}
+                >
+                  {extra.userName.split(/[\s\u3000]/)[0]} {extra.totalH > 0 ? `${extra.totalH}h` : '稼働'}
+                </div>
+              ))}
 
               {/* 作業内容（短縮、tooltip でフル表示） */}
               {c.reports.length > 0 && c.reports[0].content && (
