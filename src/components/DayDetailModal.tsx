@@ -1624,13 +1624,15 @@ export default function DayDetailModal({
 
           <label className="block">
             <span className="block text-[11px] text-[var(--color-text-sub)] mb-0.5">実費合計 (円)</span>
+            {/* メーターと同じ「写真必須」方式: レシートを撮るまで入力不可。金額はAI読取の合計が自動で入る */}
             <input
               type="number"
               inputMode="numeric"
               min="0"
               value={transportDraft.transitFee}
               onChange={(e) => setTransportDraft((prev) => ({ ...prev, transitFee: e.target.value }))}
-              disabled={fieldDisabled}
+              disabled={fieldDisabled || expenseReceipts.length === 0}
+              placeholder={expenseReceipts.length === 0 ? 'レシート撮影で入力可に' : ''}
               className="w-full rounded border border-[var(--color-border)] px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
             />
           </label>
