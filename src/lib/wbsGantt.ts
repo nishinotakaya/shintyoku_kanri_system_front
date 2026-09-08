@@ -4,19 +4,19 @@
 
 export const DAY_WIDTH_PX = 30
 // Excel 列 I 相当。塗りなし・見出し無しの余白列(sticky には含めない)。
-export const SPACER_COLUMN_WIDTH_PX = 22
+export const SPACER_COLUMN_WIDTH_PX = 16
 // ガント範囲の上限日数。異常な日付が1件混入しても日別 th が数万個に膨らまないようにする。
 export const GANTT_MAX_DAYS = 730
 
 // Excel 列 B〜H。列 J(日数)は hidden="1" のため画面には出さない(日数計算自体は継続する)。
 export const WBS_TABLE_COLUMNS = [
-  { key: 'wbs_level', label: 'WBSレベル', widthPx: 104, align: 'left' as const },
-  { key: 'title', label: 'タスク', widthPx: 240, align: 'left' as const },
-  { key: 'assignee_name', label: '担当者', widthPx: 140, align: 'center' as const },
-  { key: 'progress_rate', label: '進捗率', widthPx: 80, align: 'center' as const },
-  { key: 'workload', label: '工数\n（人日）', widthPx: 80, align: 'center' as const },
-  { key: 'start_date', label: '開始', widthPx: 78, align: 'center' as const },
-  { key: 'end_date', label: '終了', widthPx: 78, align: 'center' as const },
+  { key: 'wbs_level', label: 'WBSレベル', widthPx: 100, align: 'left' as const },
+  { key: 'title', label: 'タスク', widthPx: 220, align: 'left' as const },
+  { key: 'assignee_name', label: '担当者', widthPx: 100, align: 'center' as const },
+  { key: 'progress_rate', label: '進捗率', widthPx: 64, align: 'center' as const },
+  { key: 'workload', label: '工数\n（人日）', widthPx: 64, align: 'center' as const },
+  { key: 'start_date', label: '開始', widthPx: 64, align: 'center' as const },
+  { key: 'end_date', label: '終了', widthPx: 64, align: 'center' as const },
 ] as const
 
 // 元 xlsm のテーマ(実測)から起こした配色。コンポーネント側には直接色コードを書かず、ここから参照する。
