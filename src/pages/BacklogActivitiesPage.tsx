@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
 import { downloadBlob } from '../lib/downloadBlob'
-import { effectiveTaskValue, hasTaskOverride } from '../lib/notionTaskEffective'
+import { effectiveTaskValue, hasTaskOverride, hasUnsubmittedChange, type NotionTaskEffectiveField } from '../lib/notionTaskEffective'
 import {
   DAY_WIDTH_PX,
   GANTT_MAX_DAYS,
@@ -84,6 +84,8 @@ type NotionTaskOption = {
   priority: string | null
   note: string
   memo: string
+  // 提出済スナップショット。キーは title/assignee_name/workload/start_date/end_date/progress_rate。
+  wbs_submitted_overrides?: Record<string, string> | null
 }
 // Excel テンプレ(進捗報告書 .xlsm)の登録状況
 type WbsExcelTemplateInfo = {
@@ -148,17 +150,19 @@ export default function BacklogActivitiesPage() {
       .catch(() => setNotice({ kind: 'err', text: '対象ユーザーの取得に失敗しました' }))
   }, [])
 
+  // 対応ログ・Notion(WBS)を含む Payload 全体を取得し直す。NotionView の再取得(onReload)にも使う。
+  const fetchData = async (userId: number) => {
+    const r = await api.get<Payload>('/backlog_activities', { params: { user_id: userId } })
+    setData(r.data)
+    const latest = r.data.summary.at(-1)?.month
+    setOpenMonths(latest ? { [latest]: true } : {})
+  }
+
   useEffect(() => {
     if (selectedUserId == null) return
     setLoading(true)
     setNotice(null)
-    api
-      .get<Payload>('/backlog_activities', { params: { user_id: selectedUserId } })
-      .then((r) => {
-        setData(r.data)
-        const latest = r.data.summary.at(-1)?.month
-        setOpenMonths(latest ? { [latest]: true } : {})
-      })
+    fetchData(selectedUserId)
       .catch(() => setNotice({ kind: 'err', text: '対応ログの取得に失敗しました' }))
       .finally(() => setLoading(false))
   }, [selectedUserId])
@@ -464,7 +468,11 @@ export default function BacklogActivitiesPage() {
       )}
 
       {!loading && data && view === 'notion' && (
-        <NotionView tasks={data.notion_tasks ?? []} onPatch={saveNotionTask} />
+        <NotionView
+          tasks={data.notion_tasks ?? []}
+          onPatch={saveNotionTask}
+          onReload={() => (selectedUserId == null ? Promise.resolve() : fetchData(selectedUserId))}
+        />
       )}
 
       {!loading && data && view === 'detail' && (
@@ -803,13 +811,21 @@ function StatusBadge({ status, muted }: { status: string | null; muted?: boolean
 // 元 xlsm の本文フォント。プロジェクト情報行〜表全体で共通して使う。
 const WBS_EXCEL_FONT_FAMILY = '"Meiryo UI", Meiryo, sans-serif'
 
-function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (notionBlockId: string, patch: Record<string, string>) => void }) {
+// Excel 出力・提出済判定の対象になる修正後フィールド(WBS_TABLE_COLUMNS のうち WBSレベルを除く6列)。
+const WBS_SUBMITTABLE_FIELDS: NotionTaskEffectiveField[] = ['title', 'assignee_name', 'progress_rate', 'workload', 'start_date', 'end_date']
+
+function NotionView({ tasks, onPatch, onReload }: {
+  tasks: NotionTaskOption[]
+  onPatch: (notionBlockId: string, patch: Record<string, string>) => void
+  onReload: () => Promise<void>
+}) {
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
   const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
   const [excelTemplateLoaded, setExcelTemplateLoaded] = useState(false)
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [exportingExcel, setExportingExcel] = useState(false)
+  const [markingSubmitted, setMarkingSubmitted] = useState(false)
 
   useEffect(() => {
     api
@@ -832,7 +848,7 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
   }, [tasks, assigneeFilter])
 
   // ガントの起点・終点は Excel の K5 式と同じ規則。
-  // 起点 = project_start(テンプレ)がある週の月曜、無ければ全タスクの実効開始日の最小値の週の月曜。
+  // 起点 = min(project_start(テンプレ), 全タスクの実効開始日の最小値)がある週の月曜(project_start が無ければ実効開始日の最小値、それも無ければ今日)。
   // 終点 = max(起点+90日(13週分), 全タスクの実効終了日の最大値をその週の日曜まで切り上げ)。
   const ganttRange = useMemo(() => {
     const startDates: Date[] = []
@@ -848,7 +864,10 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
     const projectStartDate = excelTemplate?.project_start ? parseDateOnly(excelTemplate.project_start) : null
     const earliestStartDate = startDates.length > 0 ? startDates.reduce((earliest, date) => (date < earliest ? date : earliest)) : null
     const latestEndDate = endDates.length > 0 ? endDates.reduce((latest, date) => (date > latest ? date : latest)) : null
-    const rangeStart = mondayOfExcelWeek(projectStartDate ?? earliestStartDate ?? todayDateOnly())
+    const rangeStartSourceDate = projectStartDate
+      ? (earliestStartDate && earliestStartDate < projectStartDate ? earliestStartDate : projectStartDate)
+      : (earliestStartDate ?? todayDateOnly())
+    const rangeStart = mondayOfExcelWeek(rangeStartSourceDate)
     const minimumRangeEnd = addDays(rangeStart, 90) // Excel の K〜CW = 13週分
     const rangeEndFromTasks = latestEndDate ? sundayOfExcelWeek(latestEndDate) : minimumRangeEnd
     const rangeEndBeforeClamp = rangeEndFromTasks > minimumRangeEnd ? rangeEndFromTasks : minimumRangeEnd
@@ -873,8 +892,21 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
     return groups
   }, [ganttRange])
 
+  // table-fixed は colgroup の各 col 幅を尊重するが、table 自体に総幅が無いと実際の列幅が縮み、
+  // sticky 列の間に隙間ができてガント側が透けて見える。colgroup の合計と一致させる。
+  const tableWidthPx = useMemo(() => {
+    const stickyColumnsWidthPx = WBS_TABLE_COLUMNS.reduce((sum, column) => sum + column.widthPx, 0)
+    return stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX + ganttRange.days.length * DAY_WIDTH_PX
+  }, [ganttRange])
+
   const toggleTaskOpen = (notionBlockId: string) =>
     setOpenTaskBlockIds((prev) => ({ ...prev, [notionBlockId]: !prev[notionBlockId] }))
+
+  // 未提出の変更セル数(タスク × 6編集列で数える)。「提出済にする」ボタンの表示・disabled 判定に使う。
+  const unsubmittedChangeCount = useMemo(
+    () => tasks.reduce((count, task) => count + WBS_SUBMITTABLE_FIELDS.filter((field) => hasUnsubmittedChange(task, field)).length, 0),
+    [tasks],
+  )
 
   const uploadExcelTemplate = async (file: File) => {
     setUploadingTemplate(true)
@@ -904,11 +936,32 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
       const matchedCount = Number(response.headers['x-wbs-matched'] ?? 0)
       const appendedCount = Number(response.headers['x-wbs-appended'] ?? 0)
       const skippedCount = Number(response.headers['x-wbs-skipped'] ?? 0)
-      toast.success(`更新 ${matchedCount} 行 / 追加 ${appendedCount} 行 / 収まらず ${skippedCount} 行`)
+      const changedCellsHeader = response.headers['x-wbs-changed-cells'] as string | undefined
+      const unsubmittedCellsHeader = response.headers['x-wbs-unsubmitted-cells'] as string | undefined
+      const extraInfoParts: string[] = []
+      if (changedCellsHeader != null) extraInfoParts.push(`変更セル ${changedCellsHeader}`)
+      if (unsubmittedCellsHeader != null) extraInfoParts.push(`未提出（赤）${unsubmittedCellsHeader}`)
+      const extraInfoSuffix = extraInfoParts.length > 0 ? ` / ${extraInfoParts.join(' / ')}` : ''
+      toast.success(`更新 ${matchedCount} 行 / 追加 ${appendedCount} 行 / 収まらず ${skippedCount} 行${extraInfoSuffix}`)
     } catch (e: any) {
       toast.error(e?.response?.data?.error ?? 'Excel 出力に失敗しました')
     } finally {
       setExportingExcel(false)
+    }
+  }
+
+  // 全タスクの現在の修正後値を提出済スナップショットにする(=赤背景を解除する)。
+  const markSubmitted = async () => {
+    const changedCellCountAtClick = unsubmittedChangeCount
+    setMarkingSubmitted(true)
+    try {
+      await api.post('/backlog_activities/wbs_mark_submitted')
+      await onReload()
+      toast.success(`提出済にしました（${changedCellCountAtClick} 件）`)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? '提出済への更新に失敗しました')
+    } finally {
+      setMarkingSubmitted(false)
     }
   }
 
@@ -941,6 +994,14 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
           className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
         >
           {exportingExcel ? '出力中…' : '📤 Excel 出力'}
+        </button>
+        <button
+          onClick={markSubmitted}
+          disabled={markingSubmitted || unsubmittedChangeCount === 0}
+          title="現在の修正後値を提出済スナップショットにする(赤背景のセルが解除される)"
+          className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+        >
+          {markingSubmitted ? '更新中…' : `✅ 提出済にする（変更 ${unsubmittedChangeCount} 件）`}
         </button>
         <span className="mx-1 h-5 w-px bg-slate-300" />
         <label className="inline-flex items-center gap-1.5 text-xs text-slate-500">
@@ -981,7 +1042,7 @@ function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (n
             </div>
           )}
           <div className="overflow-auto max-h-[75vh] rounded-xl border border-slate-300 shadow-sm">
-            <table className="table-fixed border-collapse">
+            <table className="table-fixed border-collapse" style={{ width: tableWidthPx }}>
               <colgroup>
                 {WBS_TABLE_COLUMNS.map((column) => <col key={column.key} style={{ width: column.widthPx }} />)}
                 <col style={{ width: SPACER_COLUMN_WIDTH_PX }} />
@@ -1111,6 +1172,11 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
     borderTop: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
     borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
   }
+  // 修正後の値が提出済スナップショットとまだ一致しない編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
+  const stickyCellStyleFor = (field: NotionTaskEffectiveField) => ({
+    ...stickyCellStyle,
+    backgroundColor: hasUnsubmittedChange(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : WBS_EXCEL_COLORS.inputCellBackground,
+  })
 
   return (
     <Fragment>
@@ -1118,7 +1184,7 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
         <td className={`${stickyCellClassName} text-left tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(0) }}>
           {task.wbs_level || ''}
         </td>
-        <td className={`${stickyCellClassName} text-left`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(1) }}>
+        <td className={`${stickyCellClassName} text-left`} style={{ ...stickyCellStyleFor('title'), left: wbsColumnLeftOffset(1) }}>
           <span className="flex items-center gap-1">
             <button onClick={onToggleOpen} className="shrink-0 text-[10px] text-slate-500 hover:text-slate-900" title="詳細(備考・メモ・進捗状況・優先度)を開閉">
               {open ? '▲' : '▼'}
@@ -1131,12 +1197,12 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
             </span>
           </span>
         </td>
-        <td className={`${stickyCellClassName} text-center`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(2) }}>
+        <td className={`${stickyCellClassName} text-center`} style={{ ...stickyCellStyleFor('assignee_name'), left: wbsColumnLeftOffset(2) }}>
           <EditableCell kind="text" raw={effectiveAssigneeName ?? ''}
             display={<OverrideMarkedValue value={effectiveAssigneeName || '—'} overridden={hasTaskOverride(task, 'assignee_name')} previousValue={task.assignee_name} />}
             onSave={(value) => onPatch(task.notion_block_id, { assignee_name_prev: value })} />
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(3) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('progress_rate'), left: wbsColumnLeftOffset(3) }}>
           {/* Excel のデータバー(グレー、0〜100%で幅比例)を背景に敷いた上に NN% を表示 */}
           <div
             className="relative -mx-1.5 -my-1 px-1.5 py-1"
@@ -1147,17 +1213,17 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
               onSave={(value) => onPatch(task.notion_block_id, { progress_rate_prev: value })} />
           </div>
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(4) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('workload'), left: wbsColumnLeftOffset(4) }}>
           <EditableCell kind="text" raw={effectiveWorkload == null ? '' : String(effectiveWorkload)}
             display={<OverrideMarkedValue value={effectiveWorkload == null ? '—' : String(effectiveWorkload)} overridden={hasTaskOverride(task, 'workload')} previousValue={task.workload == null ? null : String(task.workload)} />}
             onSave={(value) => onPatch(task.notion_block_id, { workload_prev: value })} />
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(5) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('start_date'), left: wbsColumnLeftOffset(5) }}>
           <EditableCell kind="date" raw={effectiveStartDate ?? ''}
             display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveStartDate) || '—'} overridden={hasTaskOverride(task, 'start_date')} previousValue={task.start_date} />}
             onSave={(value) => onPatch(task.notion_block_id, { start_date_prev: value })} />
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(6) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('end_date'), left: wbsColumnLeftOffset(6) }}>
           <EditableCell kind="date" raw={effectiveEndDate ?? ''}
             display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveEndDate) || '—'} overridden={hasTaskOverride(task, 'end_date')} previousValue={task.end_date} />}
             onSave={(value) => onPatch(task.notion_block_id, { end_date_prev: value })} />

@@ -16,6 +16,9 @@ export type NotionTaskEffectiveSource = {
   progress_rate_prev: number | null
   status: string | null
   status_prev: string | null
+  // 提出済スナップショット。キーは修正後フィールド名(title/assignee_name/workload/start_date/end_date/progress_rate)、
+  // 値は提出時点の修正後値を文字列化したもの(バックエンドの to_f.to_s 等と同じ規則)。
+  wbs_submitted_overrides?: Record<string, string> | null
 }
 
 const PREV_FIELD_KEY = {
@@ -47,4 +50,19 @@ export function effectiveTaskValue<Field extends NotionTaskEffectiveField>(
     return task[previousValueKey] as NotionTaskEffectiveSource[Field]
   }
   return task[field]
+}
+
+// バックエンドの to_f.to_s と同じ規則で修正後値を文字列化する(提出済スナップショットとの比較用)。
+// Ruby: 2.to_f.to_s="2.0", 2.5.to_f.to_s="2.5" と揃えるため、整数値は "N.0" にする。
+function serializeOverride(value: string | number | null | undefined): string {
+  if (typeof value === 'number') return Number.isInteger(value) ? `${value}.0` : String(value)
+  return String(value)
+}
+
+// 修正後の値が提出済スナップショット(wbs_submitted_overrides)とまだ一致しない(=未提出の変更がある)か。
+export function hasUnsubmittedChange(task: NotionTaskEffectiveSource, field: NotionTaskEffectiveField): boolean {
+  if (!hasTaskOverride(task, field)) return false
+  const previousValueKey = PREV_FIELD_KEY[field] as keyof NotionTaskEffectiveSource
+  const currentOverrideValue = task[previousValueKey] as string | number | null | undefined
+  return serializeOverride(currentOverrideValue) !== task.wbs_submitted_overrides?.[field]
 }
