@@ -12,6 +12,8 @@ const DEFAULT_ZOOM_LEVEL = 1.0 // 1.0 = 「幅に合わせる」
 const ZOOM_STEP = 0.25
 const PAGE_GAP = 8 // px。ページ間の隙間
 const PAGE_HORIZONTAL_MARGIN = 16 // px。幅に合わせる計算で左右に差し引く余白 (ページ側の px-2 と対応)
+// ヘッダーの「共有」「ダウンロード」ボタン共通スタイル
+const HEADER_TEXT_BUTTON_CLASS = 'flex h-11 items-center justify-center whitespace-nowrap rounded-md border border-[var(--color-border)] px-3 text-base font-semibold text-[var(--color-text)]'
 
 // PDF ビューアーの実体 (pdf.js 読み込み・canvas 描画)。
 // PdfViewerModal はストア購読のみを担当し、表示するものが無いときはこれを一切マウントしない。
@@ -256,20 +258,18 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
-    URL.revokeObjectURL(objectUrl)
+    // click() 直後に revoke すると iOS Safari で保存前に URL が失効することがあるため、少し待ってから解放する
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
   }
 
-  const handleShareOrDownload = async () => {
-    if (canShareFile) {
-      try {
-        await navigator.share({ files: [shareFile], title: filename })
-        return
-      } catch (error) {
-        // ユーザーがシートをキャンセルした場合は何もしない。それ以外の失敗はダウンロードに落とす。
-        if (error instanceof DOMException && error.name === 'AbortError') return
-      }
+  const handleShare = async () => {
+    try {
+      await navigator.share({ files: [shareFile], title: filename })
+    } catch (error) {
+      // ユーザーがシートをキャンセルした場合は何もしない。それ以外の失敗はダウンロードに落とす。
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      downloadFile()
     }
-    downloadFile()
   }
 
   return (
@@ -307,12 +307,23 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
             >
               ＋
             </button>
+            {canShareFile && (
+              <button
+                type="button"
+                onClick={handleShare}
+                className={HEADER_TEXT_BUTTON_CLASS}
+              >
+                共有
+              </button>
+            )}
             <button
               type="button"
-              onClick={handleShareOrDownload}
-              className="flex h-11 items-center justify-center whitespace-nowrap rounded-md border border-[var(--color-border)] px-3 text-base font-semibold text-[var(--color-text)]"
+              onClick={downloadFile}
+              aria-label="ダウンロード"
+              className={HEADER_TEXT_BUTTON_CLASS}
             >
-              {canShareFile ? '共有' : 'ダウンロード'}
+              <span className="sm:hidden" aria-hidden>⬇</span>
+              <span className="hidden sm:inline">ダウンロード</span>
             </button>
             <button
               ref={closeButtonRef}

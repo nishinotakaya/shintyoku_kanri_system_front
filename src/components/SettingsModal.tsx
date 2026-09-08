@@ -6,6 +6,21 @@ import type { Me } from '../lib/api'
 import { visibleWorkCategories, WORK_CATEGORY_LABELS } from '../lib/workCategories'
 import type { WorkCategory } from '../lib/workCategories'
 import DocumentFolderSync from './DocumentFolderSync'
+import { canUseFeature } from '../lib/featureFlags'
+import type { FeatureKey } from '../App'
+
+// タブ定義。feature 付きタブは me.feature_flags で表示可否が決まる(admin は明示的に false のときだけ非表示)。
+// adminOnly は admin またはサブ管理者(テナント代表)にだけ表示する。
+type SettingsTabKey = 'account' | 'invoice' | 'backlog' | 'github' | 'freee' | 'users'
+type SettingsTabDefinition = { key: SettingsTabKey; label: string; feature?: FeatureKey; adminOnly?: boolean }
+const SETTINGS_TABS: SettingsTabDefinition[] = [
+  { key: 'account', label: 'アカウント' },
+  { key: 'invoice', label: '請求書' },
+  { key: 'backlog', label: 'バックログ', feature: 'settings_backlog' },
+  { key: 'github', label: 'GitHub', feature: 'settings_github' },
+  { key: 'freee', label: 'freee', feature: 'settings_freee' },
+  { key: 'users', label: '👥 ユーザー', adminOnly: true },
+]
 
 type InvoiceSetting = {
   client_name: string
@@ -52,13 +67,23 @@ export default function SettingsModal({
   const monthParam = `${year}-${String(month).padStart(2, '0')}`
   const todayIso = new Date().toISOString().slice(0, 10)
   const [applicationDate, setApplicationDate] = useState<string>(todayIso)
-  const [tab, setTab] = useState<'account' | 'invoice' | 'backlog' | 'github' | 'freee' | 'users'>(initialTab)
+  const [requestedTab, setRequestedTab] = useState<SettingsTabKey>(initialTab)
   useEffect(() => {
-    if (open) setTab(initialTab)
+    if (open) setRequestedTab(initialTab)
   }, [open, initialTab])
 
   const [isAdmin, setIsAdmin] = useState(false)
   const [me, setMe] = useState<Me | null>(null)
+
+  // 表示可能なタブ。feature 付きタブは me が読み込まれるまで(一瞬 backlog 等が出ないよう)非表示にする
+  const visibleTabs = SETTINGS_TABS.filter((tabDefinition) => {
+    if (tabDefinition.adminOnly) return isAdmin || !!me?.sub_admin
+    if (tabDefinition.feature) return canUseFeature(me, tabDefinition.feature)
+    return true
+  })
+
+  // 要求されたタブが非表示(権限なし・me 未読込)の間は account を表示する
+  const tab: SettingsTabKey = visibleTabs.some((tabDefinition) => tabDefinition.key === requestedTab) ? requestedTab : 'account'
 
   // === 会社(テナント) ===
   // カレンダーの行ラベルにこの会社名が出る。変更できるのは代表本人と admin だけ。
@@ -325,18 +350,15 @@ export default function SettingsModal({
         </div>
 
         <div className="mt-5 flex gap-2 flex-wrap">
-          {((isAdmin || me?.sub_admin)
-            ? ['account', 'invoice', 'backlog', 'github', 'freee', 'users'] as const
-            : ['account', 'invoice', 'backlog', 'github', 'freee'] as const
-          ).map((t) => (
+          {visibleTabs.map((tabDefinition) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabDefinition.key}
+              onClick={() => setRequestedTab(tabDefinition.key)}
               className={`rounded-lg px-4 py-1.5 text-xs font-semibold ${
-                tab === t ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] hover:text-[var(--color-text)]'
+                tab === tabDefinition.key ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg)] text-[var(--color-text-sub)] hover:text-[var(--color-text)]'
               }`}
             >
-              {t === 'account' ? 'アカウント' : t === 'invoice' ? '請求書' : t === 'backlog' ? 'バックログ' : t === 'github' ? 'GitHub' : t === 'freee' ? 'freee' : '👥 ユーザー'}
+              {tabDefinition.label}
             </button>
           ))}
         </div>

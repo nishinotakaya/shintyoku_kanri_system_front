@@ -26,6 +26,7 @@ import { useMe, clearMeCache } from './lib/useMe'
 import ToastHost from './components/ToastHost'
 import { api } from './lib/api'
 import type { Me } from './lib/api'
+import { canUseFeature } from './lib/featureFlags'
 
 type SubmissionLite = { id: number; year: number; month: number; category: string; kind: 'invoice' | 'expense'; user_display_name: string }
 
@@ -35,7 +36,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 // 各画面の閲覧権限 (admin は常に全部見れる)。値は users.feature_flags のキー。
-export type FeatureKey = 'attendance' | 'calendar' | 'progress' | 'purchase_orders' | 'invoices' | 'contracts' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio'
+export type FeatureKey = 'attendance' | 'calendar' | 'progress' | 'purchase_orders' | 'invoices' | 'contracts' | 'skill_sheet' | 'interview_mindmap' | 'backlog_activities' | 'keihi' | 'video_studio' | 'settings_backlog' | 'settings_github' | 'settings_freee'
 type NavItem = { to: string; label: string; icon: string; adminOnly?: boolean; feature?: FeatureKey; tabTitle?: string }
 const NAV: NavItem[] = [
   { to: '/calendar', label: 'カレンダー', icon: '📅', feature: 'calendar', tabTitle: 'カレンダー' },
@@ -57,10 +58,7 @@ const NAV: NavItem[] = [
 // （常時表示でロックアウト防止）、feature は admin なら明示的に false のときだけ非表示・一般ユーザーは該当フラグ ON のみ
 function navVisible(item: NavItem, me: Me | null): boolean {
   if (item.adminOnly) return !!me?.admin || !!me?.sub_admin
-  if (item.feature) {
-    if (me?.admin) return me?.feature_flags?.[item.feature] !== false
-    return !!me?.feature_flags?.[item.feature]
-  }
+  if (item.feature) return canUseFeature(me, item.feature)
   return true
 }
 
@@ -80,15 +78,9 @@ function RequireFeature({ feature, adminOnly, children }: { feature?: FeatureKey
   const { me, loading } = useMe()
   if (loading) return null
   if (!me) return <Navigate to="/sign_in" replace />
-  // admin: adminOnly 画面は常に閲覧可、feature 画面は明示的に false のときだけ不可
-  if (me.admin) {
-    if (adminOnly) return <>{children}</>
-    if (!feature || me.feature_flags?.[feature] !== false) return <>{children}</>
-    return <Navigate to={firstVisiblePath(me)} replace />
-  }
-  // adminOnly 画面(ユーザー一覧)はサブ管理者(テナント代表・管理割当あり)にも開く。中身はサーバ側で管理対象だけに絞られる
-  if (adminOnly) return me.sub_admin ? <>{children}</> : <Navigate to={firstVisiblePath(me)} replace />
-  if (!feature || me.feature_flags?.[feature]) return <>{children}</>
+  // adminOnly 画面(ユーザー一覧)は admin とサブ管理者(テナント代表・管理割当あり)に開く。中身はサーバ側で管理対象だけに絞られる
+  if (adminOnly) return me.admin || me.sub_admin ? <>{children}</> : <Navigate to={firstVisiblePath(me)} replace />
+  if (!feature || canUseFeature(me, feature)) return <>{children}</>
   return <Navigate to={firstVisiblePath(me)} replace />
 }
 const BRAND = '進捗管理システム'

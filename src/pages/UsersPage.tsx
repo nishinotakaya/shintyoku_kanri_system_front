@@ -6,6 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { startImpersonation } from '../lib/impersonation'
 import { WORK_CATEGORY_KEYS, WORK_CATEGORY_LABELS, visibleWorkCategories } from '../lib/workCategories'
 import type { WorkCategory } from '../lib/workCategories'
+import { canUseFeature } from '../lib/featureFlags'
 
 type AdminUser = {
   id: number
@@ -125,11 +126,13 @@ export default function UsersPage() {
     { key: 'backlog_activities', label: '対応ログ' },
     { key: 'video_studio', label: '動画スタジオ' },
     { key: 'keihi', label: '経費計上' },
+    { key: 'settings_backlog', label: '設定:Backlog' },
+    { key: 'settings_github', label: '設定:GitHub' },
+    { key: 'settings_freee', label: '設定:freee' },
   ]
 
   // 管理者はデフォルト全チェック（明示的に false のときだけ OFF）。一般ユーザーは true のときだけ ON。
-  const featureChecked = (u: AdminUser, key: string) =>
-    u.admin ? u.feature_flags?.[key] !== false : !!u.feature_flags?.[key]
+  const featureChecked = (u: AdminUser, key: string) => canUseFeature(u, key)
 
   const toggleFeature = (u: AdminUser, key: string) =>
     patchUser(u.id, { feature_flags: { [key]: !featureChecked(u, key) } })

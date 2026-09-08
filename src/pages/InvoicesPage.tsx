@@ -1185,7 +1185,7 @@ export default function InvoicesPage() {
     return { total, ownSales: total - subcontractPayment, subcontractPayment }
   }, [visibleIssuedPdfs, visibleMerged, filtered, me])
 
-  // 振込通知メール（支払通知書）
+  // 振込通知メール（支払明細書）
   const todayStr = () => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -2275,7 +2275,7 @@ export default function InvoicesPage() {
         <Modal onClose={closePaymentNotice} size="md" panelClassName="space-y-3">
           <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold">💰 振込通知メール送信（支払通知）</div>
+                <div className="text-sm font-semibold">💰 振込通知メール送信（支払明細書）</div>
                 <div className="text-[11px] text-[var(--color-text-sub)]">選択した {checkedSubmissionIds.length} 件を振込済としてマークし、宛先に通知メールを送信します</div>
               </div>
               <button onClick={closePaymentNotice} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
@@ -2298,7 +2298,7 @@ export default function InvoicesPage() {
                   className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
               </label>
               <label className="block col-span-2">
-                <div className="text-[11px] font-semibold mb-0.5">電子サイン 署名者名（支払通知書に「電子的に証明済／署名者／日時／検証番号」を印字）</div>
+                <div className="text-[11px] font-semibold mb-0.5">電子サイン 署名者名（支払明細書に「電子的に証明済／署名者／日時／検証番号」を印字）</div>
                 <input type="text" value={paymentSigner} onChange={(e) => setPaymentSigner(e.target.value)}
                   placeholder="例: 西野 鷹也"
                   className="w-full rounded-md border border-[var(--color-border)] px-2 py-1 text-sm" />
