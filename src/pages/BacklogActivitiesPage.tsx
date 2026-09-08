@@ -66,8 +66,8 @@ type Payload = {
 
 // 既定の出力／取込先テンプレート（川村_タスク）
 const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1fUMfik4FnsqIZgVQv-IwJf5HkH7JN1Lf7VyiP_C9pAo/edit'
-// Notion(WBS) 出力先（Backlog とは別スプレッドシート）
-const NOTION_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1bLBbvF9CJNKJgE6mwyUhVmw0dmuvq_ZyZwwAvYbsLyw/edit'
+// 主_リビング_進捗管理_川村_西野 の Notion(WBS) タブ。アプリ→スプシの出力は廃止（シートは人が編集するマスタ）
+const NOTION_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1rhRJ8vr3m8_HRZsawMR61r5PI0DcgzYZslHez43LZ8I/edit#gid=1287451848'
 const STATUS_OPTIONS = ['処理中', '処理済み', '完了'] as const
 
 const TYPE_STYLE: Record<Activity['activity_type'], string> = {
@@ -88,7 +88,6 @@ export default function BacklogActivitiesPage() {
   const [importingDocs, setImportingDocs] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [exportingNotion, setExportingNotion] = useState(false)
   const [importingNotion, setImportingNotion] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string; url?: string } | null>(null)
   const [savingKey, setSavingKey] = useState<string | null>(null)
@@ -138,16 +137,36 @@ export default function BacklogActivitiesPage() {
     }
   }
 
-  // Notion(WBS) を Notion 本体から最新取得（同期）してページを再読込する。
+  // Notion(WBS) を Notion 本体から最新取得（同期）し、続けてスプレッドシートの「修正後」を取り込む。
   const syncNotion = async () => {
     if (selectedUserId == null) return
     setSyncingNotion(true)
     setNotice(null)
     try {
       const r = await api.post<{ synced: number }>('/notion_tasks/sync')
-      const p = await api.get<Payload>('/backlog_activities', { params: { user_id: selectedUserId } })
-      setData(p.data)
-      setNotice({ kind: 'ok', text: `Notion から ${r.data.synced} 件のタスクを同期しました。` })
+      if (!notionSheetUrl.trim()) {
+        const p = await api.get<Payload>('/backlog_activities', { params: { user_id: selectedUserId } })
+        setData(p.data)
+        setNotice({ kind: 'ok', text: `Notion から ${r.data.synced} 件のタスクを同期しました。` })
+        return
+      }
+      try {
+        const imp = await api.post<Payload & { notion_imported: { imported_rows: number; skipped_rows: number; url: string } }>(
+          '/backlog_activities/import_notion',
+          { spreadsheet_url: notionSheetUrl },
+          { params: { user_id: selectedUserId } },
+        )
+        setData(imp.data)
+        setNotice({
+          kind: 'ok',
+          text: `Notion から ${r.data.synced} 件同期し、スプレッドシートから ${imp.data.notion_imported.imported_rows} 行（修正後）を取り込みました。`,
+          url: imp.data.notion_imported.url,
+        })
+      } catch (e: any) {
+        const p = await api.get<Payload>('/backlog_activities', { params: { user_id: selectedUserId } })
+        setData(p.data)
+        setNotice({ kind: 'err', text: `Notion 同期は完了しましたが、スプレッドシート取込に失敗しました: ${e?.response?.data?.error ?? '不明なエラー'}` })
+      }
     } catch (e: any) {
       setNotice({ kind: 'err', text: e?.response?.data?.error ?? 'Notion 同期に失敗しました' })
     } finally {
@@ -191,30 +210,6 @@ export default function BacklogActivitiesPage() {
     }
   }
 
-  // Notion(WBS) を Backlog とは別のスプレッドシートへ書き出す。
-  const exportNotion = async () => {
-    if (selectedUserId == null) return
-    if (!notionSheetUrl.trim()) {
-      setShowSheetUrls(true)
-      setNotice({ kind: 'err', text: 'Notion 出力先スプレッドシートの URL を入力してください（「⚙ 出力先」で設定）。' })
-      return
-    }
-    setExportingNotion(true)
-    setNotice(null)
-    try {
-      const r = await api.post<{ url: string; rows?: number; tab?: string }>(
-        '/backlog_activities/export_notion',
-        { spreadsheet_url: notionSheetUrl },
-        { params: { user_id: selectedUserId } },
-      )
-      setNotice({ kind: 'ok', text: `Notion(WBS) を ${r.data.rows ?? 0} 行書き出しました（タブ: ${r.data.tab ?? 'Notion(WBS)'}）。`, url: r.data.url })
-    } catch (e: any) {
-      setNotice({ kind: 'err', text: e?.response?.data?.error ?? 'Notion のスプレッドシート出力に失敗しました' })
-    } finally {
-      setExportingNotion(false)
-    }
-  }
-
   // Notion(WBS) シートの「修正後」値を notion_tasks へ取り込む（スプシ→アプリ）。
   const importNotion = async () => {
     if (selectedUserId == null) return
@@ -233,7 +228,7 @@ export default function BacklogActivitiesPage() {
       )
       setData(r.data)
       setView('notion')
-      setNotice({ kind: 'ok', text: `Notion(WBS) を ${r.data.notion_imported.imported_rows} 行取り込みました（対象外 ${r.data.notion_imported.skipped_rows} 行）。※次の Notion 同期で上書きされます。`, url: r.data.notion_imported.url })
+      setNotice({ kind: 'ok', text: `Notion(WBS) をスプレッドシートから ${r.data.notion_imported.imported_rows} 行取り込みました（対象外 ${r.data.notion_imported.skipped_rows} 行）。`, url: r.data.notion_imported.url })
     } catch (e: any) {
       setNotice({ kind: 'err', text: e?.response?.data?.error ?? 'Notion のスプレッドシート取込に失敗しました' })
     } finally {
@@ -337,7 +332,7 @@ export default function BacklogActivitiesPage() {
           </button>
           <button onClick={syncNotion} disabled={syncingNotion || selectedUserId == null}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-            title="Notion から最新の WBS タスクをアプリに取り込む">
+            title="Notion から最新の WBS を取り込み、続けてスプレッドシートの修正後を取り込む">
             {syncingNotion ? '同期中…' : '🔄 Notion を同期'}
           </button>
           <button onClick={importDocHub} disabled={importingDocs || selectedUserId == null}
@@ -362,29 +357,24 @@ export default function BacklogActivitiesPage() {
 
           <span className="mx-1 h-6 w-px bg-slate-300" />
 
-          {/* Notion(WBS) ⇄ スプレッドシート */}
-          <button onClick={exportNotion} disabled={exportingNotion || selectedUserId == null}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50"
-            title="Notion(WBS) タスクをスプレッドシートへ書き出す">
-            {exportingNotion ? '出力中…' : '🟦 Notion → スプシへ出力'}
-          </button>
+          {/* Notion(WBS) ← スプレッドシート */}
           <button onClick={importNotion} disabled={importingNotion || selectedUserId == null}
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50"
-            title="スプレッドシートで編集した Notion(WBS) の値をアプリへ取り込む">
+            title="スプレッドシート（主_リビング_進捗管理）の Notion(WBS) タブで編集した修正後の値をアプリへ取り込む">
             {importingNotion ? '取込中…' : '📥 Notion ← スプシから取込'}
           </button>
 
           <button onClick={() => setShowSheetUrls((v) => !v)}
             className="px-2.5 py-1.5 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-100"
-            title="スプレッドシートの出力先（Backlog / Notion）を設定">
-            ⚙ 出力先
+            title="スプレッドシート（Backlog 出力先 / Notion 取込元）を設定">
+            ⚙ スプシ設定
           </button>
         </div>
       </div>
 
       {showSheetUrls && (
         <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
-          <p className="text-xs text-slate-500">出力先スプレッドシートを Backlog（上司報告）と Notion（WBS）で分けられます。</p>
+          <p className="text-xs text-slate-500">Backlog（上司報告）は出力先、Notion（WBS）は取込元のスプレッドシートです。</p>
           <label className="flex items-center gap-2 text-xs text-slate-600">
             <span className="w-28 shrink-0 font-medium">📊 Backlog 出力先</span>
             <input value={backlogSheetUrl} onChange={(e) => setBacklogSheetUrl(e.target.value)}
@@ -392,7 +382,7 @@ export default function BacklogActivitiesPage() {
               className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-emerald-400 focus:outline-none" />
           </label>
           <label className="flex items-center gap-2 text-xs text-slate-600">
-            <span className="w-28 shrink-0 font-medium">🟦 Notion 出力先</span>
+            <span className="w-28 shrink-0 font-medium">🟦 Notion 取込元</span>
             <input value={notionSheetUrl} onChange={(e) => setNotionSheetUrl(e.target.value)}
               placeholder="別のスプレッドシート URL を貼り付け"
               className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-sky-400 focus:outline-none" />
@@ -400,8 +390,8 @@ export default function BacklogActivitiesPage() {
         </div>
       )}
 
-      {/* タブ切り替え */}
-      <div className="flex items-center gap-1 border-b border-slate-200 mb-4">
+      {/* タブ切り替え。320px 幅だとタブ3つで収まらないため、折り返さず横スクロールで1行を維持する */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 mb-4">
         <TabButton active={view === 'summary'} onClick={() => setView('summary')} label="📋 上司報告（サマリ）" />
         <TabButton active={view === 'detail'} onClick={() => setView('detail')} label="📈 対応ログ（詳細）" />
         <TabButton active={view === 'notion'} onClick={() => setView('notion')} label={`🟦 Notion(WBS)${data?.notion_tasks?.length ? `（${data.notion_tasks.length}）` : ''}`} />
@@ -1081,7 +1071,7 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+      className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
         active ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'
       }`}
     >
