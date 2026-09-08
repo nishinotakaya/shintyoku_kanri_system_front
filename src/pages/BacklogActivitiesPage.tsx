@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
 import { downloadBlob } from '../lib/downloadBlob'
-import { effectiveTaskValue, hasTaskOverride, hasUnsubmittedChange, type NotionTaskEffectiveField } from '../lib/notionTaskEffective'
+import { effectiveTaskValue, hasTaskOverride, isRedCell, type NotionTaskEffectiveField } from '../lib/notionTaskEffective'
 import {
   DAY_WIDTH_PX,
   GANTT_MAX_DAYS,
@@ -86,6 +86,13 @@ type NotionTaskOption = {
   memo: string
   // 提出済スナップショット。キーは title/assignee_name/workload/start_date/end_date/progress_rate。
   wbs_submitted_overrides?: Record<string, string> | null
+  // 登録済み Excel テンプレ(xlsm)の該当 WBS 行の値。テンプレ未登録・該当行が無い場合は null。
+  wbs_template_values?: {
+    progress_rate: number | null
+    workload: number | null
+    start_date: string | null
+    end_date: string | null
+  } | null
 }
 // Excel テンプレ(進捗報告書 .xlsm)の登録状況
 type WbsExcelTemplateInfo = {
@@ -909,9 +916,9 @@ function NotionView({ tasks, onPatch, onReload }: {
   const toggleTaskOpen = (notionBlockId: string) =>
     setOpenTaskBlockIds((prev) => ({ ...prev, [notionBlockId]: !prev[notionBlockId] }))
 
-  // 未提出の変更セル数(タスク × 6編集列で数える)。「提出済にする」ボタンの表示・disabled 判定に使う。
+  // 未提出かつテンプレ(xlsm)と異なる赤セル数(タスク × 6編集列で数える)。「提出済にする」ボタンの表示・disabled 判定に使う。
   const unsubmittedChangeCount = useMemo(
-    () => tasks.reduce((count, task) => count + WBS_SUBMITTABLE_FIELDS.filter((field) => hasUnsubmittedChange(task, field)).length, 0),
+    () => tasks.reduce((count, task) => count + WBS_SUBMITTABLE_FIELDS.filter((field) => isRedCell(task, field)).length, 0),
     [tasks],
   )
 
@@ -1222,10 +1229,10 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
     borderTop: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
     borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
   }
-  // 修正後の値が提出済スナップショットとまだ一致しない編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
+  // 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
   const stickyCellStyleFor = (field: NotionTaskEffectiveField) => ({
     ...stickyCellStyle,
-    backgroundColor: hasUnsubmittedChange(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : WBS_EXCEL_COLORS.inputCellBackground,
+    backgroundColor: isRedCell(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : WBS_EXCEL_COLORS.inputCellBackground,
   })
 
   return (
@@ -1241,7 +1248,7 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
             </button>
             {/* Excel の条件付き書式 $D8="" (担当者が空の行は太字)。列幅より長い名前は末尾を省略し、title 属性でホバー表示する */}
             <span
-              className={`min-w-0 flex-1 whitespace-nowrap overflow-hidden text-ellipsis ${effectiveAssigneeName ? '' : 'font-bold'}`}
+              className={`min-w-0 flex-1 whitespace-normal break-words text-[13px] leading-4 line-clamp-2 ${effectiveAssigneeName ? '' : 'font-bold'}`}
               title={effectiveTitle || undefined}
             >
               <EditableCell kind="text" raw={effectiveTitle}

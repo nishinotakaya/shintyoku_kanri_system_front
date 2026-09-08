@@ -19,6 +19,13 @@ export type NotionTaskEffectiveSource = {
   // 提出済スナップショット。キーは修正後フィールド名(title/assignee_name/workload/start_date/end_date/progress_rate)、
   // 値は提出時点の修正後値を文字列化したもの(バックエンドの to_f.to_s 等と同じ規則)。
   wbs_submitted_overrides?: Record<string, string> | null
+  // 登録済み Excel テンプレ(xlsm)の該当 WBS 行の値。テンプレ未登録・該当行が無い場合は null。
+  wbs_template_values?: {
+    progress_rate: number | null
+    workload: number | null
+    start_date: string | null
+    end_date: string | null
+  } | null
 }
 
 const PREV_FIELD_KEY = {
@@ -65,4 +72,44 @@ export function hasUnsubmittedChange(task: NotionTaskEffectiveSource, field: Not
   const previousValueKey = PREV_FIELD_KEY[field] as keyof NotionTaskEffectiveSource
   const currentOverrideValue = task[previousValueKey] as string | number | null | undefined
   return serializeOverride(currentOverrideValue) !== task.wbs_submitted_overrides?.[field]
+}
+
+// 進捗率を小数第4位で丸める(浮動小数の誤差を無視して比較するため)。
+function roundProgressRate(value: number): number {
+  return Math.round(value * 10000) / 10000
+}
+
+// 修正後の値が、登録済み Excel テンプレ(xlsm)の該当セル値と異なるか。
+// テンプレ未登録・該当 WBS 行が無い場合(wbs_template_values が null/undefined)は常に異なる扱いにする。
+// title/assignee_name はテンプレ側に対応する値の概念が無い(WBS行の同定キーであるため)ので常に異なる扱いにする。
+export function templateDiffers(task: NotionTaskEffectiveSource, field: NotionTaskEffectiveField): boolean {
+  const templateValues = task.wbs_template_values
+  if (!templateValues) return true
+  if (field === 'title' || field === 'assignee_name' || field === 'status') return true
+
+  const effectiveValue = effectiveTaskValue(task, field)
+  if (field === 'progress_rate') {
+    const templateProgressRate = templateValues.progress_rate
+    if (templateProgressRate === null || templateProgressRate === undefined) return true
+    return roundProgressRate(Number(effectiveValue)) !== roundProgressRate(Number(templateProgressRate))
+  }
+  if (field === 'workload') {
+    const templateWorkload = templateValues.workload
+    if (templateWorkload === null || templateWorkload === undefined) return true
+    return Number(effectiveValue) !== Number(templateWorkload)
+  }
+  if (field === 'start_date' || field === 'end_date') {
+    const templateDateValue = templateValues[field]
+    if (templateDateValue === null || templateDateValue === undefined) return true
+    return String(effectiveValue) !== String(templateDateValue)
+  }
+  return true
+}
+
+// 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる(=赤セルにすべき)か。
+// 進捗率が100%(1以上)のタスクは日付等の差分を報告不要とし、どのフィールドも赤にしない。
+export function isRedCell(task: NotionTaskEffectiveSource, field: NotionTaskEffectiveField): boolean {
+  const effectiveProgressRate = effectiveTaskValue(task, 'progress_rate')
+  if (effectiveProgressRate !== null && effectiveProgressRate >= 1) return false
+  return hasUnsubmittedChange(task, field) && templateDiffers(task, field)
 }
