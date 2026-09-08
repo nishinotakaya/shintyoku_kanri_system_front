@@ -11,9 +11,9 @@ const MAX_ZOOM_LEVEL = 3.0
 const DEFAULT_ZOOM_LEVEL = 1.0 // 1.0 = 「幅に合わせる」
 const ZOOM_STEP = 0.25
 const PAGE_GAP = 8 // px。ページ間の隙間
-const PAGE_HORIZONTAL_MARGIN = 16 // px。幅に合わせる計算で左右に差し引く余白 (ページ側の px-2 と対応)
+const PAGE_HORIZONTAL_MARGIN = 16 // px。幅に合わせる計算で左右に差し引く余白 (ページ包み要素の左右 padding として同じ値を使う。rem 指定だとルート font-size 19px で食い違うため px で与える)
 // ヘッダーの「共有」「ダウンロード」ボタン共通スタイル
-const HEADER_TEXT_BUTTON_CLASS = 'flex h-11 items-center justify-center whitespace-nowrap rounded-md border border-[var(--color-border)] px-3 text-base font-semibold text-[var(--color-text)]'
+const HEADER_TEXT_BUTTON_CLASS = 'flex h-10 items-center justify-center whitespace-nowrap rounded-md border border-[var(--color-border)] px-2.5 text-base font-semibold text-[var(--color-text)] sm:h-11 sm:px-3'
 
 // PDF ビューアーの実体 (pdf.js 読み込み・canvas 描画)。
 // PdfViewerModal はストア購読のみを担当し、表示するものが無いときはこれを一切マウントしない。
@@ -281,20 +281,21 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
         onClick={(event) => event.stopPropagation()}
         className="flex h-[100dvh] w-full flex-col bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] shadow-2xl sm:h-[92vh] sm:w-[min(960px,96vw)] sm:rounded-2xl sm:p-0"
       >
-        <header className="flex flex-none items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
-          <div className="min-w-0 flex-1">
+        {/* スマホ幅ではボタン群が2行目に折り返す（横スクロールを出さない） */}
+        <header className="flex flex-none flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+          <div className="min-w-0 basis-40 flex-1">
             <div className="truncate text-base font-semibold text-[var(--color-text)] sm:text-lg">{filename}</div>
             {pageCount > 0 && (
               <div className="text-xs text-[var(--color-text-sub)]">{currentPageNumber} / {pageCount}</div>
             )}
           </div>
-          <div className="flex flex-none items-center gap-1.5">
+          <div className="ml-auto flex flex-wrap items-center gap-1 sm:gap-1.5">
             <button
               type="button"
               onClick={zoomOut}
               disabled={zoomLevel <= MIN_ZOOM_LEVEL}
               aria-label="縮小"
-              className="flex h-11 w-11 items-center justify-center rounded-md border border-[var(--color-border)] text-lg font-semibold text-[var(--color-text)] disabled:opacity-40"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--color-border)] text-lg font-semibold text-[var(--color-text)] disabled:opacity-40 sm:h-11 sm:w-11"
             >
               −
             </button>
@@ -303,7 +304,7 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
               onClick={zoomIn}
               disabled={zoomLevel >= MAX_ZOOM_LEVEL}
               aria-label="拡大"
-              className="flex h-11 w-11 items-center justify-center rounded-md border border-[var(--color-border)] text-lg font-semibold text-[var(--color-text)] disabled:opacity-40"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--color-border)] text-lg font-semibold text-[var(--color-text)] disabled:opacity-40 sm:h-11 sm:w-11"
             >
               ＋
             </button>
@@ -330,7 +331,7 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
               type="button"
               onClick={onClose}
               aria-label="閉じる"
-              className="flex h-11 w-11 items-center justify-center rounded-md text-xl text-[var(--color-text-sub)] hover:bg-gray-100"
+              className="flex h-10 w-10 items-center justify-center rounded-md text-xl text-[var(--color-text-sub)] hover:bg-gray-100 sm:h-11 sm:w-11"
             >
               ✕
             </button>
@@ -356,7 +357,11 @@ function PdfViewerDialog({ blob, filename, onClose }: { blob: Blob; filename: st
             </div>
           )}
           {!loading && !loadError && (
-            <div ref={pagesWrapperRef} className="flex w-max min-w-full flex-col items-center px-2 py-2" style={{ gap: `${PAGE_GAP}px` }}>
+            <div
+              ref={pagesWrapperRef}
+              className="flex w-max min-w-full flex-col items-center py-2"
+              style={{ gap: `${PAGE_GAP}px`, paddingLeft: `${PAGE_HORIZONTAL_MARGIN / 2}px`, paddingRight: `${PAGE_HORIZONTAL_MARGIN / 2}px` }}
+            >
               {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
                 <div
                   key={pageNumber}
