@@ -908,10 +908,9 @@ function NotionView({ tasks, onPatch, onReload }: {
 
   // table-fixed は colgroup の各 col 幅を尊重するが、table 自体に総幅が無いと実際の列幅が縮み、
   // sticky 列の間に隙間ができてガント側が透けて見える。colgroup の合計と一致させる。
-  const tableWidthPx = useMemo(() => {
-    const stickyColumnsWidthPx = WBS_TABLE_COLUMNS.reduce((sum, column) => sum + column.widthPx, 0)
-    return stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX + ganttRange.days.length * DAY_WIDTH_PX
-  }, [ganttRange])
+  const stickyColumnsWidthPx = WBS_TABLE_COLUMNS.reduce((sum, column) => sum + column.widthPx, 0)
+  const tableWidthPx = stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX + ganttRange.days.length * DAY_WIDTH_PX
+  const monthLabelStickyLeftPx = stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX
 
   const toggleTaskOpen = (notionBlockId: string) =>
     setOpenTaskBlockIds((prev) => ({ ...prev, [notionBlockId]: !prev[notionBlockId] }))
@@ -1111,8 +1110,14 @@ function NotionView({ tasks, onPatch, onReload }: {
                     <th
                       key={column.key}
                       rowSpan={3}
-                      style={{ left: wbsColumnLeftOffset(columnIndex), backgroundColor: WBS_EXCEL_COLORS.headerBackground, color: WBS_EXCEL_COLORS.headerText }}
-                      className={`sticky z-40 whitespace-pre-line border-r border-b border-slate-400 px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
+                      style={{
+                        left: wbsColumnLeftOffset(columnIndex),
+                        backgroundColor: WBS_EXCEL_COLORS.headerBackground,
+                        color: WBS_EXCEL_COLORS.headerText,
+                        borderBottom: `2px solid ${WBS_EXCEL_COLORS.borderMedium}`, // Excel 行7 は B〜H に縦罫線なし・下罫線 medium のみ
+                        boxShadow: `1px 0 0 0 ${WBS_EXCEL_COLORS.headerBackground}`, // sticky セルは別レイヤーに描かれ境界に 1px の継ぎ目が出るので、同色の影で右隣へ 1px 重ねて埋める
+                      }}
+                      className={`sticky z-40 whitespace-pre-line px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
                     >
                       {column.label}
                     </th>
@@ -1123,9 +1128,10 @@ function NotionView({ tasks, onPatch, onReload }: {
                       key={groupIndex}
                       colSpan={group.span}
                       style={{ height: 40, borderTopColor: WBS_EXCEL_COLORS.borderThinWeekday, borderLeftColor: WBS_EXCEL_COLORS.borderThinWeekday }}
-                      className="border-0 border-t border-l pl-1 text-left text-xs font-normal text-slate-700"
+                      className="border-0 border-t border-l text-left text-xs font-normal text-slate-700"
                     >
-                      {group.label}
+                      {/* 右スクロールで月の先頭が固定列の下に隠れても、ラベルは固定列の右端に貼り付いて見え続ける */}
+                      <span className="sticky inline-block px-1" style={{ left: monthLabelStickyLeftPx }}>{group.label}</span>
                     </th>
                   ))}
                 </tr>
@@ -1224,15 +1230,16 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
   const remainingWidthPx = durationDays != null ? (durationDays - elapsedDays) * DAY_WIDTH_PX : 0
 
   const stickyCellClassName = 'sticky z-10 px-1.5 py-1 text-[15px] text-slate-800'
-  const stickyCellStyle = {
-    backgroundColor: WBS_EXCEL_COLORS.inputCellBackground,
+  // sticky セルは別レイヤーに描かれ境界に 1px の継ぎ目が出るので、背景と同色の影で右隣へ 1px 重ねて埋める
+  const stickyCellStyleWithBackground = (backgroundColor: string) => ({
+    backgroundColor,
+    boxShadow: `1px 0 0 0 ${backgroundColor}`,
     borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`, // border-separate なので上罫線は前行の下罫線に任せる
-  }
-  // 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
-  const stickyCellStyleFor = (field: NotionTaskEffectiveField) => ({
-    ...stickyCellStyle,
-    backgroundColor: isRedCell(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : WBS_EXCEL_COLORS.inputCellBackground,
   })
+  const stickyCellStyle = stickyCellStyleWithBackground(WBS_EXCEL_COLORS.inputCellBackground)
+  // 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
+  const stickyCellStyleFor = (field: NotionTaskEffectiveField) =>
+    stickyCellStyleWithBackground(isRedCell(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : WBS_EXCEL_COLORS.inputCellBackground)
 
   return (
     <Fragment>
