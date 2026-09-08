@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import DOMPurify from 'dompurify'
 import { api } from '../lib/api'
 import { fetchExportBlob } from './FolderSaveButtons'
 import { showPdf } from '../lib/openPdf'
@@ -347,7 +348,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       const wb = XLSX.read(ab, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const html = XLSX.utils.sheet_to_html(ws, { editable: false })
-      setXlsxHtml(html)
+      setXlsxHtml(DOMPurify.sanitize(html, { USE_PROFILES: { html: true } }))
     } catch (e: any) {
       setMsg(`Excel プレビュー失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally {
