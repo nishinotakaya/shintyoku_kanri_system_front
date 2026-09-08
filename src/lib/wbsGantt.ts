@@ -14,7 +14,7 @@ export const WBS_TABLE_COLUMNS = [
   { key: 'title', label: 'タスク', widthPx: 144, align: 'left' as const },
   { key: 'assignee_name', label: '担当者', widthPx: 220, align: 'center' as const },
   { key: 'progress_rate', label: '進捗率', widthPx: 80, align: 'center' as const },
-  { key: 'workload', label: '工数（人日）', widthPx: 80, align: 'center' as const },
+  { key: 'workload', label: '工数\n（人日）', widthPx: 80, align: 'center' as const },
   { key: 'start_date', label: '開始', widthPx: 78, align: 'center' as const },
   { key: 'end_date', label: '終了', widthPx: 78, align: 'center' as const },
 ] as const

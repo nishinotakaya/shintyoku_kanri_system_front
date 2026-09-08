@@ -1055,7 +1055,7 @@ function NotionView({ tasks, onPatch, onReload }: {
                       key={column.key}
                       rowSpan={3}
                       style={{ left: wbsColumnLeftOffset(columnIndex), backgroundColor: WBS_EXCEL_COLORS.headerBackground, color: WBS_EXCEL_COLORS.headerText }}
-                      className={`sticky z-40 border border-slate-400 px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
+                      className={`sticky z-40 whitespace-pre-line border border-slate-400 px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
                     >
                       {column.label}
                     </th>
