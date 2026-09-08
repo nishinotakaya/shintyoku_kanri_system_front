@@ -826,6 +826,7 @@ function NotionView({ tasks, onPatch, onReload }: {
   const [uploadingTemplate, setUploadingTemplate] = useState(false)
   const [exportingExcel, setExportingExcel] = useState(false)
   const [markingSubmitted, setMarkingSubmitted] = useState(false)
+  const [importingExcel, setImportingExcel] = useState(false)
 
   useEffect(() => {
     api
@@ -925,6 +926,32 @@ function NotionView({ tasks, onPatch, onReload }: {
     }
   }
 
+  const importExcel = async (file: File) => {
+    setImportingExcel(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const r = await api.post<{
+        applied_task_count: number
+        applied_cell_count: number
+        cleared_cell_count: number
+        unmatched_row_count: number
+        unchanged_row_count: number
+      }>('/backlog_activities/wbs_excel_import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      await onReload()
+      const { applied_task_count, applied_cell_count, cleared_cell_count, unmatched_row_count, unchanged_row_count } = r.data
+      toast.success(
+        `Excel から取込: 変更 ${applied_cell_count} セル（${applied_task_count} 件）/ 修正後を解除 ${cleared_cell_count} セル / 変更なし ${unchanged_row_count} 行 / アプリに無い行 ${unmatched_row_count}`,
+      )
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'Excel の取込に失敗しました')
+    } finally {
+      setImportingExcel(false)
+    }
+  }
+
   const exportExcel = async () => {
     setExportingExcel(true)
     try {
@@ -979,6 +1006,23 @@ function NotionView({ tasks, onPatch, onReload }: {
               const file = e.target.files?.[0]
               e.target.value = ''
               if (file) uploadExcelTemplate(file)
+            }}
+          />
+        </label>
+        <label
+          title="ISN 側で編集した進捗報告書(.xlsx/.xlsm)の進捗率・工数・開始・終了のうち、アプリと違うセルだけを修正後として取り込み（赤表示）、同じセルの古い修正後は解除する"
+          className={`inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-100 ${importingExcel ? 'opacity-50' : 'cursor-pointer'}`}
+        >
+          {importingExcel ? '取込中…' : '📥 Excel から取込'}
+          <input
+            type="file"
+            accept=".xlsx,.xlsm"
+            disabled={importingExcel}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) importExcel(file)
             }}
           />
         </label>
