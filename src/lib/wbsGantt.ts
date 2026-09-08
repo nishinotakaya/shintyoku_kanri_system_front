@@ -2,7 +2,7 @@
 // 列幅・配色は元 xlsm の XML から実測した値をここに集約する(コンポーネント側に色コード・pxを散らさない)。
 // 固定 px 幅はここに定義する日幅(DAY_WIDTH_PX)・スペーサー幅・スティッキー列幅(WBS_TABLE_COLUMNS)だけに限定する。
 
-export const DAY_WIDTH_PX = 22
+export const DAY_WIDTH_PX = 30
 // Excel 列 I 相当。塗りなし・見出し無しの余白列(sticky には含めない)。
 export const SPACER_COLUMN_WIDTH_PX = 22
 // ガント範囲の上限日数。異常な日付が1件混入しても日別 th が数万個に膨らまないようにする。
@@ -11,7 +11,7 @@ export const GANTT_MAX_DAYS = 730
 // Excel 列 B〜H。列 J(日数)は hidden="1" のため画面には出さない(日数計算自体は継続する)。
 export const WBS_TABLE_COLUMNS = [
   { key: 'wbs_level', label: 'WBSレベル', widthPx: 104, align: 'left' as const },
-  { key: 'title', label: 'タスク', widthPx: 320, align: 'left' as const },
+  { key: 'title', label: 'タスク', widthPx: 240, align: 'left' as const },
   { key: 'assignee_name', label: '担当者', widthPx: 140, align: 'center' as const },
   { key: 'progress_rate', label: '進捗率', widthPx: 80, align: 'center' as const },
   { key: 'workload', label: '工数\n（人日）', widthPx: 80, align: 'center' as const },
