@@ -1099,7 +1099,7 @@ function NotionView({ tasks, onPatch, onReload }: {
             </div>
           )}
           <div className="overflow-auto max-h-[75vh] rounded-xl border border-slate-300 shadow-sm">
-            <table className="table-fixed border-collapse" style={{ width: tableWidthPx }}>
+            <table className="table-fixed border-separate border-spacing-0" style={{ width: tableWidthPx }}>
               <colgroup>
                 {WBS_TABLE_COLUMNS.map((column) => <col key={column.key} style={{ width: column.widthPx }} />)}
                 <col style={{ width: SPACER_COLUMN_WIDTH_PX }} />
@@ -1112,7 +1112,7 @@ function NotionView({ tasks, onPatch, onReload }: {
                       key={column.key}
                       rowSpan={3}
                       style={{ left: wbsColumnLeftOffset(columnIndex), backgroundColor: WBS_EXCEL_COLORS.headerBackground, color: WBS_EXCEL_COLORS.headerText }}
-                      className={`sticky z-40 whitespace-pre-line border border-slate-400 px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
+                      className={`sticky z-40 whitespace-pre-line border-r border-b border-slate-400 px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
                     >
                       {column.label}
                     </th>
@@ -1160,9 +1160,9 @@ function NotionView({ tasks, onPatch, onReload }: {
                           height: 40,
                           backgroundColor: WBS_EXCEL_COLORS.headerBackground,
                           color: WBS_EXCEL_COLORS.headerText,
-                          borderWidth: '0 1px 2px 1px',
+                          borderWidth: `0 1px 2px ${isTodayColumn ? 1 : 0}px`, // border-separate なので左罫線は今日の列だけ(隣の右罫線と二重にしない)
                           borderStyle: 'solid',
-                          borderLeftColor: isTodayColumn ? WBS_EXCEL_COLORS.todayLine : WBS_EXCEL_COLORS.borderThinWeekday,
+                          borderLeftColor: WBS_EXCEL_COLORS.todayLine,
                           borderRightColor: isTodayColumn ? WBS_EXCEL_COLORS.todayLine : WBS_EXCEL_COLORS.borderThinWeekday,
                           borderBottomColor: WBS_EXCEL_COLORS.borderMedium,
                         }}
@@ -1226,8 +1226,7 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
   const stickyCellClassName = 'sticky z-10 px-1.5 py-1 text-[15px] text-slate-800'
   const stickyCellStyle = {
     backgroundColor: WBS_EXCEL_COLORS.inputCellBackground,
-    borderTop: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
-    borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
+    borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`, // border-separate なので上罫線は前行の下罫線に任せる
   }
   // 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
   const stickyCellStyleFor = (field: NotionTaskEffectiveField) => ({
