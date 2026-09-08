@@ -17,7 +17,7 @@ import {
   daysBetweenDates,
   formatDateAsMonthDay,
   formatDayNumber,
-  formatWeekStartLabel,
+  formatMonthLabel,
   formatWeekdayDateLabel,
   ganttTrackBackgroundStyle,
   mondayOfExcelWeek,
@@ -883,11 +883,17 @@ function NotionView({ tasks, onPatch, onReload }: {
     return ganttRange.days.findIndex((day) => day.getTime() === today.getTime())
   }, [ganttRange])
 
-  // ガント上段ヘッダ(週の開始日, yyyy/m/d)。7日ごとに区切ってラベルを立てる。
-  const weekHeaderGroups = useMemo(() => {
+  // ガント上段ヘッダ(yyyy年m月)。年月が変わるごとに区切ってラベルを立てる(span=その月に含まれる表示中の日数)。
+  // 週境界の罫線(isWeekStart)は日番号行(行5)にそのまま残す。
+  const monthHeaderGroups = useMemo(() => {
     const groups: { label: string; span: number }[] = []
-    ganttRange.days.forEach((day, index) => {
-      if (index % 7 === 0) groups.push({ label: formatWeekStartLabel(day), span: 0 })
+    let currentMonthKey = ''
+    ganttRange.days.forEach((day) => {
+      const monthKey = `${day.getUTCFullYear()}-${day.getUTCMonth()}`
+      if (monthKey !== currentMonthKey) {
+        groups.push({ label: formatMonthLabel(day), span: 0 })
+        currentMonthKey = monthKey
+      }
       groups[groups.length - 1].span += 1
     })
     return groups
@@ -1105,7 +1111,7 @@ function NotionView({ tasks, onPatch, onReload }: {
                     </th>
                   ))}
                   <th rowSpan={3} className="border-0 bg-white p-0" />
-                  {weekHeaderGroups.map((group, groupIndex) => (
+                  {monthHeaderGroups.map((group, groupIndex) => (
                     <th
                       key={groupIndex}
                       colSpan={group.span}
@@ -1233,8 +1239,11 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
             <button onClick={onToggleOpen} className="shrink-0 text-[10px] text-slate-500 hover:text-slate-900" title="詳細(備考・メモ・進捗状況・優先度)を開閉">
               {open ? '▲' : '▼'}
             </button>
-            {/* Excel の条件付き書式 $D8="" (担当者が空の行は太字) */}
-            <span className={`min-w-0 flex-1 ${effectiveAssigneeName ? '' : 'font-bold'}`}>
+            {/* Excel の条件付き書式 $D8="" (担当者が空の行は太字)。列幅より長い名前は末尾を省略し、title 属性でホバー表示する */}
+            <span
+              className={`min-w-0 flex-1 whitespace-nowrap overflow-hidden text-ellipsis ${effectiveAssigneeName ? '' : 'font-bold'}`}
+              title={effectiveTitle || undefined}
+            >
               <EditableCell kind="text" raw={effectiveTitle}
                 display={<OverrideMarkedValue value={`${wbsIndent(task.wbs_level)}${effectiveTitle || '—'}`} overridden={hasTaskOverride(task, 'title')} previousValue={task.title} />}
                 onSave={(value) => onPatch(task.notion_block_id, { title_prev: value })} />

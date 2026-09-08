@@ -11,8 +11,8 @@ export const GANTT_MAX_DAYS = 730
 // Excel 列 B〜H。列 J(日数)は hidden="1" のため画面には出さない(日数計算自体は継続する)。
 export const WBS_TABLE_COLUMNS = [
   { key: 'wbs_level', label: 'WBSレベル', widthPx: 104, align: 'left' as const },
-  { key: 'title', label: 'タスク', widthPx: 144, align: 'left' as const },
-  { key: 'assignee_name', label: '担当者', widthPx: 220, align: 'center' as const },
+  { key: 'title', label: 'タスク', widthPx: 320, align: 'left' as const },
+  { key: 'assignee_name', label: '担当者', widthPx: 140, align: 'center' as const },
   { key: 'progress_rate', label: '進捗率', widthPx: 80, align: 'center' as const },
   { key: 'workload', label: '工数\n（人日）', widthPx: 80, align: 'center' as const },
   { key: 'start_date', label: '開始', widthPx: 78, align: 'center' as const },
@@ -117,9 +117,14 @@ export function formatDateAsMonthDay(dateText: string | null): string {
   return `${parseInt(monthText, 10)}/${parseInt(dayText, 10)}`
 }
 
-// 'yyyy/m/d' 表示(ガント週ヘッダ・プロジェクト開始日に使う)。
+// 'yyyy/m/d' 表示(プロジェクト開始日に使う。ガント上段ヘッダは月表示(formatMonthLabel)に変更済み)。
 export function formatWeekStartLabel(date: Date): string {
   return `${date.getUTCFullYear()}/${date.getUTCMonth() + 1}/${date.getUTCDate()}`
+}
+
+// 'yyyy年m月' 表示(ガント上段ヘッダ。月ごとにグルーピングしたラベルに使う)。
+export function formatMonthLabel(date: Date): string {
+  return `${date.getUTCFullYear()}年${date.getUTCMonth() + 1}月`
 }
 
 // ガント日別ヘッダ(行5相当)の日番号のみの表示。
