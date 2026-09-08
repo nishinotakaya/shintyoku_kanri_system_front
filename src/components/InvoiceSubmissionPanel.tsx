@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify'
 import { api } from '../lib/api'
 import { fetchExportBlob } from './FolderSaveButtons'
 import { showPdf } from '../lib/openPdf'
+import { downloadBlob } from '../lib/downloadBlob'
 import LabopMailModal from './LabopMailModal'
 import InvoiceSubmitConfirmModal from './InvoiceSubmitConfirmModal'
 import InvoiceItemsEditor, { applyInvoiceItemPatch, emptyInvoiceItem } from './InvoiceItemsEditor'
@@ -77,17 +78,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 const pdfPathFor = (kind: SubmissionKind) => kind === 'expense' ? '/exports/expense.pdf' : '/exports/invoice.pdf'
-
-const downloadBlob = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
 
 type LabopForm = {
   total: string

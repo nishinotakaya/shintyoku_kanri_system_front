@@ -1,5 +1,33 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
+import { toast } from '../lib/toast'
+import { downloadBlob } from '../lib/downloadBlob'
+import { effectiveTaskValue, hasTaskOverride } from '../lib/notionTaskEffective'
+import {
+  DAY_WIDTH_PX,
+  GANTT_MAX_DAYS,
+  SPACER_COLUMN_WIDTH_PX,
+  WBS_EXCEL_COLORS,
+  WBS_TABLE_COLUMNS,
+  addDays,
+  buildGanttDayRange,
+  calculateDurationDays,
+  calculateFilledDays,
+  compareWbsLevel,
+  daysBetweenDates,
+  formatDateAsMonthDay,
+  formatDayNumber,
+  formatWeekStartLabel,
+  formatWeekdayDateLabel,
+  ganttTrackBackgroundStyle,
+  mondayOfExcelWeek,
+  parseDateOnly,
+  sundayOfExcelWeek,
+  todayDateOnly,
+  wbsColumnLeftOffset,
+  wbsIndent,
+  weekdayLetter,
+} from '../lib/wbsGantt'
 
 type Target = { id: number; display_name: string; email: string; activity_count: number }
 type MonthSummary = {
@@ -39,13 +67,16 @@ type SummaryRow = {
 type NotionTaskOption = {
   notion_block_id: string
   assignee_name: string | null
+  assignee_name_prev?: string | null // 修正後(担当者)
   wbs_level: string | null
   title: string
+  title_prev?: string | null // 修正後(タスク名)
   start_date: string | null
   end_date: string | null
   start_date_prev: string | null // 修正前(前回同期値)
   end_date_prev: string | null
   workload: number | null
+  workload_prev?: number | null // 修正後(工数)
   progress_rate: number | null // 0.0〜1.0
   progress_rate_prev: number | null
   status: string | null
@@ -53,6 +84,15 @@ type NotionTaskOption = {
   priority: string | null
   note: string
   memo: string
+}
+// Excel テンプレ(進捗報告書 .xlsm)の登録状況
+type WbsExcelTemplateInfo = {
+  file_name: string
+  uploaded_at: string
+  uploaded_by_name: string
+  project_title?: string | null // テンプレ内 B1(プロジェクト名)。無ければ空表示
+  company_name?: string | null // テンプレ内 B2(会社名)
+  project_start?: string | null // テンプレ内 G3('YYYY-MM-DD')。ガント起点にも使う
 }
 type Payload = {
   user: { id: number; display_name: string; email: string }
@@ -697,6 +737,13 @@ function SummaryView({
 // 修正後(prev 列)編集の楽観更新を NotionTaskOption に反映する。
 function applyNotionPatch(task: NotionTaskOption, patch: Record<string, string>): NotionTaskOption {
   const next = { ...task }
+  if ('title_prev' in patch) next.title_prev = patch.title_prev.trim() || null
+  if ('assignee_name_prev' in patch) next.assignee_name_prev = patch.assignee_name_prev.trim() || null
+  if ('workload_prev' in patch) {
+    const raw = patch.workload_prev.trim()
+    const num = parseFloat(raw)
+    next.workload_prev = raw === '' || isNaN(num) ? null : num
+  }
   if ('start_date_prev' in patch) next.start_date_prev = patch.start_date_prev || null
   if ('end_date_prev' in patch) next.end_date_prev = patch.end_date_prev || null
   if ('status_prev' in patch) next.status_prev = patch.status_prev.trim() || null
@@ -753,160 +800,436 @@ function StatusBadge({ status, muted }: { status: string | null; muted?: boolean
   return <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${muted ? 'bg-slate-100 text-slate-400' : tone}`}>{status}</span>
 }
 
+// 元 xlsm の本文フォント。プロジェクト情報行〜表全体で共通して使う。
+const WBS_EXCEL_FONT_FAMILY = '"Meiryo UI", Meiryo, sans-serif'
+
 function NotionView({ tasks, onPatch }: { tasks: NotionTaskOption[]; onPatch: (notionBlockId: string, patch: Record<string, string>) => void }) {
-  const [sort, setSort] = useState<SortState>({ key: 'wbs_level', dir: 'asc' })
-  const [filters, setFilters] = useState({ assignee: '', wbs_level: '', title: '', status: '', note: '', memo: '' })
-  const setFilter = (key: keyof typeof filters, value: string) => setFilters((f) => ({ ...f, [key]: value }))
-  const toggleSort = (key: string) =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+  const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
+  const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
+  const [excelTemplateLoaded, setExcelTemplateLoaded] = useState(false)
+  const [uploadingTemplate, setUploadingTemplate] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
 
-  const assignees = useMemo(() => [...new Set(tasks.map((t) => t.assignee_name).filter((n): n is string => !!n))], [tasks])
-  const statuses = useMemo(() => [...new Set(tasks.map((t) => t.status).filter((s): s is string => !!s))], [tasks])
+  useEffect(() => {
+    api
+      .get<{ template: WbsExcelTemplateInfo | null }>('/backlog_activities/wbs_excel_template')
+      .then((r) => setExcelTemplate(r.data.template))
+      .catch(() => setExcelTemplate(null))
+      .finally(() => setExcelTemplateLoaded(true))
+  }, [])
 
-  const visible = useMemo(() => {
-    const has = (hay: string, needle: string) => hay.toLowerCase().includes(needle.trim().toLowerCase())
-    const numKeys = new Set(['workload', 'progress_rate', 'progress_rate_prev'])
-    const filtered = tasks.filter((t) => {
-      if (filters.assignee && t.assignee_name !== filters.assignee) return false
-      if (filters.wbs_level && !has(t.wbs_level ?? '', filters.wbs_level)) return false
-      if (filters.title && !has(t.title ?? '', filters.title)) return false
-      if (filters.status && (t.status ?? '') !== filters.status) return false
-      if (filters.note && !has(t.note ?? '', filters.note)) return false
-      if (filters.memo && !has(t.memo ?? '', filters.memo)) return false
-      return true
+  const assignees = useMemo(
+    () => [...new Set(tasks.map((task) => effectiveTaskValue(task, 'assignee_name')).filter((name): name is string => !!name))],
+    [tasks],
+  )
+
+  const sortedTasks = useMemo(() => {
+    const filtered = assigneeFilter
+      ? tasks.filter((task) => effectiveTaskValue(task, 'assignee_name') === assigneeFilter)
+      : tasks
+    return [...filtered].sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level))
+  }, [tasks, assigneeFilter])
+
+  // ガントの起点・終点は Excel の K5 式と同じ規則。
+  // 起点 = project_start(テンプレ)がある週の月曜、無ければ全タスクの実効開始日の最小値の週の月曜。
+  // 終点 = max(起点+90日(13週分), 全タスクの実効終了日の最大値をその週の日曜まで切り上げ)。
+  const ganttRange = useMemo(() => {
+    const startDates: Date[] = []
+    const endDates: Date[] = []
+    for (const task of tasks) {
+      const effectiveStartDate = effectiveTaskValue(task, 'start_date')
+      const effectiveEndDate = effectiveTaskValue(task, 'end_date')
+      const parsedStartDate = effectiveStartDate ? parseDateOnly(effectiveStartDate) : null
+      const parsedEndDate = effectiveEndDate ? parseDateOnly(effectiveEndDate) : null
+      if (parsedStartDate) startDates.push(parsedStartDate)
+      if (parsedEndDate) endDates.push(parsedEndDate)
+    }
+    const projectStartDate = excelTemplate?.project_start ? parseDateOnly(excelTemplate.project_start) : null
+    const earliestStartDate = startDates.length > 0 ? startDates.reduce((earliest, date) => (date < earliest ? date : earliest)) : null
+    const latestEndDate = endDates.length > 0 ? endDates.reduce((latest, date) => (date > latest ? date : latest)) : null
+    const rangeStart = mondayOfExcelWeek(projectStartDate ?? earliestStartDate ?? todayDateOnly())
+    const minimumRangeEnd = addDays(rangeStart, 90) // Excel の K〜CW = 13週分
+    const rangeEndFromTasks = latestEndDate ? sundayOfExcelWeek(latestEndDate) : minimumRangeEnd
+    const rangeEndBeforeClamp = rangeEndFromTasks > minimumRangeEnd ? rangeEndFromTasks : minimumRangeEnd
+    // 異常な日付が1件混入しても日別 th が膨れ上がらないよう上限で clamp する。
+    const maximumRangeEnd = addDays(rangeStart, GANTT_MAX_DAYS)
+    const rangeEnd = rangeEndBeforeClamp > maximumRangeEnd ? maximumRangeEnd : rangeEndBeforeClamp
+    return { rangeStart, rangeEnd, days: buildGanttDayRange(rangeStart, rangeEnd) }
+  }, [tasks, excelTemplate])
+
+  const todayIndex = useMemo(() => {
+    const today = todayDateOnly()
+    return ganttRange.days.findIndex((day) => day.getTime() === today.getTime())
+  }, [ganttRange])
+
+  // ガント上段ヘッダ(週の開始日, yyyy/m/d)。7日ごとに区切ってラベルを立てる。
+  const weekHeaderGroups = useMemo(() => {
+    const groups: { label: string; span: number }[] = []
+    ganttRange.days.forEach((day, index) => {
+      if (index % 7 === 0) groups.push({ label: formatWeekStartLabel(day), span: 0 })
+      groups[groups.length - 1].span += 1
     })
-    const dir = sort.dir === 'asc' ? 1 : -1
-    return [...filtered].sort((a, b) => {
-      if (numKeys.has(sort.key)) {
-        const av = (a as Record<string, unknown>)[sort.key]
-        const bv = (b as Record<string, unknown>)[sort.key]
-        return ((av == null ? -Infinity : Number(av)) - (bv == null ? -Infinity : Number(bv))) * dir
-      }
-      const av = String((a as Record<string, unknown>)[sort.key] ?? '')
-      const bv = String((b as Record<string, unknown>)[sort.key] ?? '')
-      return av.localeCompare(bv, 'ja') * dir
-    })
-  }, [tasks, filters, sort])
+    return groups
+  }, [ganttRange])
 
-  if (tasks.length === 0) {
-    return <div className="text-slate-400 text-sm py-10 text-center">Notion(WBS) タスクがありません。カレンダーの「Notion 同期」で取り込んでください。</div>
+  const toggleTaskOpen = (notionBlockId: string) =>
+    setOpenTaskBlockIds((prev) => ({ ...prev, [notionBlockId]: !prev[notionBlockId] }))
+
+  const uploadExcelTemplate = async (file: File) => {
+    setUploadingTemplate(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const r = await api.post<{ template: WbsExcelTemplateInfo | null }>('/backlog_activities/wbs_excel_template', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setExcelTemplate(r.data.template)
+      toast.success('Excel テンプレを登録しました')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'Excel テンプレの登録に失敗しました')
+    } finally {
+      setUploadingTemplate(false)
+    }
   }
-  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
+
+  const exportExcel = async () => {
+    setExportingExcel(true)
+    try {
+      const response = await api.get('/backlog_activities/wbs_excel_export', { responseType: 'blob' })
+      const contentDisposition = response.headers['content-disposition'] as string | undefined
+      const filenameMatch = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i) ?? contentDisposition?.match(/filename="?([^";]+)"?/i)
+      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : '進捗報告書.xlsm'
+      downloadBlob(response.data as Blob, filename)
+      const matchedCount = Number(response.headers['x-wbs-matched'] ?? 0)
+      const appendedCount = Number(response.headers['x-wbs-appended'] ?? 0)
+      const skippedCount = Number(response.headers['x-wbs-skipped'] ?? 0)
+      toast.success(`更新 ${matchedCount} 行 / 追加 ${appendedCount} 行 / 収まらず ${skippedCount} 行`)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'Excel 出力に失敗しました')
+    } finally {
+      setExportingExcel(false)
+    }
+  }
 
   return (
-    <div className="max-w-full overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
-      <table className="min-w-max text-sm border-collapse">
-        <thead>
-          <tr className="bg-slate-100 text-slate-600 text-left text-xs">
-            <SortTh label="担当" k="assignee_name" sort={sort} onSort={toggleSort} className={FZ_HEAD[0]} />
-            <SortTh label="WBSレベル" k="wbs_level" sort={sort} onSort={toggleSort} className={FZ_HEAD[1]} />
-            <SortTh label="タスク名" k="title" sort={sort} onSort={toggleSort} className={FZ_HEAD[2]} />
-            <SortTh label="開始日(修正前)" k="start_date" sort={sort} onSort={toggleSort} />
-            <SortTh label="開始日(修正後)" k="start_date_prev" sort={sort} onSort={toggleSort} />
-            <SortTh label="終了日(修正前)" k="end_date" sort={sort} onSort={toggleSort} />
-            <SortTh label="終了日(修正後)" k="end_date_prev" sort={sort} onSort={toggleSort} />
-            <SortTh label="工数" k="workload" sort={sort} onSort={toggleSort} />
-            <SortTh label="進捗率(修正前)" k="progress_rate" sort={sort} onSort={toggleSort} />
-            <SortTh label="進捗率(修正後)" k="progress_rate_prev" sort={sort} onSort={toggleSort} />
-            <SortTh label="進捗状況(修正前)" k="status" sort={sort} onSort={toggleSort} />
-            <SortTh label="進捗状況(修正後)" k="status_prev" sort={sort} onSort={toggleSort} />
-            <SortTh label="優先度" k="priority" sort={sort} onSort={toggleSort} />
-            <th className={`${TH} w-96 min-w-[22rem]`}>備考</th>
-            <th className={`${TH} w-96 min-w-[22rem]`}>メモ</th>
-          </tr>
-          <tr className="bg-slate-50 text-xs">
-            {/* 0 担当 (固定) */}
-            <th className={FZ_FILTER[0]}>
-              <select value={filters.assignee} onChange={(e) => setFilter('assignee', e.target.value)} className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-xs" title="担当者で絞込">
-                <option value="">全て</option>
-                {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </th>
-            {/* 1 WBS (固定) */}
-            <th className={FZ_FILTER[1]}><FilterInput value={filters.wbs_level} onChange={(v) => setFilter('wbs_level', v)} placeholder="WBSで絞込" /></th>
-            {/* 2 タスク名 (固定) */}
-            <th className={FZ_FILTER[2]}><FilterInput value={filters.title} onChange={(v) => setFilter('title', v)} placeholder="タスク名で絞込" /></th>
-            {/* 3-9 開始(前/後)・終了(前/後)・工数・進捗率(前/後) */}
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            {/* 10 進捗状況(修正前) */}
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1">
-              <select value={filters.status} onChange={(e) => setFilter('status', e.target.value)} className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-xs" title="進捗状況(修正前)で絞込">
-                <option value="">全て</option>
-                {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </th>
-            {/* 11 進捗状況(修正後) */}
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            {/* 12 優先度 */}
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-            {/* 13 備考 */}
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1"><FilterInput value={filters.note} onChange={(v) => setFilter('note', v)} placeholder="備考で絞込" /></th>
-            {/* 14 メモ */}
-            <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1"><FilterInput value={filters.memo} onChange={(v) => setFilter('memo', v)} placeholder="メモで絞込" /></th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((task) => (
-            <tr key={task.notion_block_id} className="hover:bg-slate-50/60">
-              <td className={`${FZ_BODY[0]} ${TD} whitespace-nowrap text-slate-700`}>{task.assignee_name || '—'}</td>
-              <td className={`${FZ_BODY[1]} ${TD} tabular-nums whitespace-nowrap text-slate-500`}>{task.wbs_level || '—'}</td>
-              <td className={`${FZ_BODY[2]} ${TD} text-slate-700 whitespace-pre-wrap break-words`}>
-                {task.notion_block_id ? (
-                  <a href={`https://www.notion.so/${task.notion_block_id.replace(/-/g, '')}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-sky-700 hover:underline" title="Notion で開く">
-                    {task.title} ↗
-                  </a>
-                ) : task.title}
-              </td>
-              <td className={`${TD} tabular-nums whitespace-nowrap font-medium text-slate-700`}>{task.start_date || '—'}</td>
-              <td className={`${TD} tabular-nums whitespace-nowrap`}>
-                <EditableCell kind="date" raw={task.start_date_prev ?? ''}
-                  display={task.start_date_prev || <span className="text-slate-300">—</span>}
-                  displayClass={task.start_date_prev && task.start_date_prev !== task.start_date ? 'text-rose-600' : 'text-slate-400'}
-                  onSave={(v) => onPatch(task.notion_block_id, { start_date_prev: v })} />
-              </td>
-              <td className={`${TD} tabular-nums whitespace-nowrap font-medium text-slate-700`}>{task.end_date || '—'}</td>
-              <td className={`${TD} tabular-nums whitespace-nowrap`}>
-                <EditableCell kind="date" raw={task.end_date_prev ?? ''}
-                  display={task.end_date_prev || <span className="text-slate-300">—</span>}
-                  displayClass={task.end_date_prev && task.end_date_prev !== task.end_date ? 'text-rose-600' : 'text-slate-400'}
-                  onSave={(v) => onPatch(task.notion_block_id, { end_date_prev: v })} />
-              </td>
-              <td className={`${TD} tabular-nums whitespace-nowrap text-slate-500`}>{task.workload == null ? '—' : `${task.workload} 人日`}</td>
-              <td className={`${TD} tabular-nums whitespace-nowrap font-medium text-slate-700`}>{pct(task.progress_rate)}</td>
-              <td className={`${TD} tabular-nums whitespace-nowrap`}>
-                <EditableCell kind="rate" raw={task.progress_rate_prev == null ? '' : String(Math.round(task.progress_rate_prev * 100))}
-                  display={task.progress_rate_prev == null ? <span className="text-slate-300">＋</span> : pct(task.progress_rate_prev)}
-                  displayClass={task.progress_rate_prev != null && task.progress_rate_prev !== task.progress_rate ? 'text-rose-600' : 'text-slate-400'}
-                  onSave={(v) => onPatch(task.notion_block_id, { progress_rate_prev: v })} />
-              </td>
-              <td className={`${TD} whitespace-nowrap`}><StatusBadge status={task.status} /></td>
-              <td className={`${TD} whitespace-nowrap`}>
-                <EditableCell kind="text" raw={task.status_prev ?? ''}
-                  display={<StatusBadge status={task.status_prev} muted />}
-                  onSave={(v) => onPatch(task.notion_block_id, { status_prev: v })} />
-              </td>
-              <td className={`${TD} whitespace-nowrap text-slate-500`}>{task.priority || '—'}</td>
-              <td className={`${TD} align-top min-w-[22rem]`}>
-                <NoteCell value={task.note ?? ''} saving={false} onSave={(v) => onPatch(task.notion_block_id, { note: v })} />
-              </td>
-              <td className={`${TD} align-top min-w-[22rem]`}>
-                <NoteCell value={task.memo ?? ''} saving={false} onSave={(v) => onPatch(task.notion_block_id, { memo: v })} />
-              </td>
-            </tr>
-          ))}
-          {visible.length === 0 && (
-            <tr><td colSpan={15} className="border border-slate-300 text-center text-slate-400 py-6 text-sm">フィルター条件に一致するタスクがありません。</td></tr>
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <label className={`inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-100 ${uploadingTemplate ? 'opacity-50' : 'cursor-pointer'}`}>
+          {uploadingTemplate ? '登録中…' : '📎 Excel テンプレ登録'}
+          <input
+            type="file"
+            accept=".xlsm"
+            disabled={uploadingTemplate}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) uploadExcelTemplate(file)
+            }}
+          />
+        </label>
+        {excelTemplateLoaded && excelTemplate && (
+          <span className="text-xs text-slate-500">
+            登録済: {excelTemplate.file_name}（{new Date(excelTemplate.uploaded_at).toLocaleString('ja-JP')}）
+          </span>
+        )}
+        <button
+          onClick={exportExcel}
+          disabled={!excelTemplate || exportingExcel}
+          title={excelTemplate ? '登録済テンプレへスケジュールを反映して出力' : '先に Excel テンプレを登録してください'}
+          className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+        >
+          {exportingExcel ? '出力中…' : '📤 Excel 出力'}
+        </button>
+        <span className="mx-1 h-5 w-px bg-slate-300" />
+        <label className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+          担当者
+          <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}
+            className="rounded border border-slate-300 bg-white px-1.5 py-1 text-xs">
+            <option value="">全て</option>
+            {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {tasks.length === 0 ? (
+        <div className="text-slate-400 text-sm py-10 text-center">Notion(WBS) タスクがありません。カレンダーの「Notion 同期」で取り込んでください。</div>
+      ) : (
+        <div style={{ fontFamily: WBS_EXCEL_FONT_FAMILY }}>
+          {excelTemplateLoaded && excelTemplate && (
+            <div className="mb-2 space-y-0.5">
+              {excelTemplate.project_title && <p className="text-lg font-bold text-slate-800">{excelTemplate.project_title}</p>}
+              {excelTemplate.company_name && <p className="text-sm text-slate-600">{excelTemplate.company_name}</p>}
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
+                {excelTemplate.project_start && (
+                  <span className="flex items-center gap-1.5">
+                    <span>プロジェクトの開始:</span>
+                    <span className="rounded border border-slate-400 px-2 py-0.5 font-medium text-slate-800">
+                      {(() => {
+                        const projectStartDate = parseDateOnly(excelTemplate.project_start)
+                        return projectStartDate ? formatWeekdayDateLabel(projectStartDate) : ''
+                      })()}
+                    </span>
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <span>週表示:</span>
+                  <span className="rounded border border-slate-400 px-2 py-0.5 font-medium text-slate-800">1</span>
+                </span>
+              </div>
+            </div>
           )}
-        </tbody>
-      </table>
+          <div className="overflow-auto max-h-[75vh] rounded-xl border border-slate-300 shadow-sm">
+            <table className="table-fixed border-collapse">
+              <colgroup>
+                {WBS_TABLE_COLUMNS.map((column) => <col key={column.key} style={{ width: column.widthPx }} />)}
+                <col style={{ width: SPACER_COLUMN_WIDTH_PX }} />
+                {ganttRange.days.map((_, index) => <col key={index} style={{ width: DAY_WIDTH_PX }} />)}
+              </colgroup>
+              <thead className="sticky top-0 z-30">
+                <tr>
+                  {WBS_TABLE_COLUMNS.map((column, columnIndex) => (
+                    <th
+                      key={column.key}
+                      rowSpan={3}
+                      style={{ left: wbsColumnLeftOffset(columnIndex), backgroundColor: WBS_EXCEL_COLORS.headerBackground, color: WBS_EXCEL_COLORS.headerText }}
+                      className={`sticky z-40 border border-slate-400 px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
+                    >
+                      {column.label}
+                    </th>
+                  ))}
+                  <th rowSpan={3} className="border-0 bg-white p-0" />
+                  {weekHeaderGroups.map((group, groupIndex) => (
+                    <th
+                      key={groupIndex}
+                      colSpan={group.span}
+                      style={{ height: 40, borderTopColor: WBS_EXCEL_COLORS.borderThinWeekday, borderLeftColor: WBS_EXCEL_COLORS.borderThinWeekday }}
+                      className="border-0 border-t border-l pl-1 text-left text-xs font-normal text-slate-700"
+                    >
+                      {group.label}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {ganttRange.days.map((day, dayIndex) => {
+                    const isTodayColumn = dayIndex === todayIndex
+                    const isWeekStart = dayIndex % 7 === 0
+                    return (
+                      <th
+                        key={dayIndex}
+                        style={{
+                          height: 20,
+                          borderLeftWidth: isTodayColumn || isWeekStart ? 1 : 0,
+                          borderRightWidth: isTodayColumn ? 1 : 0,
+                          borderLeftColor: isTodayColumn ? WBS_EXCEL_COLORS.todayLine : WBS_EXCEL_COLORS.borderThinWeekday,
+                          borderRightColor: WBS_EXCEL_COLORS.todayLine,
+                        }}
+                        className="border-0 border-solid text-center text-xs font-normal text-slate-700"
+                      >
+                        {formatDayNumber(day)}
+                      </th>
+                    )
+                  })}
+                </tr>
+                <tr>
+                  {ganttRange.days.map((day, dayIndex) => {
+                    const isTodayColumn = dayIndex === todayIndex
+                    return (
+                      <th
+                        key={dayIndex}
+                        style={{
+                          height: 40,
+                          backgroundColor: WBS_EXCEL_COLORS.headerBackground,
+                          color: WBS_EXCEL_COLORS.headerText,
+                          borderWidth: '0 1px 2px 1px',
+                          borderStyle: 'solid',
+                          borderLeftColor: isTodayColumn ? WBS_EXCEL_COLORS.todayLine : WBS_EXCEL_COLORS.borderThinWeekday,
+                          borderRightColor: isTodayColumn ? WBS_EXCEL_COLORS.todayLine : WBS_EXCEL_COLORS.borderThinWeekday,
+                          borderBottomColor: WBS_EXCEL_COLORS.borderMedium,
+                        }}
+                        className="text-center text-[11px] font-bold"
+                      >
+                        {weekdayLetter(day)}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTasks.map((task) => (
+                  <NotionGanttRow
+                    key={task.notion_block_id}
+                    task={task}
+                    ganttRange={ganttRange}
+                    todayIndex={todayIndex}
+                    open={!!openTaskBlockIds[task.notion_block_id]}
+                    onToggleOpen={() => toggleTaskOpen(task.notion_block_id)}
+                    onPatch={onPatch}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ガントの1タスク行。左7列はスティッキーな編集可能セル(Excel入力セル色)、
+// スペーサーを挟んで右はトラック1本(絶対配置バー2本、経過=グレー/残り=紫)。
+function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPatch }: {
+  task: NotionTaskOption
+  ganttRange: { rangeStart: Date; rangeEnd: Date; days: Date[] }
+  todayIndex: number
+  open: boolean
+  onToggleOpen: () => void
+  onPatch: (notionBlockId: string, patch: Record<string, string>) => void
+}) {
+  const effectiveTitle = effectiveTaskValue(task, 'title')
+  const effectiveAssigneeName = effectiveTaskValue(task, 'assignee_name')
+  const effectiveWorkload = effectiveTaskValue(task, 'workload')
+  const effectiveStartDate = effectiveTaskValue(task, 'start_date')
+  const effectiveEndDate = effectiveTaskValue(task, 'end_date')
+  const effectiveProgressRate = effectiveTaskValue(task, 'progress_rate')
+  const progressPercent = Math.round((effectiveProgressRate ?? 0) * 100)
+
+  // Excel の hidden 列「日数」相当。表示はしないが、バーの長さ計算には使い続ける。
+  const durationDays = calculateDurationDays(effectiveStartDate, effectiveEndDate)
+  const totalDaysInRange = ganttRange.days.length
+  const trackWidthPx = totalDaysInRange * DAY_WIDTH_PX
+  const parsedStartDate = effectiveStartDate ? parseDateOnly(effectiveStartDate) : null
+  const barLeftPx = parsedStartDate ? daysBetweenDates(ganttRange.rangeStart, parsedStartDate) * DAY_WIDTH_PX : 0
+  const elapsedDays = durationDays != null ? calculateFilledDays(durationDays, effectiveProgressRate) : 0
+  const elapsedWidthPx = elapsedDays * DAY_WIDTH_PX
+  const remainingWidthPx = durationDays != null ? (durationDays - elapsedDays) * DAY_WIDTH_PX : 0
+
+  const stickyCellClassName = 'sticky z-10 px-1.5 py-1 text-[15px] text-slate-800'
+  const stickyCellStyle = {
+    backgroundColor: WBS_EXCEL_COLORS.inputCellBackground,
+    borderTop: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
+    borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`,
+  }
+
+  return (
+    <Fragment>
+      <tr className="h-10">
+        <td className={`${stickyCellClassName} text-left tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(0) }}>
+          {task.wbs_level || ''}
+        </td>
+        <td className={`${stickyCellClassName} text-left`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(1) }}>
+          <span className="flex items-center gap-1">
+            <button onClick={onToggleOpen} className="shrink-0 text-[10px] text-slate-500 hover:text-slate-900" title="詳細(備考・メモ・進捗状況・優先度)を開閉">
+              {open ? '▲' : '▼'}
+            </button>
+            {/* Excel の条件付き書式 $D8="" (担当者が空の行は太字) */}
+            <span className={`min-w-0 flex-1 ${effectiveAssigneeName ? '' : 'font-bold'}`}>
+              <EditableCell kind="text" raw={effectiveTitle}
+                display={<OverrideMarkedValue value={`${wbsIndent(task.wbs_level)}${effectiveTitle || '—'}`} overridden={hasTaskOverride(task, 'title')} previousValue={task.title} />}
+                onSave={(value) => onPatch(task.notion_block_id, { title_prev: value })} />
+            </span>
+          </span>
+        </td>
+        <td className={`${stickyCellClassName} text-center`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(2) }}>
+          <EditableCell kind="text" raw={effectiveAssigneeName ?? ''}
+            display={<OverrideMarkedValue value={effectiveAssigneeName || '—'} overridden={hasTaskOverride(task, 'assignee_name')} previousValue={task.assignee_name} />}
+            onSave={(value) => onPatch(task.notion_block_id, { assignee_name_prev: value })} />
+        </td>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(3) }}>
+          {/* Excel のデータバー(グレー、0〜100%で幅比例)を背景に敷いた上に NN% を表示 */}
+          <div
+            className="relative -mx-1.5 -my-1 px-1.5 py-1"
+            style={{ backgroundImage: `linear-gradient(to right, ${WBS_EXCEL_COLORS.progressBarTrack} ${progressPercent}%, transparent ${progressPercent}%)` }}
+          >
+            <EditableCell kind="rate" raw={effectiveProgressRate == null ? '' : String(progressPercent)}
+              display={<OverrideMarkedValue value={`${progressPercent}%`} overridden={hasTaskOverride(task, 'progress_rate')} previousValue={task.progress_rate == null ? null : `${Math.round(task.progress_rate * 100)}%`} />}
+              onSave={(value) => onPatch(task.notion_block_id, { progress_rate_prev: value })} />
+          </div>
+        </td>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(4) }}>
+          <EditableCell kind="text" raw={effectiveWorkload == null ? '' : String(effectiveWorkload)}
+            display={<OverrideMarkedValue value={effectiveWorkload == null ? '—' : String(effectiveWorkload)} overridden={hasTaskOverride(task, 'workload')} previousValue={task.workload == null ? null : String(task.workload)} />}
+            onSave={(value) => onPatch(task.notion_block_id, { workload_prev: value })} />
+        </td>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(5) }}>
+          <EditableCell kind="date" raw={effectiveStartDate ?? ''}
+            display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveStartDate) || '—'} overridden={hasTaskOverride(task, 'start_date')} previousValue={task.start_date} />}
+            onSave={(value) => onPatch(task.notion_block_id, { start_date_prev: value })} />
+        </td>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(6) }}>
+          <EditableCell kind="date" raw={effectiveEndDate ?? ''}
+            display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveEndDate) || '—'} overridden={hasTaskOverride(task, 'end_date')} previousValue={task.end_date} />}
+            onSave={(value) => onPatch(task.notion_block_id, { end_date_prev: value })} />
+        </td>
+        {/* Excel 列 I 相当。塗りなし・見出し無しのスペーサー(sticky には含めない) */}
+        <td className="bg-white p-0" />
+        <td className="p-0" colSpan={totalDaysInRange}>
+          <div className="relative h-10 overflow-hidden" style={{ width: trackWidthPx, ...ganttTrackBackgroundStyle() }}>
+            {elapsedWidthPx > 0 && (
+              <div className="absolute top-1.5 h-7" style={{ left: barLeftPx, width: elapsedWidthPx, backgroundColor: WBS_EXCEL_COLORS.ganttElapsedBar }} />
+            )}
+            {remainingWidthPx > 0 && (
+              <div className="absolute top-1.5 h-7" style={{ left: barLeftPx + elapsedWidthPx, width: remainingWidthPx, backgroundColor: WBS_EXCEL_COLORS.ganttRemainingBar }} />
+            )}
+            {todayIndex >= 0 && (
+              <>
+                <div className="absolute top-0 h-full w-px" style={{ left: todayIndex * DAY_WIDTH_PX, backgroundColor: WBS_EXCEL_COLORS.todayLine }} />
+                <div className="absolute top-0 h-full w-px" style={{ left: (todayIndex + 1) * DAY_WIDTH_PX, backgroundColor: WBS_EXCEL_COLORS.todayLine }} />
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={WBS_TABLE_COLUMNS.length} className="sticky left-0 z-10 border border-slate-300 bg-slate-50 px-3 py-2 align-top">
+            <NotionTaskDetailPanel task={task} onPatch={onPatch} />
+          </td>
+          <td className="bg-white" />
+          <td className="border border-slate-200 bg-slate-50" colSpan={totalDaysInRange} />
+        </tr>
+      )}
+    </Fragment>
+  )
+}
+
+// 修正後(_prev)が入っているセルの右上に小さな点を出し、ツールチップで修正前の値を示す。
+function OverrideMarkedValue({ value, overridden, previousValue }: { value: string; overridden: boolean; previousValue: string | number | null | undefined }) {
+  if (!overridden) return <span className="whitespace-pre">{value}</span>
+  return (
+    <span className="relative inline-block whitespace-pre pr-2" title={`修正前: ${previousValue ?? '—'}`}>
+      {value}
+      <span className="absolute -right-0.5 -top-0.5 text-[8px] text-sky-500">●</span>
+    </span>
+  )
+}
+
+// タスク名セル右端の「▼」で開く詳細行。Excel の表に無い 進捗状況/優先度/備考/メモ をここに集約する。
+function NotionTaskDetailPanel({ task, onPatch }: { task: NotionTaskOption; onPatch: (notionBlockId: string, patch: Record<string, string>) => void }) {
+  const effectiveStatus = effectiveTaskValue(task, 'status')
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-6 text-xs">
+        <div className="flex flex-col gap-1">
+          <span className="uppercase tracking-wide text-slate-400">進捗状況</span>
+          <StatusBadge status={effectiveStatus} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="uppercase tracking-wide text-slate-400">優先度</span>
+          <span className="text-slate-700">{task.priority || '—'}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <span className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">備考</span>
+          <NoteCell value={task.note ?? ''} saving={false} onSave={(value) => onPatch(task.notion_block_id, { note: value })} />
+        </div>
+        <div>
+          <span className="mb-1 block text-[10px] uppercase tracking-wide text-slate-400">メモ</span>
+          <NoteCell value={task.memo ?? ''} saving={false} onSave={(value) => onPatch(task.notion_block_id, { memo: value })} />
+        </div>
+      </div>
     </div>
   )
 }
