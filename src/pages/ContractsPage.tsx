@@ -301,7 +301,7 @@ export default function ContractsPage() {
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); setEditingId(contract.id) }}
-                    className="h-10 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 text-sm font-semibold text-white shadow active:opacity-80"
+                    className="h-10 whitespace-nowrap rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-2 text-sm font-semibold text-white shadow active:opacity-80"
                   >
                     ✏️ 編集
                   </button>
@@ -309,7 +309,7 @@ export default function ContractsPage() {
                     type="button"
                     onClick={(event) => duplicateFromList(contract, event)}
                     disabled={duplicatingId != null}
-                    className="h-10 rounded-md border border-gray-300 bg-white px-2 text-sm font-semibold text-[var(--color-text)] active:bg-gray-50 disabled:opacity-50"
+                    className="h-10 whitespace-nowrap rounded-md border border-gray-300 bg-white px-2 text-sm font-semibold text-[var(--color-text)] active:bg-gray-50 disabled:opacity-50"
                   >
                     {duplicatingId === contract.id ? '複製中…' : '📑 複製'}
                   </button>
@@ -317,7 +317,7 @@ export default function ContractsPage() {
                     type="button"
                     onClick={(event) => openContractPdf(contract, event)}
                     disabled={pdfLoadingId != null}
-                    className="h-10 rounded-md border border-fuchsia-300 bg-white px-2 text-sm font-semibold text-fuchsia-600 active:bg-fuchsia-50 disabled:opacity-50"
+                    className="h-10 whitespace-nowrap rounded-md border border-fuchsia-300 bg-white px-2 text-sm font-semibold text-fuchsia-600 active:bg-fuchsia-50 disabled:opacity-50"
                   >
                     {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
                   </button>
@@ -326,7 +326,7 @@ export default function ContractsPage() {
                       type="button"
                       onClick={(event) => inviteFromList(contract, event)}
                       disabled={invitingId != null}
-                      className="h-10 rounded-md border border-emerald-300 bg-white px-2 text-sm font-semibold text-emerald-600 active:bg-emerald-50 disabled:opacity-50"
+                      className="h-10 whitespace-nowrap rounded-md border border-emerald-300 bg-white px-2 text-sm font-semibold text-emerald-600 active:bg-emerald-50 disabled:opacity-50"
                     >
                       {invitingId === contract.id ? '送信中…' : contract.party_b_invited_at ? '📨 再送' : '📨 招待'}
                     </button>
@@ -335,7 +335,7 @@ export default function ContractsPage() {
                     <button
                       type="button"
                       onClick={(event) => deleteFromList(contract, event)}
-                      className="h-10 rounded-md border border-red-300 bg-white px-2 text-sm font-semibold text-red-500 active:bg-red-50"
+                      className="h-10 whitespace-nowrap rounded-md border border-red-300 bg-white px-2 text-sm font-semibold text-red-500 active:bg-red-50"
                     >
                       🗑 削除
                     </button>
@@ -379,11 +379,11 @@ export default function ContractsPage() {
                     <td className="px-3 py-3 text-[var(--color-text-sub)]">{formatContractDate(contract.contract_date)}</td>
                     <td className="px-3 py-3 text-[var(--color-text-sub)]">{formatContractDate(contract.updated_at)}</td>
                     <td className="px-3 py-3">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); setEditingId(contract.id) }}
-                          className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-sm font-semibold text-white shadow hover:opacity-90"
+                          className="shrink-0 whitespace-nowrap rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-sm font-semibold text-white shadow hover:opacity-90"
                         >
                           ✏️ 編集
                         </button>
@@ -391,7 +391,7 @@ export default function ContractsPage() {
                           type="button"
                           onClick={(event) => duplicateFromList(contract, event)}
                           disabled={duplicatingId != null}
-                          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
+                          className="shrink-0 whitespace-nowrap rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50"
                         >
                           {duplicatingId === contract.id ? '複製中…' : '📑 複製'}
                         </button>
@@ -399,7 +399,7 @@ export default function ContractsPage() {
                           type="button"
                           onClick={(event) => openContractPdf(contract, event)}
                           disabled={pdfLoadingId != null}
-                          className="rounded-md border border-fuchsia-300 bg-white px-3 py-1.5 text-sm font-semibold text-fuchsia-600 hover:bg-fuchsia-50 disabled:opacity-50"
+                          className="shrink-0 whitespace-nowrap rounded-md border border-fuchsia-300 bg-white px-3 py-1.5 text-sm font-semibold text-fuchsia-600 hover:bg-fuchsia-50 disabled:opacity-50"
                         >
                           {pdfLoadingId === contract.id ? '生成中…' : '📄 PDF'}
                         </button>
@@ -408,7 +408,7 @@ export default function ContractsPage() {
                             type="button"
                             onClick={(event) => inviteFromList(contract, event)}
                             disabled={invitingId != null}
-                            className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                            className="shrink-0 whitespace-nowrap rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
                           >
                             {invitingId === contract.id ? '送信中…' : contract.party_b_invited_at ? '📨 再送' : '📨 招待'}
                           </button>
@@ -417,7 +417,7 @@ export default function ContractsPage() {
                           <button
                             type="button"
                             onClick={(event) => deleteFromList(contract, event)}
-                            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-500 hover:bg-red-50"
+                            className="shrink-0 whitespace-nowrap rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-500 hover:bg-red-50"
                           >
                             🗑 削除
                           </button>
