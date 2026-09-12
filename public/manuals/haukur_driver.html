@@ -146,8 +146,6 @@
 <h2 id="s2">2. 招待メールから登録する</h2>
 <p>HAUKUR運送から招待メールが届きます。リンクを開いてパスワードを決めるだけで登録は完了です。</p>
 <div class="step"><b class="no">STEP 1</b> 招待メールのリンクを開きます（14日以内）。</div>
-<div class="step"><b class="no">STEP 2</b> 表示名を確認し、パスワード（6文字以上）を2か所に入れて <span class="btn">登録を完了する</span> を押します。</div>
-<div class="step"><b class="no">STEP 3</b> 「🎉 登録が完了しました」と出たら <span class="btn">アプリをはじめる</span> でカレンダーが開きます。</div>
 <div class="mailbox">
   <div class="subject">📧 届くメール　件名：【勤怠アプリ】<span class="var">西野 雄太郎</span>さんから招待が届きました</div>
   <pre><span class="var">お名前</span> 様
@@ -162,16 +160,32 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
   <div class="from"><span class="var">黄色</span>の部分に、ご自身の名前・メールアドレスが入ります。</div>
 </div>
 <div class="warn">「⚠️ 招待リンクが無効です」と出たら期限切れです。同じリンクは使えないため、HAUKUR運送に再送を依頼してください。</div>
+<div class="step"><b class="no">STEP 2</b> 表示名を確認し、パスワード（6文字以上）を2か所に入れて <span class="btn">登録を完了する</span> を押します。</div>
+<div class="step"><b class="no">STEP 3</b> 「🎉 登録が完了しました」と出たら <span class="btn">アプリをはじめる</span> でカレンダーが開きます。</div>
 
 <h2 id="s3">3. ログイン・ログアウト</h2>
 <h3>3-1. ログインする</h3>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> ブラウザで <span class="url">https://react-frontend-beige.vercel.app</span> を開きます。</div>
+<figure class="shot phone">
+  <img src="images/01a_signin_plain.jpg" alt="図3-1　URLを開くと出るログイン画面">
+  <figcaption>図3-1　URLを開くと出るログイン画面</figcaption>
+</figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> 登録したメールアドレスとパスワードを入れて <span class="btn">サインイン</span> を押します。</div>
+<figure class="shot phone">
+  <img src="images/01_signin.jpg" alt="図3-2　メールとパスワードを入れて「サインイン」">
+  <figcaption>図3-2　メールとパスワードを入れて「サインイン」</figcaption>
+</figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 3</b> カレンダーが開きます。次回も同じURLです。</div>
 <figure class="shot phone">
-  <img src="images/01_signin.jpg" alt="図3-1　ログイン画面。メールとパスワードを入れて「サインイン」">
-  <figcaption>図3-1　ログイン画面。メールとパスワードを入れて「サインイン」</figcaption>
+  <img src="images/d02b_calendar_plain.jpg" alt="図3-3　ログイン後に開くカレンダー">
+  <figcaption>図3-3　ログイン後に開くカレンダー</figcaption>
 </figure>
+</div>
 <h3>3-2. ログアウト・ホーム画面に追加</h3>
 <ul>
   <li>画面右上の <span class="btn">ログアウト</span> を押すとログイン画面に戻ります。</li>
@@ -186,7 +200,7 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
   <tr><th style="width:26%">メニュー</th><th>できること</th><th style="width:12%">章</th></tr>
   <tr><td>📅 カレンダー</td><td>その日の稼働を入力する。写真からメーター・ガソリン代を自動入力</td><td>5・6</td></tr>
   <tr><td>🕒 勤怠</td><td>1か月分を表で確認・修正する。支払明細の申請もここから</td><td>7・8</td></tr>
-  <tr><td>📄 請求書一覧</td><td>申請した支払明細の状態（下書き・申請中・承認済み）を見る</td><td>8</td></tr>
+  <tr><td>📄 請求書一覧</td><td>申請した支払明細の状態（下書き・申請中・承認済）を見る</td><td>8</td></tr>
   <tr><td>📝 契約書</td><td>署名した業務委託契約書を見る</td><td>9</td></tr>
 </table></div>
 <figure class="shot phone wide">
@@ -197,8 +211,14 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 
 <h2 id="s5">5. カレンダーで毎日の稼働を入力する</h2>
 <h3>5-1. その日の稼働を入力する</h3>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> メニューの <b>📅 カレンダー</b> を開き、日付をタップすると「稼働報告書」が開きます。</div>
+<figure class="shot phone"><img src="images/d02_calendar.jpg" alt="図5-1　カレンダー。日付をタップして入力"><figcaption>図5-1　カレンダー。日付をタップして入力</figcaption></figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> <b>☑ 稼働</b> にチェックを入れます（外して保存すると、その日の稼働は削除されます）。</div>
+<figure class="shot phone"><img src="images/03_day_report.jpg" alt="図5-2　開いた稼働報告書（① 稼働にチェック）"><figcaption>図5-2　開いた稼働報告書（① 稼働にチェック）</figcaption></figure>
+</div>
 <div class="step"><b class="no">STEP 3</b> 上から順に入力します（下表）。</div>
 <div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:30%">項目</th><th>入力のしかた</th></tr>
@@ -208,16 +228,10 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
   <tr><td>配送件数 (件)</td><td>その日の配送件数</td></tr>
   <tr><td>開始メーター ／ 終了メーター</td><td><span class="btn">📷 メーターを撮影</span> で写真を撮ると数値が自動で入ります（6-1）</td></tr>
   <tr><td>実費レシート（ガソリン代）</td><td><span class="btn">📷 レシートを撮影して金額を自動入力</span> で金額が自動で入ります（6-2）</td></tr>
+  <tr><td>実費合計 (円)</td><td>レシートの金額が自動で合算されます。必要なら手で直せます</td></tr>
 </table></div>
 <div class="step"><b class="no">STEP 4</b> <span class="btn">保存</span> を押します。「稼働報告を保存しました」と出れば完了です。</div>
 <div class="hint">後から直すときは同じ日付をタップして修正し、もう一度 <span class="btn">保存</span> を押します。</div>
-<figure class="shot">
-  <div class="row">
-    <img src="images/d02_calendar.jpg" alt="図5-1　左＝カレンダー。日付をタップして入力。右＝開いた稼働報告書（① 稼働にチェック）">
-    <img src="images/03_day_report.jpg" alt="図5-1　左＝カレンダー。日付をタップして入力。右＝開いた稼働報告書（① 稼働にチェック）">
-  </div>
-  <figcaption>図5-1　左＝カレンダー。日付をタップして入力。右＝開いた稼働報告書（① 稼働にチェック）</figcaption>
-</figure>
 <h3>5-2. 月の集計を見る</h3>
 <ul>
   <li>カレンダー上部に <b>月度稼働日数(日)・稼働時間(h)・時間外(h)・走行距離(km)</b> が表示されます（1日〜末日）。</li>
@@ -228,36 +242,34 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <p>メーターとガソリン代は、写真を撮るだけでAIが数値を読み取り、そのまま欄に入ります。手打ちは不要です。</p>
 <h3>6-1. メーターを写真で読み取る</h3>
 <div class="step"><b class="no">STEP 1</b> 「開始メーター (km)」の <span class="btn">📷 メーターを撮影</span> を押し、カメラで撮影します（写真の選択も可）。</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> 「🤖 AI読取中…」と表示され、数秒で数値が入ります。違っていれば直します。</div>
+<figure class="shot phone"><img src="images/03c_meter_ai.jpg" alt="図6-1　メーターを撮影するとAIがkmを自動入力"><figcaption>図6-1　メーターを撮影するとAIがkmを自動入力</figcaption></figure>
+</div>
 <div class="step"><b class="no">STEP 3</b> 終了時も「終了メーター (km)」を撮影します。</div>
 <div class="warn">写真を添付するまで数値は入力できません。✕ を押すと数値も消えます。終了メーターが開始より小さいと保存できません。</div>
 <h3>6-2. ガソリン代などのレシートを読み取る</h3>
 <div class="step"><b class="no">STEP 1</b> 「実費レシート（ガソリン代）」の <span class="btn">📷 レシートを撮影して金額を自動入力</span> を押し、撮影します。</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> 1枚ごとに金額欄が増え、AIが読み取った税込額が入ります。違えば直し、不要な行は ✕ で消します。</div>
+<figure class="shot phone"><img src="images/03d_receipt_ai.jpg" alt="図6-2　レシートを撮影するとAIが金額を読み、実費合計に合算"><figcaption>図6-2　レシートを撮影するとAIが金額を読み、実費合計に合算</figcaption></figure>
+</div>
 <div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。保存すると勤怠の実費と支払明細の立替金に反映されます。</div>
 <div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代も同じ手順で入れられます。</div>
-<figure class="shot">
-  <div class="row">
-    <img src="images/03c_meter_ai.jpg" alt="図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算">
-    <img src="images/03d_receipt_ai.jpg" alt="図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算">
-  </div>
-  <figcaption>図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算</figcaption>
-</figure>
 
 <h2 id="s7">7. 勤怠画面で1か月分を確認する</h2>
-<p>メニューの <b>🕒 勤怠</b> は、カレンダーで入れた1か月分を表で見る画面です。同じデータで、どちらで直しても反映。</p>
+<p>メニューの <b>🕒 勤怠</b> は、カレンダーの1か月分を表で見る画面です。同じデータで、どちらで直しても反映されます。</p>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> 上部の <span class="btn">←</span> <span class="btn">→</span> で月を切り替えます。「期間: ○月1日 〜 ○月末日」が出ます。</div>
+<figure class="shot phone"><img src="images/d03_attendance.jpg" alt="図7-1　勤怠画面の上部（申請・出退勤・今期サマリ）"><figcaption>図7-1　勤怠画面の上部（申請・出退勤・今期サマリ）</figcaption></figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> 表のセルを直接編集すると自動保存されます（保存直後に ✓、保存済みで ● が出ます）。</div>
+<figure class="shot phone"><img src="images/d04_attendance_table.jpg" alt="図7-2　下部の稼働報告書の表"><figcaption>図7-2　下部の稼働報告書の表</figcaption></figure>
+</div>
 <div class="step"><b class="no">STEP 3</b> 表の下に 稼働日数・稼働時間・時間外・走行距離・配送件数 の合計が出ます（紙の提出は不要）。</div>
 <div class="hint">スマホでは表が横にスクロールし、日付列は固定されます。1行の全項目を空にすると、その日の稼働は削除されます。</div>
 <div class="warn">勤怠画面の表では写真は扱えません（数値入力のみ）。写真の読み取りはカレンダー（6章）で行います。</div>
-<figure class="shot">
-  <div class="row">
-    <img src="images/d03_attendance.jpg" alt="図7-1　左＝勤怠画面の上部（申請・出退勤・今期サマリ）。右＝下部の稼働報告書の表">
-    <img src="images/d04_attendance_table.jpg" alt="図7-1　左＝勤怠画面の上部（申請・出退勤・今期サマリ）。右＝下部の稼働報告書の表">
-  </div>
-  <figcaption>図7-1　左＝勤怠画面の上部（申請・出退勤・今期サマリ）。右＝下部の稼働報告書の表</figcaption>
-</figure>
 
 <h2 id="s8">8. 支払明細を申請する</h2>
 <p>締日（末日）を過ぎたら、その月の支払明細をHAUKUR運送へ申請します。金額は入力した稼働から自動計算されます。</p>
@@ -272,7 +284,7 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
   <tr><th style="width:22%">状態</th><th>意味</th><th style="width:30%">できること</th></tr>
   <tr><td>下書き</td><td>まだ申請していない</td><td>編集・削除・申請</td></tr>
   <tr><td>申請中</td><td>HAUKUR運送の確認待ち</td><td>取消して直す</td></tr>
-  <tr><td>承認済み</td><td>内容が承認された</td><td>内容の確認のみ</td></tr>
+  <tr><td>承認済</td><td>内容が承認された</td><td>内容の確認のみ</td></tr>
   <tr><td>却下</td><td>差し戻し。直して出し直す</td><td>再申請</td></tr>
 </table></div>
 <figure class="shot phone">
@@ -284,7 +296,7 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <p>業務委託契約書はHAUKUR運送からメールで届きます。ログインは不要で、スマホの画面上で署名できます。</p>
 <div class="step"><b class="no">STEP 1</b> メールの署名URLを開きます（30日以内）。</div>
 <div class="step"><b class="no">STEP 2</b> 契約書の内容を最後まで確認します。</div>
-<div class="step"><b class="no">STEP 3</b> 署名欄に指（マウス）で署名し、<span class="btn">署名して同意する</span> を押します。</div>
+<div class="step"><b class="no">STEP 3</b> 「署名者名」を入力して署名し、2つの同意にチェックして <span class="btn">署名して送信</span> を押します。</div>
 <div class="step"><b class="no">STEP 4</b> 署名済みPDFが作られ、メニューの <b>📝 契約書</b> からいつでも確認できます。</div>
 <div class="mailbox">
   <div class="subject">📧 届くメール　件名：【<span class="var">運送業務委託契約書</span>】ご署名のお願い</div>
