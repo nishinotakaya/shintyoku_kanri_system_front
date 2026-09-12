@@ -57,6 +57,7 @@
   figure.shot.wide img { max-width: 340px; }
   figure.shot.strip img { max-width: 340px; }
   figure.shot.pc img { max-width: 460px; }
+  figure.shot.duo img { max-width: 640px; }
   figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
   figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
   figure.shot .row img { width: 270px; }
@@ -243,7 +244,7 @@ https://react-frontend-beige.vercel.app/manuals/haukur_driver.html</pre>
   <tr><td>実費合計 (円)</td><td>レシートの金額が自動で合算されます。必要なら手で直せます</td></tr>
 </table></div>
 <div class="step"><b class="no">STEP 4</b> <span class="btn">保存</span> を押します。「稼働報告を保存しました」と出れば完了です。</div>
-<div class="hint">後から直すときは同じ日付をタップして修正し、もう一度 <span class="btn">保存</span> を押します。</div>
+<div class="hint">保存した内容は 🕒 <b>勤怠</b> にそのまま連携されます（開始/終了時間・走行距離・配送件数は稼働報告書の表へ、実費レシートは「立替金」へ1枚1件で。7章）。勤怠側で入れ直す必要はありません。後から直すときは同じ日付をタップして修正し、もう一度 <span class="btn">保存</span> を押します。</div>
 <h3>5-2. 月の集計を見る</h3>
 <ul>
   <li>カレンダー上部に <b>月度稼働日数(日)・稼働時間(h)・時間外(h)・走行距離(km)</b> が表示されます（1日〜末日）。</li>
@@ -269,8 +270,8 @@ https://react-frontend-beige.vercel.app/manuals/haukur_driver.html</pre>
 </div>
 <div class="keep">
 <div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。</div>
-<div class="hint">保存すると 🕒 <b>勤怠</b> の「立替金」にも自動で積み上がります。月末はその合計がそのまま立替金の申請額になります（8章）。</div>
-<figure class="shot strip"><img src="images/09c_advance_list.jpg" alt="図6-3　勤怠の「立替金」に 2026-09-02 のガソリン代 ¥6,006 が並び、今期サマリの立替金にも反映される"><figcaption>図6-3　勤怠の「立替金」に 2026-09-02 のガソリン代 ¥6,006 が並び、今期サマリの立替金にも反映される</figcaption></figure>
+<div class="hint">保存すると 🕒 <b>勤怠</b> に自動で反映されます。<b>①</b> カレンダーで入れた開始/終了時間はそのまま稼働報告書の表に入り（7章）、<b>②</b> レシートの実費は「立替金」に1枚1件で積み上がります。月末はその合計がそのまま立替金の申請額になります（8章）。</div>
+<figure class="shot duo"><img src="images/d11_advance_list.jpg" alt="図6-3　保存後の 🕒 勤怠。① 2026-09-02 の勤務時間 07:00〜18:00 がそのまま稼働報告書の表に入り、② ガソリン代 ¥6,006 が「立替金」に1件並ぶ"><figcaption>図6-3　保存後の 🕒 勤怠。① 2026-09-02 の勤務時間 07:00〜18:00 がそのまま稼働報告書の表に入り、② ガソリン代 ¥6,006 が「立替金」に1件並ぶ</figcaption></figure>
 </div>
 <div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代も同じ手順で入れられます。</div>
 
