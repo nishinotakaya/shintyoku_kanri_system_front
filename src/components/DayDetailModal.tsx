@@ -1060,6 +1060,14 @@ export default function DayDetailModal({
         amount: row.amount === '' ? null : Number(row.amount),
         label: row.label || null,
       })),
+      // 保存済みレシートの金額をあとから直した分。これを送らないと立替金に古い金額が残る
+      expense_photos_update: expenseReceipts
+        .filter((row) => row.id != null && !row.newDataUrl)
+        .map((row) => ({
+          id: row.id,
+          amount: row.amount === '' ? null : Number(row.amount),
+          label: row.label || null,
+        })),
       remove_expense_photo_ids: removedExpensePhotoIds.length > 0 ? removedExpensePhotoIds : undefined,
     }
     setTransportSaving(true)

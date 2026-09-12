@@ -187,12 +187,18 @@ export default function ExpenseTable({
                 <tbody>
                   {filteredExpenses.map((e) => {
                     const burden = e.company_burden ?? true
+                    const fromReceipt = e.work_report_expense_photo_id != null
                     return (
                       <tr key={e.id} className={`border-t border-[var(--color-border)] ${burden ? '' : 'bg-gray-50 text-gray-400'}`}>
                         <td className="px-2 py-1 font-mono">{e.expense_date}</td>
-                        <td className="px-2 py-1">{e.purpose ?? '—'}</td>
+                        <td className="px-2 py-1">
+                          {e.purpose ?? '—'}
+                          {fromReceipt && <span className="ml-1 text-[10px] text-emerald-600">🧾</span>}
+                        </td>
                         <td className="px-2 py-1 text-[10px]">
-                          {e.from_station} 〜 {e.to_station} {e.payee_or_line ? `(${e.payee_or_line})` : ''}
+                          {fromReceipt
+                            ? 'カレンダーの実費レシート'
+                            : `${e.from_station ?? ''} 〜 ${e.to_station ?? ''} ${e.payee_or_line ? `(${e.payee_or_line})` : ''}`}
                         </td>
                         <td className="px-2 py-1 text-right font-mono tabular-nums">¥{e.amount.toLocaleString()}</td>
                         <td className="px-2 py-1 text-center">
@@ -200,8 +206,13 @@ export default function ExpenseTable({
                             onChange={() => toggleCompanyBurden(e)} className="accent-emerald-500" />
                         </td>
                         <td className="px-2 py-1 text-center">
-                          <button onClick={() => removeExpense(e.id)} disabled={updating === e.id}
-                            className="text-rose-500 hover:text-rose-700 disabled:opacity-50">🗑</button>
+                          {/* レシート由来の行はカレンダー側で消す(ここで消しても日報保存で復活するため) */}
+                          {fromReceipt ? (
+                            <span title="カレンダーの日報でレシートを削除してください" className="text-[10px] text-[var(--color-text-sub)]">—</span>
+                          ) : (
+                            <button onClick={() => removeExpense(e.id)} disabled={updating === e.id}
+                              className="text-rose-500 hover:text-rose-700 disabled:opacity-50">🗑</button>
+                          )}
                         </td>
                       </tr>
                     )

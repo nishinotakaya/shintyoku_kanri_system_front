@@ -110,7 +110,7 @@ export default function InvoiceClientsEditor({ asUserId }: { asUserId?: number }
       <input
         value={String(form[key] ?? '')}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-        className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+        className="mt-1 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
       />
     </label>
   )
@@ -159,9 +159,9 @@ export default function InvoiceClientsEditor({ asUserId }: { asUserId?: number }
       </div>
 
       {editingId !== null && (
-        <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-[var(--color-border)] p-3">
-          <div className="col-span-2 flex gap-2">
-            <div className="flex-1">{field('会社名（宛名）', 'name', 'col-span-2')}</div>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-[var(--color-border)] p-3">
+          <div className="flex gap-2 sm:col-span-2">
+            <div className="min-w-0 flex-1">{field('会社名（宛名）', 'name', 'col-span-2')}</div>
             <label className="block w-24">
               <span className="text-[11px] text-[var(--color-text-sub)]">敬称</span>
               <select value={form.honorific} onChange={(e) => setForm({ ...form, honorific: e.target.value })}
@@ -171,18 +171,18 @@ export default function InvoiceClientsEditor({ asUserId }: { asUserId?: number }
               </select>
             </label>
           </div>
-          {field('件名（既定）', 'subject', 'col-span-2')}
+          {field('件名（既定）', 'subject', 'sm:col-span-2')}
           {field('担当者', 'contact_name')}
           {field('TEL', 'tel')}
           {field('郵便番号', 'postal_code')}
           {field('FAX', 'fax')}
-          {field('住所', 'address', 'col-span-2')}
-          <label className="col-span-2 flex items-center gap-2 text-[11px] text-[var(--color-text-sub)]">
+          {field('住所', 'address', 'sm:col-span-2')}
+          <label className="flex items-center gap-2 text-[11px] text-[var(--color-text-sub)] sm:col-span-2">
             <input type="checkbox" checked={form.is_default}
               onChange={(e) => setForm({ ...form, is_default: e.target.checked })} />
             既定の請求先にする（宛先を選んでいない請求書はここ宛になります）
           </label>
-          <div className="col-span-2 flex justify-end gap-2">
+          <div className="flex justify-end gap-2 sm:col-span-2">
             <button onClick={cancel} className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs">キャンセル</button>
             <button onClick={save} disabled={busy}
               className="rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50">

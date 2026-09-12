@@ -288,7 +288,7 @@ export default function SettingsModal({
     reader.readAsDataURL(file)
   }
 
-  const fld = (label: string, key: keyof InvoiceSetting, type: 'text' | 'number' = 'text', span = 'col-span-2') => (
+  const fld = (label: string, key: keyof InvoiceSetting, type: 'text' | 'number' = 'text', span = 'sm:col-span-2') => (
     <label className={`block ${span}`}>
       <span className="text-[11px] text-[var(--color-text-sub)]">{label}</span>
       <input
@@ -297,7 +297,7 @@ export default function SettingsModal({
         onChange={(e) =>
           setInv((p) => p && { ...p, [key]: type === 'number' ? Number(e.target.value) : e.target.value })
         }
-        className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
+        className="mt-1 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-fuchsia-400/60 focus:bg-gray-50"
       />
     </label>
   )
@@ -308,7 +308,7 @@ export default function SettingsModal({
       onClick={onClose}
     >
       <div
-        className="glass max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl p-7 shadow-2xl"
+        className="glass max-h-[90vh] w-full max-w-2xl overflow-y-auto overflow-x-hidden rounded-3xl p-4 sm:p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -387,7 +387,7 @@ export default function SettingsModal({
 
             <div>
               <div className="text-xs text-[var(--color-text-sub)]">申請日（{year}年{month}月分）</div>
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input
                   type="date"
                   value={applicationDate}
@@ -425,15 +425,15 @@ export default function SettingsModal({
                 </select>
               )}
 
-              <div className="mt-2 grid grid-cols-12 gap-2">
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-12 gap-2">
                 <input value={transit.from} onChange={(e) => setTransit({ ...transit, from: e.target.value })} placeholder="出発"
-                  className="col-span-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]" />
-                <span className="col-span-1 flex items-center justify-center text-[var(--color-text-sub)]">〜</span>
+                  className="col-span-2 sm:col-span-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]" />
+                <span className="col-span-2 sm:col-span-1 flex items-center justify-center text-[var(--color-text-sub)]">〜</span>
                 <input value={transit.to} onChange={(e) => setTransit({ ...transit, to: e.target.value })} placeholder="到着"
-                  className="col-span-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]" />
+                  className="col-span-2 sm:col-span-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]" />
                 <input type="number" value={transit.fee} onChange={(e) => setTransit({ ...transit, fee: Number(e.target.value) })} placeholder="金額"
-                  className="col-span-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-right font-mono text-[var(--color-text)]" />
-                <span className="col-span-1 flex items-center text-xs text-[var(--color-text-sub)]">円</span>
+                  className="col-span-1 sm:col-span-2 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-right font-mono text-[var(--color-text)]" />
+                <span className="col-span-1 sm:col-span-1 flex items-center text-xs text-[var(--color-text-sub)]">円</span>
                 <button onClick={() => {
                   if (transit.from && transit.to) setRoutes([...routes, { ...transit }])
                 }} className="col-span-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] px-2 py-2 text-xs text-[var(--color-text-sub)] hover:bg-gray-50">
@@ -520,18 +520,18 @@ export default function SettingsModal({
               <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">
                 申告書PDFの「◯◯税務署長」と納税地に印字されます（例: 税務署=松戸）
               </div>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <input
                   value={taxInfo.tax_office}
                   onChange={(e) => setTaxInfo({ ...taxInfo, tax_office: e.target.value })}
                   placeholder="所轄税務署 (例: 松戸)"
-                  className="w-40 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
+                  className="w-32 sm:w-40 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
                 />
                 <input
                   value={taxInfo.address}
                   onChange={(e) => setTaxInfo({ ...taxInfo, address: e.target.value })}
                   placeholder="納税地の住所 (未入力なら請求書設定の住所を使用)"
-                  className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
+                  className="min-w-0 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
                 />
               </div>
               <div className="mt-2">
@@ -539,7 +539,7 @@ export default function SettingsModal({
                   value={taxInfo.name_kana}
                   onChange={(e) => setTaxInfo({ ...taxInfo, name_kana: e.target.value })}
                   placeholder="氏名フリガナ (例: ニシノ タカヤ) — 申告書のフリガナ欄に印字"
-                  className="w-72 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
+                  className="w-full sm:w-72 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-gray-400"
                 />
               </div>
             </div>
@@ -560,6 +560,9 @@ export default function SettingsModal({
               </select>
             </div>
 
+            {/* ドライバー・運送の代表は個別キーを持たない（サーバー共通キーを使う）ため、混乱を避けて非表示にする */}
+            {isAdmin && (
+            <>
             <div>
               <div className="text-xs text-[var(--color-text-sub)]">OpenAI API キー</div>
               <div className="mt-1 text-[11px] text-[var(--color-text-sub)]">
@@ -635,6 +638,8 @@ export default function SettingsModal({
                 </div>
               </div>
             </div>
+            </>
+            )}
 
             {msg && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-600">{msg}</div>}
             <button
@@ -657,9 +662,9 @@ export default function SettingsModal({
                   }`}>{WORK_CATEGORY_LABELS[key]}</button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex gap-2 col-span-2">
-                <div className="flex-1">{fld('請求先（既定・請求先マスタ未使用時）', 'client_name')}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex gap-2 sm:col-span-2">
+                <div className="min-w-0 flex-1">{fld('請求先（既定・請求先マスタ未使用時）', 'client_name')}</div>
                 <label className="block w-24">
                   <span className="text-[11px] text-[var(--color-text-sub)]">敬称</span>
                   <select
@@ -770,7 +775,7 @@ export default function SettingsModal({
               {fld('住所', 'address')}
               {fld('Email', 'email')}
               {fld('振込先', 'bank_info')}
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <span className="text-[11px] text-[var(--color-text-sub)]">印鑑（ハンコ）画像 — 請求書/立替金PDFの右上に押印されます（全カテゴリ共通）</span>
                 <div className="mt-1 flex items-center gap-3">
                   {inv.seal_image ? (
@@ -794,14 +799,14 @@ export default function SettingsModal({
               <div className="text-[11px] text-[var(--color-text-sub)]">既定の追加品目（マイナスで控除）</div>
               <div className="mt-2 space-y-2">
                 {inv.default_items.map((it, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2">
+                  <div key={i} className="grid grid-cols-2 sm:grid-cols-12 gap-2">
                     <input
                       value={it.label}
                       onChange={(e) =>
                         setInv((p) => p && { ...p, default_items: p.default_items.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })
                       }
                       placeholder="品名"
-                      className="col-span-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                      className="col-span-2 sm:col-span-5 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
                     />
                     <input
                       type="number"
@@ -810,7 +815,7 @@ export default function SettingsModal({
                         setInv((p) => p && { ...p, default_items: p.default_items.map((x, j) => (j === i ? { ...x, qty: Number(e.target.value) } : x)) })
                       }
                       placeholder="数量"
-                      className="col-span-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-right text-sm text-[var(--color-text)]"
+                      className="col-span-1 sm:col-span-2 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-right text-sm text-[var(--color-text)]"
                     />
                     <input
                       value={it.unit}
@@ -818,7 +823,7 @@ export default function SettingsModal({
                         setInv((p) => p && { ...p, default_items: p.default_items.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)) })
                       }
                       placeholder="単位"
-                      className="col-span-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                      className="col-span-1 sm:col-span-2 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
                     />
                     <input
                       type="number"
@@ -827,7 +832,7 @@ export default function SettingsModal({
                         setInv((p) => p && { ...p, default_items: p.default_items.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) } : x)) })
                       }
                       placeholder="単価"
-                      className="col-span-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-right text-sm text-[var(--color-text)]"
+                      className="col-span-1 sm:col-span-2 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-right text-sm text-[var(--color-text)]"
                     />
                     <button
                       onClick={() => setInv((p) => p && { ...p, default_items: p.default_items.filter((_, j) => j !== i) })}
@@ -866,7 +871,7 @@ export default function SettingsModal({
               <input value={blSetting.backlog_url} onChange={(e) => setBlSetting({ ...blSetting, backlog_url: e.target.value })}
                 className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]" />
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-[11px] text-[var(--color-text-sub)]">メール</span>
                 <input value={blSetting.backlog_email} onChange={(e) => setBlSetting({ ...blSetting, backlog_email: e.target.value })}
@@ -879,7 +884,7 @@ export default function SettingsModal({
                   className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]" />
               </label>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-[11px] text-[var(--color-text-sub)]">ボード ID</span>
                 <input type="number" value={blSetting.board_id} onChange={(e) => setBlSetting({ ...blSetting, board_id: Number(e.target.value) })}
@@ -1041,7 +1046,7 @@ export default function SettingsModal({
               <br />（freee API ではなく Web のセッション API を使用 — 利用規約上グレーのため、本番運用前に公式 API への切替検討推奨）
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-[11px] text-[var(--color-text-sub)]">freee メールアドレス</span>
                 <input

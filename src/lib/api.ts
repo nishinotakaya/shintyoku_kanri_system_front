@@ -86,6 +86,8 @@ export type Expense = {
   payee_or_line: string | null
   category: string | null
   company_burden?: boolean
+  // カレンダーの実費レシートから自動作成された立替金はレシートの id が入る(手入力分は null)
+  work_report_expense_photo_id?: number | null
 }
 
 export type Me = {
