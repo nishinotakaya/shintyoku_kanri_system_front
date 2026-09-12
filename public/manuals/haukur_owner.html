@@ -56,6 +56,7 @@
   figure.shot img { display: block; width: 100%; max-width: 270px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
   figure.shot.wide img { max-width: 340px; }
   figure.shot.strip img { max-width: 340px; }
+  figure.shot.pc img { max-width: 460px; }
   figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
   figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
   figure.shot .row img { width: 270px; }
@@ -413,6 +414,7 @@ https://react-frontend-beige.vercel.app/sign_in
 
 <h2 id="s10">10. 請求書 <span class="role-badge admin-badge">雄太郎様</span></h2>
 <p>メニューの <b>📄 請求書一覧</b> には、ご自身とドライバー全員の請求書・立替金の申請が並びます。</p>
+<div class="hint">10-4・10-5 のまとめ操作（チェックボックス・統合PDF・メール送付）と 10-3 の <span class="btn">却下</span> は、<b>パソコン画面</b>でだけ表示されます。スマホでは1件ずつの確認・承認まで行えます。</div>
 <h3>10-1. ステータスの意味</h3>
 <div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:18%">表示</th><th>意味</th><th style="width:40%">できる操作</th></tr>
@@ -427,23 +429,70 @@ https://react-frontend-beige.vercel.app/sign_in
   <figcaption>図10-1　請求書一覧。行ごとに プレビュー／編集／保存／申請 ができます</figcaption>
 </figure>
 <h3>10-2. 請求書を新しく作る（勤怠を経由しない場合）</h3>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> <span class="btn">＋ 請求書/立替金を作成（下書き）</span> を押します。</div>
+<figure class="shot strip"><img src="images/10a_create_button.jpg" alt="図10-2　一覧の上にある ＋ 請求書/立替金を作成（下書き）"><figcaption>図10-2　一覧の上にある ＋ 請求書/立替金を作成（下書き）</figcaption></figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> 「申請者ユーザー」と 年・月・カテゴリ（運送）・種別（請求書／立替金）を選びます。</div>
-<div class="step"><b class="no">STEP 3</b> 「請求先（宛先）」と「振込先（口座）」を入れます（郵便番号＋<span class="btn">🔍 検索</span> で住所が入ります）。</div>
-<div class="step"><b class="no">STEP 4</b> <span class="btn">💾 作成のみ（下書き保存）</span> を押します。一覧に「下書き」として追加されます。</div>
+<figure class="shot phone"><img src="images/10b_form_who.jpg" alt="図10-3　申請者ユーザー・年・月・カテゴリ・種別"><figcaption>図10-3　申請者ユーザー・年・月・カテゴリ・種別</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 3</b> 「振込先（口座）」に金融機関・口座番号・口座名義を入れます（住所は郵便番号＋<span class="btn">🔍 検索</span>）。</div>
+<figure class="shot phone"><img src="images/10c_form_bank.jpg" alt="図10-4　振込先（口座）と郵便番号の検索"><figcaption>図10-4　振込先（口座）と郵便番号の検索</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 4</b> 「請求先（宛先）」で宛名を選びます。直接入力すると、この請求書だけ宛名を上書きできます。</div>
+<figure class="shot phone"><img src="images/10d_form_client.jpg" alt="図10-5　請求先（宛先）。既定は請求書設定の宛名"><figcaption>図10-5　請求先（宛先）。既定は請求書設定の宛名</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 5</b> <span class="btn">💾 作成のみ（下書き保存）</span> を押します。一覧に「下書き」として追加されます。</div>
+<figure class="shot strip"><img src="images/10e_form_save.jpg" alt="図10-6　画面下の 💾 作成のみ（下書き保存）"><figcaption>図10-6　画面下の 💾 作成のみ（下書き保存）</figcaption></figure>
+</div>
 <h3>10-3. ドライバーの申請を確認して承認する</h3>
-<div class="step"><b class="no">STEP 1</b> 一覧で「申請中」の行を探し、<span class="btn">PDF</span> で稼働日数・金額・立替金を確認します。</div>
-<div class="step"><b class="no">STEP 2</b> 直すときは <span class="btn">✏️ 編集</span> → 各欄を修正 → <span class="btn">💾 保存</span>（合計は明細から自動計算）。</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 1</b> 一覧で「申請中」の行を探します。</div>
+<figure class="shot phone"><img src="images/10f_row_pending.jpg" alt="図10-7　「申請中」の行。下に操作ボタンが並ぶ"><figcaption>図10-7　「申請中」の行。下に操作ボタンが並ぶ</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 2</b> <span class="btn">🔍 プレビュー</span> で請求書PDFを開き、稼働日数・金額・立替金を確認します。</div>
+<figure class="shot phone"><img src="images/10g_preview_pdf.jpg" alt="図10-8　🔍 プレビューで開く請求書PDF"><figcaption>図10-8　🔍 プレビューで開く請求書PDF</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 3</b> 直すときは <span class="btn">✏️ 編集</span> → 各欄を修正 → <span class="btn">💾 保存</span>（合計は明細から自動計算）。</div>
+<figure class="shot strip"><img src="images/10h_edit_save.jpg" alt="図10-9　編集画面の 💾 保存"><figcaption>図10-9　編集画面の 💾 保存</figcaption></figure>
+</div>
 <div class="hint">立替金（高速代・駐車場代）は自動で表に出ます。追加・修正はカレンダー側で行います。</div>
-<div class="step"><b class="no">STEP 3</b> 問題なければ <span class="btn">✅ 承認</span>、差し戻すなら <span class="btn">却下</span> を押します。「承認しました」と表示されます。</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 4</b> 問題なければ <span class="btn">✅ 承認</span> を押します。「承認しました」と表示されます。</div>
+<figure class="shot phone"><img src="images/10i_row_approve.jpg" alt="図10-10　申請中の行に出る ✅ 承認"><figcaption>図10-10　申請中の行に出る ✅ 承認</figcaption></figure>
+</div>
+<div class="hint">差し戻すときの <span class="btn">却下</span> はパソコン画面だけに出ます。押すと却下理由を入力でき、申請者に伝わります。</div>
+<figure class="shot pc"><img src="images/10j_pc_reject.jpg" alt="図10-11　パソコン画面の表。✅ 承認 の隣に 却下 が出る"><figcaption>図10-11　パソコン画面の表。✅ 承認 の隣に 却下 が出る</figcaption></figure>
 <h3>10-4. 複数の請求書を1つのPDFにまとめる</h3>
-<div class="step"><b class="no">STEP 1</b> 「承認済」の請求書を左端のチェックボックスで2件以上選びます。</div>
-<div class="step"><b class="no">STEP 2</b> <span class="btn">🔗 承認N件を統合PDF</span> を押すと、1つのPDFに結合されます（宛名は請求先マスタの宛名を使用）。</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 1</b> パソコン画面で「承認済」の請求書を、表の左端のチェックボックスで2件以上選びます。</div>
+<figure class="shot pc"><img src="images/10k_pc_check.jpg" alt="図10-12　表の左端のチェックボックスで2件以上えらぶ"><figcaption>図10-12　表の左端のチェックボックスで2件以上えらぶ</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 2</b> <span class="btn">🔗 承認済 N 件を統合 PDF</span> を押すと1つのPDFに結合されます（宛名は請求先マスタのもの）。</div>
+<figure class="shot strip"><img src="images/10l_pc_merge.jpg" alt="図10-13　チェックすると上に出る 🔗 承認済 N 件を統合 PDF"><figcaption>図10-13　チェックすると上に出る 🔗 承認済 N 件を統合 PDF</figcaption></figure>
+</div>
 <div class="warn">統合できるのは「承認済」だけです。下書き・申請中が混ざると「統合できるのは「承認済み」の申請だけです」と出ます。</div>
 <h3>10-5. 取引先へメールで送る</h3>
-<div class="step"><b class="no">STEP 1</b> 送りたい請求書をチェックし <span class="btn">📧 選択N件をメール送付</span> を押します。</div>
-<div class="step"><b class="no">STEP 2</b> 「宛先」に取引先のメールアドレスを入力します（件名・本文は自動作成。🤖 AI で再生成 も可）。</div>
-<div class="step"><b class="no">STEP 3</b> <span class="btn">📧 一括送信 (N件)</span> を押すと、請求書PDFを添付して送信されます。</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 1</b> 送りたい請求書をチェックし <span class="btn">📧 選択 N 件をメール送付</span> を押します。</div>
+<figure class="shot strip"><img src="images/10m_pc_mail.jpg" alt="図10-14　📧 選択 N 件をメール送付"><figcaption>図10-14　📧 選択 N 件をメール送付</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 2</b> 「宛先」に取引先のメールアドレス、「宛名」に 御中 か 様 を入れます。</div>
+<figure class="shot pc"><img src="images/10n_mail_to.jpg" alt="図10-15　メール送付画面の 宛先 と 宛名"><figcaption>図10-15　メール送付画面の 宛先 と 宛名</figcaption></figure>
+</div>
+<div class="hint">件名・本文は自動で作られます。手で直すことも、<span class="btn">🤖 AI で再生成</span> で作り直すこともできます。</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 3</b> <span class="btn">📧 一括送信 (N 件)</span> を押すと、請求書PDFを添付して送信されます。</div>
+<figure class="shot pc"><img src="images/10o_mail_send.jpg" alt="図10-16　画面下の 📧 一括送信 (N 件)"><figcaption>図10-16　画面下の 📧 一括送信 (N 件)</figcaption></figure>
+</div>
 <div class="hint">勤怠画面（9章）の請求書カードにある <span class="btn">📧 メール送付</span> からも、自分のその月の請求書を単独で送れます。</div>
 
 
