@@ -70,12 +70,9 @@ const KIND_LABEL: Record<SubmissionKind, string> = {
   work_report: '業務報告書',
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  wings: 'Wings',
-  living: 'リビング',
-  techleaders: 'テックリーダーズ',
-  resystems: 'REシステムズ',
-}
+// 表示名は lib/workCategories に一本化する。
+// ここに複製を持っていたせいで、運送(transport)・プロアカ(proaka)が英語キーのまま画面に出ていた。
+const categoryLabel = (category: string) => WORK_CATEGORY_LABELS[category as WorkCategory] ?? category
 
 const pdfPathFor = (kind: SubmissionKind) => kind === 'expense' ? '/exports/expense.pdf' : '/exports/invoice.pdf'
 
@@ -489,7 +486,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
       <div className="glass rounded-xl px-3 py-2 shadow-md">
         <div className="flex items-center justify-between mb-1">
           <div className="text-xs font-semibold text-[var(--color-text)] flex items-center gap-2">
-            {year}年{month}月分（{CATEGORY_LABELS[category] ?? category}）申請
+            {year}年{month}月分（{categoryLabel(category)}）申請
             {anySubmitted && (
               <span className="rounded bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold">申請済</span>
             )}
@@ -668,7 +665,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                         <div className="flex items-baseline gap-2">
                           <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${s.kind === 'invoice' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>{kindLbl}</span>
                           <span className="text-fuchsia-600 font-semibold">{surname}さん</span>
-                          <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                          <span className="text-[var(--color-text-sub)]">{categoryLabel(s.category)}</span>
                           {s.submitted_at && <span className="text-[10px] text-[var(--color-text-sub)]">{new Date(s.submitted_at).toLocaleString('ja-JP')}</span>}
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -700,7 +697,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                             <div className="flex items-baseline gap-2 min-w-0">
                               <span className="inline-block rounded px-1.5 py-0.5 text-[10px] bg-sky-100 text-sky-700">請求書</span>
                               <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
-                              <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                              <span className="text-[var(--color-text-sub)]">{categoryLabel(s.category)}</span>
                               {s.total_override != null && <span className="text-[10px] text-sky-600">¥{s.total_override.toLocaleString()} 設定済</span>}
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -726,7 +723,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
                             <div className="flex items-baseline gap-2 min-w-0">
                               <span className="inline-block rounded px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700">立替金</span>
                               <span className="font-semibold text-[var(--color-text)]">{s.user_display_name}</span>
-                              <span className="text-[var(--color-text-sub)]">{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                              <span className="text-[var(--color-text-sub)]">{categoryLabel(s.category)}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
                               <button onClick={() => openPreview(s)} disabled={busy}
@@ -761,7 +758,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
               <div>
                 <div className="text-sm font-semibold text-[var(--color-text)]">🔍 申請確認: {KIND_LABEL[previewFor.kind]}</div>
                 <div className="text-[11px] text-[var(--color-text-sub)]">
-                  {previewFor.user_display_name} ／ {previewFor.year}年{previewFor.month}月（{CATEGORY_LABELS[previewFor.category] ?? previewFor.category}）
+                  {previewFor.user_display_name} ／ {previewFor.year}年{previewFor.month}月（{categoryLabel(previewFor.category)}）
                 </div>
               </div>
               <button onClick={closePreview} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
@@ -848,7 +845,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
               <div>
                 <div className="text-sm font-semibold text-[var(--color-text)]">📨 申請を却下</div>
                 <div className="text-[11px] text-[var(--color-text-sub)] mt-0.5">
-                  {rejectingFor.user_display_name} ／ {rejectingFor.year}年{rejectingFor.month}月 {KIND_LABEL[rejectingFor.kind]}（{CATEGORY_LABELS[rejectingFor.category] ?? rejectingFor.category}）
+                  {rejectingFor.user_display_name} ／ {rejectingFor.year}年{rejectingFor.month}月 {KIND_LABEL[rejectingFor.kind]}（{categoryLabel(rejectingFor.category)}）
                 </div>
               </div>
               <button onClick={cancelReject} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>
@@ -883,7 +880,7 @@ export default function InvoiceSubmissionPanel({ isAdmin, isOsumi, year, month, 
               <div>
                 <div className="text-sm font-semibold text-[var(--color-text)]">📥 ラボップ宛 請求書</div>
                 <div className="text-[11px] text-[var(--color-text-sub)]">
-                  {labopModalFor.user_display_name} ／ {labopModalFor.year}年{labopModalFor.month}月（{CATEGORY_LABELS[labopModalFor.category] ?? labopModalFor.category}）
+                  {labopModalFor.user_display_name} ／ {labopModalFor.year}年{labopModalFor.month}月（{categoryLabel(labopModalFor.category)}）
                 </div>
               </div>
               <button onClick={closeLabopModal} className="text-[var(--color-text-sub)] hover:text-red-500" aria-label="閉じる">✕</button>

@@ -55,6 +55,7 @@
   figure.shot { margin: 12px 0 18px; }
   figure.shot img { display: block; width: 100%; max-width: 270px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
   figure.shot.wide img { max-width: 340px; }
+  figure.shot.strip img { max-width: 340px; }
   figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
   figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
   figure.shot .row img { width: 270px; }
@@ -237,10 +238,13 @@
 
 <h2 id="s5">5. ドライバーの追加と招待 <span class="role-badge admin-badge">雄太郎様</span></h2>
 <h3>5-1. ドライバーを追加して招待メールを送る</h3>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> メニューの <b>👥 ユーザー一覧</b> を開きます。</div>
+<figure class="shot phone"><img src="images/02e_menu_users.jpg" alt="図5-1　メニューの 👥 ユーザー一覧"><figcaption>図5-1　メニューの 👥 ユーザー一覧</figcaption></figure>
+</div>
 <div class="keep">
 <div class="step"><b class="no">STEP 2</b> 「メールアドレス」と「表示名」を入力し <span class="btn">📧 追加して招待メールを送る</span> を押します。</div>
-<figure class="shot phone"><img src="images/06_users_invite.jpg" alt="図5-1　ユーザー一覧でドライバーを追加して招待"><figcaption>図5-1　ユーザー一覧でドライバーを追加して招待</figcaption></figure>
+<figure class="shot phone"><img src="images/06_users_invite.jpg" alt="図5-2　ユーザー一覧でドライバーを追加して招待"><figcaption>図5-2　ユーザー一覧でドライバーを追加して招待</figcaption></figure>
 </div>
 <div class="step"><b class="no">STEP 3</b> ドライバーに次のメールが届きます。追加した人は雄太郎様の管理対象になります。</div>
 <div class="mailbox">
@@ -255,23 +259,38 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 ※ Googleアカウント（このメールアドレス: <span class="var">unsou@gmail.com</span>）をお持ちの場合は、
    https://react-frontend-beige.vercel.app/sign_in の「Googleでログイン」からもそのまま利用を開始できます。
 
+▼ 操作手順書（ドライバー用）（このメールにPDFを添付しています）
+スマホでそのまま読める Web 版はこちら:
+https://react-frontend-beige.vercel.app/manuals/haukur_driver.html
+
 ご不明点があれば <span class="var">yutaro18551833@gmail.com</span> までご連絡ください。
 
 ---
 勤怠アプリ</pre>
-  <div class="from"><span class="var">黄色</span>の入りどころ：氏名・会社名＝⚙ 設定 → アカウント／宛名・メールアドレス＝この画面で入力した内容／リンク＝送信時に自動発行（14日有効）。文面は自動で、編集はできません。</div>
+  <div class="from"><span class="var">黄色</span>の入りどころ：氏名・会社名＝⚙ 設定 → アカウント／宛名・メールアドレス＝この画面で入力した内容／リンク＝送信時に自動発行（14日有効）。文面は編集できません。ドライバー用の手順書PDFも自動で添付されます。</div>
 </div>
 <div class="hint">追加したドライバーは、雄太郎様と同じ「運送」カテゴリ・末日締め・画面権限で作られます。契約書に署名した相手を登録する場合は 12-1 の「📨 招待」ボタンからも登録できます。</div>
 <h3>5-2. 招待メールを再送する</h3>
 <div class="keep">
 <div class="step"><b class="no">STEP 1</b> <b>👥 ユーザー一覧</b> で対象ドライバーの行の <span class="btn">📧 招待メール</span> を押すと再送されます。</div>
-<figure class="shot phone"><img src="images/07_users.jpg" alt="図5-2　登録済みの行の操作（📧 招待メール・👤 として閲覧）"><figcaption>図5-2　登録済みの行の操作（📧 招待メール・👤 として閲覧）</figcaption></figure>
+<figure class="shot phone"><img src="images/07_users.jpg" alt="図5-3　登録済みの行の操作（📧 招待メール・👤 として閲覧）"><figcaption>図5-3　登録済みの行の操作（📧 招待メール・👤 として閲覧）</figcaption></figure>
 </div>
 <h2 id="s6">6. ドライバー側の登録と権限 <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge driver-badge">ドライバー</span></h2>
 <h3>6-1. 招待メールから登録する <span class="role-badge driver-badge">ドライバー</span></h3>
 <div class="step"><b class="no">STEP 1</b> 招待メールのリンクを開きます（14日以内）。</div>
+<div class="mailbox">
+  <div class="subject">📧 ドライバーに届く招待メール（全文は 5-1 の見本）</div>
+  <pre>下記URLからパスワードを設定して、登録を完了してください（リンクの有効期限: 14日間）。
+https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リンク</span></pre>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> 「表示名」を確認し、パスワード（6文字以上）を2か所に入れて <span class="btn">登録を完了する</span> を押します。</div>
+<figure class="shot phone"><img src="images/01c_invite_form.jpg" alt="図6-1　招待リンクを開いたパスワード設定画面"><figcaption>図6-1　招待リンクを開いたパスワード設定画面</figcaption></figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 3</b> 「🎉 登録が完了しました」と出たら <span class="btn">アプリをはじめる</span> でカレンダーが開きます。</div>
+<figure class="shot phone"><img src="images/02c_calendar_plain.jpg" alt="図6-2　登録が終わると開くカレンダー"><figcaption>図6-2　登録が終わると開くカレンダー</figcaption></figure>
+</div>
 <div class="mailbox">
   <div class="subject">📧 届くメール（ドライバー本人宛）　件名：【勤怠アプリ】登録が完了しました</div>
   <pre><span class="var">運送外注 太郎</span> 様
@@ -299,10 +318,13 @@ https://react-frontend-beige.vercel.app/sign_in
 <h2 id="s7">7. カレンダーで稼働を入力する（稼働報告書） <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge driver-badge">ドライバー</span></h2>
 <p>紙の稼働報告書の代わりに、毎日の稼働をカレンダーから入力します。内容はそのまま勤怠と請求書の計算に使います。</p>
 <h3>7-1. その日の稼働を入力する</h3>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> メニューの <b>📅 カレンダー</b> を開き、日付をタップすると「稼働報告書」の入力画面が開きます。</div>
+<figure class="shot phone"><img src="images/02f_calendar_tap.jpg" alt="図7-1　カレンダー。日付をタップして入力画面を開く"><figcaption>図7-1　カレンダー。日付をタップして入力画面を開く</figcaption></figure>
+</div>
 <div class="keep">
 <div class="step"><b class="no">STEP 2</b> <b>☑ 稼働</b> にチェックを入れます（チェックを外して保存すると、その日の稼働は削除されます）。</div>
-<figure class="shot phone"><img src="images/03_day_report.jpg" alt="図7-1　日付をタップして開く稼働報告書（① 稼働にチェック）"><figcaption>図7-1　日付をタップして開く稼働報告書（① 稼働にチェック）</figcaption></figure>
+<figure class="shot phone"><img src="images/03_day_report.jpg" alt="図7-2　日付をタップして開く稼働報告書（① 稼働にチェック）"><figcaption>図7-2　日付をタップして開く稼働報告書（① 稼働にチェック）</figcaption></figure>
 </div>
 <div class="step"><b class="no">STEP 3</b> 上から順に入力します（下表）。</div>
 <div class="table-wrap" data-cols="2"><table>
@@ -318,7 +340,7 @@ https://react-frontend-beige.vercel.app/sign_in
 </table></div>
 <div class="keep">
 <div class="step"><b class="no">STEP 4</b> <span class="btn">保存</span> を押します。「稼働報告を保存しました」と表示されれば完了です。</div>
-<figure class="shot phone"><img src="images/03b_day_report_save.jpg" alt="図7-2　一番下の ② 保存"><figcaption>図7-2　一番下の ② 保存</figcaption></figure>
+<figure class="shot phone"><img src="images/03b_day_report_save.jpg" alt="図7-3　一番下の ② 保存"><figcaption>図7-3　一番下の ② 保存</figcaption></figure>
 </div>
 <div class="hint">後から直したいときは同じ日付をタップして修正し、もう一度 <span class="btn">保存</span> を押します。</div>
 <h3>7-2. 月の集計を見る・ドライバーを切り替える</h3>
@@ -371,9 +393,18 @@ https://react-frontend-beige.vercel.app/sign_in
   <li><span class="btn">📧 メール送付</span> で、その月の請求書をメールで送れます。</li>
 </ul>
 <h3>9-3. 請求書・立替金を申請する</h3>
+<div class="keep">
 <div class="step"><b class="no">STEP 1</b> <span class="btn">📥 ダウンロード</span> で請求書PDFを確認します（確認するまで申請は押せません）。</div>
+<figure class="shot strip"><img src="images/08d_download.jpg" alt="図9-3　📥 ダウンロードで請求書PDFを確認"><figcaption>図9-3　📥 ダウンロードで請求書PDFを確認</figcaption></figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 2</b> <span class="btn">📤 申請する（請求書一覧へ登録）</span> を押すと、請求書一覧に「申請中」で登録されます。</div>
+<figure class="shot strip"><img src="images/08e_apply.jpg" alt="図9-4　📤 申請する（請求書一覧へ登録）"><figcaption>図9-4　📤 申請する（請求書一覧へ登録）</figcaption></figure>
+</div>
+<div class="keep">
 <div class="step"><b class="no">STEP 3</b> 修正して出し直す場合は <span class="btn">🔁 再申請</span>（同月分を上書き）、取り下げる場合は <span class="btn">↩ 取消</span> を押します。</div>
+<figure class="shot strip"><img src="images/08f_resubmit.jpg" alt="図9-5　申請中に出る 🔁 再申請 と ↩ 取消"><figcaption>図9-5　申請中に出る 🔁 再申請 と ↩ 取消</figcaption></figure>
+</div>
 <div class="hint">ドライバーも同じ手順で自分の分（支払明細＝HAUKUR運送への請求）を申請し、雄太郎様が 10-3 で承認します。</div>
 
 <h2 id="s10">10. 請求書 <span class="role-badge admin-badge">雄太郎様</span></h2>
