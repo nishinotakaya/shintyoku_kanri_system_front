@@ -3,65 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HAUKUR運送 操作手順書（ドライバー用）</title>
+<title>HAUKUR運送 ドライバー手順書</title>
 <style>
   :root {
-    --ground: #f6f7f4; --surface: #ffffff; --ink: #1b2a26; --muted: #5b6b66; --line: #d6ddd9;
-    --accent: #0f7b6c; --accent-soft: #e3f2ee; --amber: #b8690a; --amber-soft: #fbf0df; --violet: #5f48b8; --violet-soft: #ebe6f8;
-    --warn: #b23a3a; --warn-soft: #fbe9e9; --code: #eceeea;
+    --ground: #f5f7f5; --surface: #ffffff; --ink: #16231f; --muted: #5c6b66; --line: #d8dfdb;
+    --accent: #0f7b6c; --accent-soft: #e4f2ee; --amber: #b06a08; --amber-soft: #fbf0dd;
+    --violet: #5a46b0; --violet-soft: #eae5f7; --warn: #b03a3a; --warn-soft: #fbe9e9; --code: #edefec;
+    --pad: 16px;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
-  body { background: var(--ground); color: var(--ink); font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 15px; line-height: 1.8; margin: 0; }
-  main { max-width: 760px; margin: 0 auto; padding-block: 16px 60px; padding-inline: 16px; }
+  body {
+    background: var(--ground); color: var(--ink); margin: 0;
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.75;
+    font-feature-settings: "palt" 1;
+  }
+  main { max-width: 720px; margin: 0 auto; padding-block: 14px 56px; padding-inline: var(--pad); }
+  p, li, .step, .hint, .warn, figcaption { text-wrap: pretty; }
   h1, h2, h3 { text-wrap: balance; }
-  h1 { font-size: 26px; margin: 8px 0 2px; letter-spacing: 1px; }
-  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
-  h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 12px; border-top: 3px solid var(--accent); scroll-margin-top: 12px; }
-  h3 { font-size: 16px; color: var(--accent); margin: 20px 0 6px; scroll-margin-top: 12px; }
+  h1 { font-size: 25px; margin: 6px 0 2px; letter-spacing: .5px; line-height: 1.4; }
+  .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  h2 { font-size: 19px; margin: 32px 0 8px; padding-top: 11px; border-top: 3px solid var(--accent); scroll-margin-top: 10px; line-height: 1.45; }
+  h3 { font-size: 15.5px; color: var(--accent); margin: 18px 0 5px; scroll-margin-top: 10px; }
   p { margin: 6px 0; }
-  .step { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 12px; margin: 8px 0; }
-  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12.5px; letter-spacing: .5px; padding-top: 2px; min-width: 52px; }
-  .hint { background: var(--accent-soft); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
-  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
+  ul { margin: 4px 0 4px 19px; padding: 0; }
+  li { margin: 3px 0; }
+
+  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 12px; margin: 6px 0; }
+  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12px; letter-spacing: .4px; margin-right: 6px; }
+  .hint { background: var(--accent-soft); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
+  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
   .url { font-family: ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
-  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
-  .role-badge { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 700; margin-right: 6px; vertical-align: 2px; }
+  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
+
+  .role-badge { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 700; margin-right: 5px; vertical-align: 2px; }
   .admin-badge { background: var(--accent-soft); color: var(--accent); }
   .driver-badge { background: var(--amber-soft); color: var(--amber); }
   .client-badge { background: var(--violet-soft); color: var(--violet); }
   .page-break { display: none; }
-  .footer { margin-top: 36px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
-  .table-wrap { overflow-x: auto; margin: 8px 0; }
-  table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
-  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  .footer { margin-top: 32px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 9px; }
+
+  .table-wrap { overflow-x: auto; margin: 7px 0; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-wrap[data-cols="3"] table { min-width: 400px; }
+  .table-wrap[data-cols="4"] table, .table-wrap[data-cols="5"] table { min-width: 540px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
   th { background: var(--accent-soft); white-space: nowrap; font-weight: 700; }
   td { background: var(--surface); }
-  figure.shot { margin: 14px 0 20px; }
-  figure.shot img { display: block; width: 100%; max-width: 280px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
-  figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; }
+
+  figure.shot { margin: 12px 0 18px; }
+  figure.shot img { display: block; width: 100%; max-width: 270px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  figure.shot.wide img { max-width: 340px; }
+  figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
   figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
-  figure.shot .row img { width: 280px; }
-  .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 10px 14px; margin: 10px 0 16px; }
-  .mailbox .subject { font-weight: 700; font-size: 13.5px; margin-bottom: 6px; }
-  .mailbox pre { margin: 0; font-family: "Hiragino Sans", sans-serif; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  figure.shot .row img { width: 270px; }
+
+  .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 9px 13px; margin: 9px 0 14px; }
+  .mailbox .subject { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
   .mailbox .var { background: var(--amber-soft); color: var(--amber); border-radius: 4px; padding: 0 3px; }
-  .mailbox .from { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
-  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 14px; margin: 10px 0; font-size: 13.5px; }
+  .mailbox .from { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 11px 13px; margin: 9px 0; font-size: 13.5px; }
   .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--line); }
   .toc a:hover, .toc a:focus-visible { color: var(--accent); outline: none; border-bottom-color: var(--accent); }
-  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; font-size: 13px; }
-  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 9px; background: var(--accent-soft); }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 9px 0; font-size: 12.5px; }
+  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; background: var(--accent-soft); }
   .flow .arrow { color: var(--accent); font-weight: 700; }
-  ul { margin: 4px 0 4px 20px; padding: 0; }
-  li { margin: 3px 0; }
-  @media (max-width: 540px) {
-    body { font-size: 14.5px; }
-    main { padding-inline: 14px; }
-    .toc { grid-template-columns: 1fr; }
-    .step { flex-direction: column; gap: 2px; }
-    figure.shot .row { gap: 10px; }
-    figure.shot .row img { width: min(100%, 280px); }
+
+  /* スマホ。1行に入る文字数を稼ぐため、余白と文字を少しだけ詰める */
+  @media (max-width: 560px) {
+    :root { --pad: 12px; }
+    body { font-size: 14px; line-height: 1.72; }
+    h1 { font-size: 21px; }
+    h2 { font-size: 17.5px; margin-top: 26px; }
+    h3 { font-size: 14.5px; }
+    .step { padding: 7px 10px; }
+    .step b.no { font-size: 11.5px; margin-right: 5px; }
+    .hint, .warn { padding: 7px 10px; font-size: 13px; }
+    .toc { grid-template-columns: 1fr; font-size: 13px; }
+    .mailbox .subject { font-size: 12px; }
+    table { font-size: 12.5px; }
+    th, td { padding: 4px 6px; }
+    th[style], td[style] { width: auto !important; }
+    .table-wrap[data-cols="3"] table { min-width: 0; }
+    figure.shot .row img { width: min(100%, 270px); }
   }
 </style>
 </head>
@@ -98,14 +126,14 @@
 </div>
 
 <h2 id="s1">1. このアプリでやること</h2>
-<p>紙の稼働報告書の代わりに、毎日の稼働をスマホから入力します。月末はその内容から支払明細が自動で作られます。</p>
+<p>紙の稼働報告書の代わりに毎日の稼働をスマホで入力すると、月末に支払明細が自動で作られます。</p>
 <div class="flow">
   <span class="box">① 招待メールから登録</span><span class="arrow">→</span>
   <span class="box">② 毎日カレンダーに稼働を入力</span><span class="arrow">→</span>
   <span class="box">③ 月末に1か月分を確認</span><span class="arrow">→</span>
   <span class="box">④ 支払明細を申請</span>
 </div>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:30%">やること</th><th>いつ</th><th style="width:16%">章</th></tr>
   <tr><td>登録・ログイン</td><td>最初の1回だけ</td><td>2・3</td></tr>
   <tr><td>その日の稼働を入力する</td><td>毎日（当日または翌日）</td><td>5・6</td></tr>
@@ -117,7 +145,7 @@
 
 <h2 id="s2">2. 招待メールから登録する</h2>
 <p>HAUKUR運送から招待メールが届きます。リンクを開いてパスワードを決めるだけで登録は完了です。</p>
-<div class="step"><b class="no">STEP 1</b> 招待メール内のリンクを開きます（有効期限は14日）。</div>
+<div class="step"><b class="no">STEP 1</b> 招待メールのリンクを開きます（14日以内）。</div>
 <div class="step"><b class="no">STEP 2</b> 表示名を確認し、パスワード（6文字以上）を2か所に入れて <span class="btn">登録を完了する</span> を押します。</div>
 <div class="step"><b class="no">STEP 3</b> 「🎉 登録が完了しました」と出たら <span class="btn">アプリをはじめる</span> でカレンダーが開きます。</div>
 <div class="mailbox">
@@ -133,13 +161,13 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
    https://react-frontend-beige.vercel.app/sign_in の「Googleでログイン」からもそのまま利用を開始できます。</pre>
   <div class="from"><span class="var">黄色</span>の部分に、ご自身の名前・メールアドレスが入ります。</div>
 </div>
-<div class="warn">「⚠️ 招待リンクが無効です」と出たら期限切れです。HAUKUR運送に再送を依頼してください。同じリンクは使えません。</div>
+<div class="warn">「⚠️ 招待リンクが無効です」と出たら期限切れです。同じリンクは使えないため、HAUKUR運送に再送を依頼してください。</div>
 
 <h2 id="s3">3. ログイン・ログアウト</h2>
 <h3>3-1. ログインする</h3>
 <div class="step"><b class="no">STEP 1</b> ブラウザで <span class="url">https://react-frontend-beige.vercel.app</span> を開きます。</div>
 <div class="step"><b class="no">STEP 2</b> 登録したメールアドレスとパスワードを入れて <span class="btn">サインイン</span> を押します。</div>
-<div class="step"><b class="no">STEP 3</b> カレンダーが開きます。次回からも同じURLを開くだけです。</div>
+<div class="step"><b class="no">STEP 3</b> カレンダーが開きます。次回も同じURLです。</div>
 <figure class="shot phone">
   <img src="images/01_signin.jpg" alt="図3-1　ログイン画面。メールとパスワードを入れて「サインイン」">
   <figcaption>図3-1　ログイン画面。メールとパスワードを入れて「サインイン」</figcaption>
@@ -153,15 +181,15 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <div class="hint">Googleアカウントが招待メールと同じアドレスなら、<span class="btn">Google でログイン</span> でもログインできます。</div>
 
 <h2 id="s4">4. 画面の構成（メニュー）</h2>
-<p>画面左（スマホでは左上の ≡）にメニューがあります。表示されるのは次の4つです。</p>
-<div class="table-wrap"><table>
+<p>画面左（スマホでは左上の ≡）のメニューは次の4つです。</p>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:26%">メニュー</th><th>できること</th><th style="width:12%">章</th></tr>
   <tr><td>📅 カレンダー</td><td>その日の稼働を入力する。写真からメーター・ガソリン代を自動入力</td><td>5・6</td></tr>
   <tr><td>🕒 勤怠</td><td>1か月分を表で確認・修正する。支払明細の申請もここから</td><td>7・8</td></tr>
   <tr><td>📄 請求書一覧</td><td>申請した支払明細の状態（下書き・申請中・承認済み）を見る</td><td>8</td></tr>
   <tr><td>📝 契約書</td><td>署名した業務委託契約書を見る</td><td>9</td></tr>
 </table></div>
-<figure class="shot phone">
+<figure class="shot phone wide">
   <img src="images/d01_menu.jpg" alt="図4-1　左上の ≡ で開くメニュー。カレンダー・勤怠・請求書一覧・契約書の4つ">
   <figcaption>図4-1　左上の ≡ で開くメニュー。カレンダー・勤怠・請求書一覧・契約書の4つ</figcaption>
 </figure>
@@ -169,10 +197,10 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 
 <h2 id="s5">5. カレンダーで毎日の稼働を入力する</h2>
 <h3>5-1. その日の稼働を入力する</h3>
-<div class="step"><b class="no">STEP 1</b> メニューの <b>📅 カレンダー</b> を開き、日付をタップすると「稼働報告書」の入力画面が開きます。</div>
+<div class="step"><b class="no">STEP 1</b> メニューの <b>📅 カレンダー</b> を開き、日付をタップすると「稼働報告書」が開きます。</div>
 <div class="step"><b class="no">STEP 2</b> <b>☑ 稼働</b> にチェックを入れます（外して保存すると、その日の稼働は削除されます）。</div>
 <div class="step"><b class="no">STEP 3</b> 上から順に入力します（下表）。</div>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:30%">項目</th><th>入力のしかた</th></tr>
   <tr><td>開始時間 ／ 終了時間</td><td>時刻を選びます。稼働時間は自動計算されます（日をまたぐ場合も対応）</td></tr>
   <tr><td>走行距離 (km)</td><td>その日の走行距離。小数点1桁まで入力できます</td></tr>
@@ -200,14 +228,14 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <p>メーターとガソリン代は、写真を撮るだけでAIが数値を読み取り、そのまま欄に入ります。手打ちは不要です。</p>
 <h3>6-1. メーターを写真で読み取る</h3>
 <div class="step"><b class="no">STEP 1</b> 「開始メーター (km)」の <span class="btn">📷 メーターを撮影</span> を押し、カメラで撮影します（写真の選択も可）。</div>
-<div class="step"><b class="no">STEP 2</b> 「🤖 AI読取中…」と表示され、数秒で数値が入ります。結果を確認し、違っていれば直します。</div>
-<div class="step"><b class="no">STEP 3</b> 終了時も同じ手順で「終了メーター (km)」を撮影します。</div>
+<div class="step"><b class="no">STEP 2</b> 「🤖 AI読取中…」と表示され、数秒で数値が入ります。違っていれば直します。</div>
+<div class="step"><b class="no">STEP 3</b> 終了時も「終了メーター (km)」を撮影します。</div>
 <div class="warn">写真を添付するまで数値は入力できません。✕ を押すと数値も消えます。終了メーターが開始より小さいと保存できません。</div>
 <h3>6-2. ガソリン代などのレシートを読み取る</h3>
 <div class="step"><b class="no">STEP 1</b> 「実費レシート（ガソリン代）」の <span class="btn">📷 レシートを撮影して金額を自動入力</span> を押し、撮影します。</div>
 <div class="step"><b class="no">STEP 2</b> 1枚ごとに金額欄が増え、AIが読み取った税込額が入ります。違えば直し、不要な行は ✕ で消します。</div>
 <div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。保存すると勤怠の実費と支払明細の立替金に反映されます。</div>
-<div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代のレシートも同じ手順で入れられます。</div>
+<div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代も同じ手順で入れられます。</div>
 <figure class="shot">
   <div class="row">
     <img src="images/03c_meter_ai.jpg" alt="図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算">
@@ -240,7 +268,7 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <div class="step"><b class="no">STEP 4</b> 直して出し直すときは <span class="btn">🔁 再申請</span>、取り下げるときは <span class="btn">↩ 取消</span> を押します。</div>
 <div class="hint">ガソリン代などの実費は「立替金」として、支払明細とは別に申請します。どちらも同じ手順です。</div>
 <h3>8-2. 状態を確認する</h3>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:22%">状態</th><th>意味</th><th style="width:30%">できること</th></tr>
   <tr><td>下書き</td><td>まだ申請していない</td><td>編集・削除・申請</td></tr>
   <tr><td>申請中</td><td>HAUKUR運送の確認待ち</td><td>取消して直す</td></tr>
@@ -254,7 +282,7 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 
 <h2 id="s9">9. 契約書に署名する</h2>
 <p>業務委託契約書はHAUKUR運送からメールで届きます。ログインは不要で、スマホの画面上で署名できます。</p>
-<div class="step"><b class="no">STEP 1</b> 届いたメールの署名URLを開きます（有効期限は30日）。</div>
+<div class="step"><b class="no">STEP 1</b> メールの署名URLを開きます（30日以内）。</div>
 <div class="step"><b class="no">STEP 2</b> 契約書の内容を最後まで確認します。</div>
 <div class="step"><b class="no">STEP 3</b> 署名欄に指（マウス）で署名し、<span class="btn">署名して同意する</span> を押します。</div>
 <div class="step"><b class="no">STEP 4</b> 署名済みPDFが作られ、メニューの <b>📝 契約書</b> からいつでも確認できます。</div>
@@ -272,13 +300,13 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <div class="warn">「この契約書は無効になっています」と出たら、作り直されています。HAUKUR運送に最新のリンクを依頼してください。</div>
 
 <h2 id="s10">10. よくある質問・困ったとき</h2>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:40%">こんなとき</th><th>こうしてください</th></tr>
   <tr><td>招待メールが届かない</td><td>迷惑メールフォルダを確認し、無ければHAUKUR運送に再送を依頼してください。</td></tr>
   <tr><td>パスワードを忘れた</td><td>再設定画面はありません。HAUKUR運送にご連絡ください。</td></tr>
   <tr><td>「Google でログイン」が失敗する</td><td>LINE等のアプリ内ブラウザでは使えません。SafariかChromeでURLを開いてください。</td></tr>
   <tr><td>メーターの数値が入力できない</td><td>写真を添付するまで入力できません。先に <span class="btn">📷 メーターを撮影</span> を押してください。</td></tr>
-  <tr><td>AIが読み取った数値が違う</td><td>数値欄をタップして手で直せます。保存されるのは直したあとの数値です。</td></tr>
+  <tr><td>AIが読み取った数値が違う</td><td>数値欄をタップして手で直せます。直した数値が保存されます。</td></tr>
   <tr><td>終了メーターが保存できない</td><td>開始メーターより小さい値は入りません。撮り直すか数値を直してください。</td></tr>
   <tr><td>申請ボタンが押せない</td><td>先にPDFをダウンロードして内容を確認してください。</td></tr>
   <tr><td>申請を取り消したい</td><td>「申請中」なら <span class="btn">↩ 取消</span> で下書きに戻せます。</td></tr>

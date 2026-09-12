@@ -3,65 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HAUKUR運送 操作手順書（代表者用）</title>
+<title>HAUKUR運送 操作手順書</title>
 <style>
   :root {
-    --ground: #f6f7f4; --surface: #ffffff; --ink: #1b2a26; --muted: #5b6b66; --line: #d6ddd9;
-    --accent: #0f7b6c; --accent-soft: #e3f2ee; --amber: #b8690a; --amber-soft: #fbf0df; --violet: #5f48b8; --violet-soft: #ebe6f8;
-    --warn: #b23a3a; --warn-soft: #fbe9e9; --code: #eceeea;
+    --ground: #f5f7f5; --surface: #ffffff; --ink: #16231f; --muted: #5c6b66; --line: #d8dfdb;
+    --accent: #0f7b6c; --accent-soft: #e4f2ee; --amber: #b06a08; --amber-soft: #fbf0dd;
+    --violet: #5a46b0; --violet-soft: #eae5f7; --warn: #b03a3a; --warn-soft: #fbe9e9; --code: #edefec;
+    --pad: 16px;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
-  body { background: var(--ground); color: var(--ink); font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 15px; line-height: 1.8; margin: 0; }
-  main { max-width: 760px; margin: 0 auto; padding-block: 16px 60px; padding-inline: 16px; }
+  body {
+    background: var(--ground); color: var(--ink); margin: 0;
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.75;
+    font-feature-settings: "palt" 1;
+  }
+  main { max-width: 720px; margin: 0 auto; padding-block: 14px 56px; padding-inline: var(--pad); }
+  p, li, .step, .hint, .warn, figcaption { text-wrap: pretty; }
   h1, h2, h3 { text-wrap: balance; }
-  h1 { font-size: 26px; margin: 8px 0 2px; letter-spacing: 1px; }
-  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
-  h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 12px; border-top: 3px solid var(--accent); scroll-margin-top: 12px; }
-  h3 { font-size: 16px; color: var(--accent); margin: 20px 0 6px; scroll-margin-top: 12px; }
+  h1 { font-size: 25px; margin: 6px 0 2px; letter-spacing: .5px; line-height: 1.4; }
+  .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  h2 { font-size: 19px; margin: 32px 0 8px; padding-top: 11px; border-top: 3px solid var(--accent); scroll-margin-top: 10px; line-height: 1.45; }
+  h3 { font-size: 15.5px; color: var(--accent); margin: 18px 0 5px; scroll-margin-top: 10px; }
   p { margin: 6px 0; }
-  .step { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 12px; margin: 8px 0; }
-  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12.5px; letter-spacing: .5px; padding-top: 2px; min-width: 52px; }
-  .hint { background: var(--accent-soft); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
-  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
+  ul { margin: 4px 0 4px 19px; padding: 0; }
+  li { margin: 3px 0; }
+
+  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 12px; margin: 6px 0; }
+  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12px; letter-spacing: .4px; margin-right: 6px; }
+  .hint { background: var(--accent-soft); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
+  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
   .url { font-family: ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
-  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
-  .role-badge { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 700; margin-right: 6px; vertical-align: 2px; }
+  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
+
+  .role-badge { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 700; margin-right: 5px; vertical-align: 2px; }
   .admin-badge { background: var(--accent-soft); color: var(--accent); }
   .driver-badge { background: var(--amber-soft); color: var(--amber); }
   .client-badge { background: var(--violet-soft); color: var(--violet); }
   .page-break { display: none; }
-  .footer { margin-top: 36px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
-  .table-wrap { overflow-x: auto; margin: 8px 0; }
-  table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
-  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  .footer { margin-top: 32px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 9px; }
+
+  .table-wrap { overflow-x: auto; margin: 7px 0; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-wrap[data-cols="3"] table { min-width: 400px; }
+  .table-wrap[data-cols="4"] table, .table-wrap[data-cols="5"] table { min-width: 540px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
   th { background: var(--accent-soft); white-space: nowrap; font-weight: 700; }
   td { background: var(--surface); }
-  figure.shot { margin: 14px 0 20px; }
-  figure.shot img { display: block; width: 100%; max-width: 280px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
-  figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; }
+
+  figure.shot { margin: 12px 0 18px; }
+  figure.shot img { display: block; width: 100%; max-width: 270px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  figure.shot.wide img { max-width: 340px; }
+  figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
   figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
-  figure.shot .row img { width: 280px; }
-  .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 10px 14px; margin: 10px 0 16px; }
-  .mailbox .subject { font-weight: 700; font-size: 13.5px; margin-bottom: 6px; }
-  .mailbox pre { margin: 0; font-family: "Hiragino Sans", sans-serif; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  figure.shot .row img { width: 270px; }
+
+  .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 9px 13px; margin: 9px 0 14px; }
+  .mailbox .subject { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
   .mailbox .var { background: var(--amber-soft); color: var(--amber); border-radius: 4px; padding: 0 3px; }
-  .mailbox .from { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
-  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 14px; margin: 10px 0; font-size: 13.5px; }
+  .mailbox .from { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 11px 13px; margin: 9px 0; font-size: 13.5px; }
   .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--line); }
   .toc a:hover, .toc a:focus-visible { color: var(--accent); outline: none; border-bottom-color: var(--accent); }
-  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; font-size: 13px; }
-  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 9px; background: var(--accent-soft); }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 9px 0; font-size: 12.5px; }
+  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; background: var(--accent-soft); }
   .flow .arrow { color: var(--accent); font-weight: 700; }
-  ul { margin: 4px 0 4px 20px; padding: 0; }
-  li { margin: 3px 0; }
-  @media (max-width: 540px) {
-    body { font-size: 14.5px; }
-    main { padding-inline: 14px; }
-    .toc { grid-template-columns: 1fr; }
-    .step { flex-direction: column; gap: 2px; }
-    figure.shot .row { gap: 10px; }
-    figure.shot .row img { width: min(100%, 280px); }
+
+  /* スマホ。1行に入る文字数を稼ぐため、余白と文字を少しだけ詰める */
+  @media (max-width: 560px) {
+    :root { --pad: 12px; }
+    body { font-size: 14px; line-height: 1.72; }
+    h1 { font-size: 21px; }
+    h2 { font-size: 17.5px; margin-top: 26px; }
+    h3 { font-size: 14.5px; }
+    .step { padding: 7px 10px; }
+    .step b.no { font-size: 11.5px; margin-right: 5px; }
+    .hint, .warn { padding: 7px 10px; font-size: 13px; }
+    .toc { grid-template-columns: 1fr; font-size: 13px; }
+    .mailbox .subject { font-size: 12px; }
+    table { font-size: 12.5px; }
+    th, td { padding: 4px 6px; }
+    th[style], td[style] { width: auto !important; }
+    .table-wrap[data-cols="3"] table { min-width: 0; }
+    figure.shot .row img { width: min(100%, 270px); }
   }
 </style>
 </head>
@@ -78,7 +106,7 @@
 
 <h3>この手順書の読み方</h3>
 <ul>
-  <li><span class="role-badge admin-badge">雄太郎様</span> ＝ HAUKUR運送の代表者としてご自身が行う操作</li>
+  <li><span class="role-badge admin-badge">雄太郎様</span> ＝ HAUKUR運送の代表者として行う操作</li>
   <li><span class="role-badge driver-badge">ドライバー</span> ＝ 雄太郎様が追加した外注ドライバーが行う操作（ドライバーにこのページを見せて説明できます）</li>
   <li><span class="role-badge client-badge">取引先</span> ＝ 契約書に署名する相手・請求書を受け取る相手が行う操作（ログイン不要）</li>
   <li><span class="btn">こう書いた文字</span> は画面上のボタン名そのままです</li>
@@ -113,17 +141,17 @@
   <span class="box">⑤ 請求書PDFを作成・申請</span><span class="arrow">→</span>
   <span class="box">⑥ 取引先へメール送付</span>
 </div>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:26%">誰が</th><th>何をする</th><th style="width:22%">手順書の章</th></tr>
   <tr><td>雄太郎様</td><td>設定・ドライバー招待・契約書作成・請求書の承認と送付</td><td>4・5・9・10</td></tr>
-  <tr><td>ドライバー</td><td>招待メールから登録し、毎日の稼働をカレンダーに入力する</td><td>5・6・7</td></tr>
+  <tr><td>ドライバー</td><td>招待メールから登録し、毎日カレンダーに稼働を入力する</td><td>5・6・7</td></tr>
   <tr><td>取引先（乙）</td><td>メールのリンクを開いてスマホで契約書に署名する</td><td>11</td></tr>
 </table></div>
 <div class="hint">現在の締日は<b>末日</b>、支払いは<b>翌々月10日</b>（契約書 第10条）。カレンダー・勤怠・請求書は締日区切りの1か月で集計します。</div>
 
 <h2 id="s2">2. ログイン・ログアウト <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge driver-badge">ドライバー</span></h2>
 <h3>2-1. メールアドレスとパスワードでログイン</h3>
-<div class="step"><b class="no">STEP 1</b> ブラウザで <span class="url">https://react-frontend-beige.vercel.app</span> を開きます。ログイン画面が表示されます。</div>
+<div class="step"><b class="no">STEP 1</b> ブラウザで <span class="url">https://react-frontend-beige.vercel.app</span> を開くとログイン画面が出ます。</div>
 <div class="step"><b class="no">STEP 2</b> 「メール」にメールアドレス、「パスワード」にパスワードを入力し <span class="btn">サインイン</span> を押します。</div>
 <div class="step"><b class="no">STEP 3</b> ホーム画面（カレンダー）が開きます。次回からも同じURLを開くだけです。</div>
 <figure class="shot phone">
@@ -131,9 +159,9 @@
   <figcaption>図2-1　ログイン画面。メールとパスワードを入れて「サインイン」</figcaption>
 </figure>
 <h3>2-2. Googleアカウントでログイン（おすすめ）</h3>
-<div class="step"><b class="no">STEP 1</b> ログイン画面の <span class="btn">Google でログイン</span> を押し、<b>登録済みのメールアドレス</b>のアカウントを選びます。</div>
+<div class="step"><b class="no">STEP 1</b> ログイン画面の <span class="btn">Google でログイン</span> を押し、<b>登録済みのメールアドレス</b>を選びます。</div>
 <div class="step"><b class="no">STEP 2</b> 「Gmailで送信」の許可を求められたら許可します。以後メールは<b>雄太郎様のGmail</b>から送られます。</div>
-<div class="warn">Googleでログインしていない間は、メールは管理者（西野 鷹也）のGmailから代理送信されます。取引先やドライバーに「雄太郎様から届いた」と分かるようにするには、一度Googleでログインしてください。<br>LINEなどアプリ内のブラウザではGoogleログインが使えません。SafariかChromeで開いてください。</div>
+<div class="warn">Googleでログインしていない間は、メールは管理者（西野 鷹也）のGmailから代理送信されます。取引先やドライバーに「雄太郎様から届いた」と分かるよう、一度Googleでログインしてください。<br>LINEなどアプリ内のブラウザではGoogleログインが使えません。SafariかChromeで開いてください。</div>
 <h3>2-3. ログアウト・スマホのホーム画面に追加</h3>
 <ul>
   <li>画面右上の <span class="btn">ログアウト</span> を押すとログイン画面に戻ります。</li>
@@ -143,10 +171,10 @@
 
 <h2 id="s3">3. 画面の構成（メニュー） <span class="role-badge admin-badge">雄太郎様</span></h2>
 <p>画面左（スマホでは左上の ≡）にメニューがあります。雄太郎様に表示されるのは次の5つと、右上の <span class="btn">⚙ 設定</span> です。</p>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:24%">メニュー</th><th>できること</th><th style="width:14%">章</th></tr>
   <tr><td>📅 カレンダー</td><td>日付をタップして稼働報告書を入力。メーター・レシートの写真読み取り。月の稼働日数・走行距離の集計。ドライバーの切替表示</td><td>7</td></tr>
-  <tr><td>🕒 勤怠</td><td>月ごとの稼働報告書を表形式で確認・修正。稼働報告書・請求書・立替金のExcel/PDF出力と申請</td><td>8</td></tr>
+  <tr><td>🕒 勤怠</td><td>月ごとの稼働報告書を表で確認・修正。稼働報告書・請求書・立替金のExcel/PDF出力と申請</td><td>8</td></tr>
   <tr><td>📄 請求書一覧</td><td>自分とドライバーの請求書・立替金の一覧。編集・承認・統合PDF・メール送付</td><td>9</td></tr>
   <tr><td>📝 契約書</td><td>運送業務委託契約書の作成・メール送付・電子署名の回収・PDF保管</td><td>10・11</td></tr>
   <tr><td>👥 ユーザー一覧</td><td>ドライバーの追加と招待・権限の設定・招待メール再送・代理ログイン</td><td>5・6・13</td></tr>
@@ -165,7 +193,7 @@
 <h2 id="s4">4. 最初に行う設定 <span class="role-badge admin-badge">雄太郎様</span></h2>
 <p>右上の <span class="btn">⚙ 設定</span> を押すと設定画面が開きます。上部のタブで切り替えます。運用に必要なのは「アカウント」と「請求書」の2つです（バックログ・GitHub・freee のタブは使いません）。</p>
 <h3>4-1. アカウント タブ</h3>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:30%">項目</th><th>設定内容</th></tr>
   <tr><td>締日</td><td>現在は <b>末日（31）</b>。ここで選んだ日でカレンダー・勤怠・請求書の集計期間が決まります（例: 25日 →「4月分」は 3/26〜4/25）</td></tr>
   <tr><td>会社（カレンダーの行に出る名前）</td><td>「HAUKUR運送」。カレンダーの人物行の見出しに表示されます。代表者のみ変更できます</td></tr>
@@ -184,7 +212,7 @@
 <div class="step"><b class="no">STEP 3</b> 「振込先」に金融機関・口座番号・口座名義を入力します。請求書PDFの振込先欄に印字されます。</div>
 <div class="step"><b class="no">STEP 4</b> 「請求先マスタ」で <span class="btn">＋ 追加</span> → 取引先名・敬称・件名・住所・TEL・担当者 を入れて保存します。</div>
 <div class="step"><b class="no">STEP 5</b> 画面下の <span class="btn">保存</span> を押します。</div>
-<div class="hint">請求先マスタに登録しておくと、請求書を作るときにプルダウンから選ぶだけで宛名が入ります。使わなくなった取引先は削除ではなく「アーカイブ」になり、過去の請求書の宛名はそのまま残ります。</div>
+<div class="hint">請求先マスタに登録すると、請求書を作るときにプルダウンで宛名を選べます。使わなくなった取引先は削除ではなく「アーカイブ」になり、過去の請求書の宛名は残ります。</div>
 <div class="warn">超過単価が空欄・0なら 日給 ÷ 所定時間 × 1.25（労基法の割増率）で自動計算。単価が決まっているときは必ず入力を。</div>
 
 <h2 id="s5">5. ドライバーの追加と招待 <span class="role-badge admin-badge">雄太郎様</span></h2>
@@ -193,7 +221,7 @@
 <div class="step"><b class="no">STEP 2</b> 「メールアドレス」と「表示名」を入力し <span class="btn">📧 追加して招待メールを送る</span> を押します。</div>
 <div class="step"><b class="no">STEP 3</b> ドライバーに次のメールが届きます。追加した人は雄太郎様の管理対象になります。</div>
 <div class="mailbox">
-  <div class="subject">📧 このとき届くメール　件名：【勤怠アプリ】<span class="var">西野 雄太郎</span>さんから招待が届きました</div>
+  <div class="subject">📧 届くメール　件名：【勤怠アプリ】<span class="var">西野 雄太郎</span>さんから招待が届きました</div>
   <pre><span class="var">運送外注 太郎</span> 様
 
 <span class="var">西野 雄太郎</span>さんが勤怠アプリ（<span class="var">HAUKUR運送</span>）にあなたを招待しました。
@@ -210,7 +238,7 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 勤怠アプリ</pre>
   <div class="from"><span class="var">黄色</span>の入りどころ：氏名・会社名＝⚙ 設定 → アカウント／宛名・メールアドレス＝この画面で入力した内容／リンク＝送信時に自動発行（14日有効）。文面は自動で、編集はできません。</div>
 </div>
-<div class="hint">追加したドライバーは、雄太郎様と同じ「運送」カテゴリ・末日締め・同じ画面権限で作られます。契約書に署名した相手を登録する場合は 12-1 の「📨 招待」ボタンからも登録できます。</div>
+<div class="hint">追加したドライバーは、雄太郎様と同じ「運送」カテゴリ・末日締め・画面権限で作られます。契約書に署名した相手を登録する場合は 12-1 の「📨 招待」ボタンからも登録できます。</div>
 <figure class="shot">
   <div class="row">
     <img src="images/06_users_invite.jpg" alt="図5-1　左＝ユーザー一覧でドライバーを追加。右＝登録済みの行の操作（招待メール再送・として閲覧）">
@@ -222,11 +250,11 @@ https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リン
 <div class="step"><b class="no">STEP 1</b> <b>👥 ユーザー一覧</b> で対象ドライバーの行の <span class="btn">📧 招待メール</span> を押すと再送されます。</div>
 <h2 id="s6">6. ドライバー側の登録と権限 <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge driver-badge">ドライバー</span></h2>
 <h3>6-1. 招待メールから登録する <span class="role-badge driver-badge">ドライバー</span></h3>
-<div class="step"><b class="no">STEP 1</b> 招待メール内のリンクを開きます（有効期限は14日）。</div>
+<div class="step"><b class="no">STEP 1</b> 招待メールのリンクを開きます（14日以内）。</div>
 <div class="step"><b class="no">STEP 2</b> 「表示名」を確認し、パスワード（6文字以上）を2か所に入れて <span class="btn">登録を完了する</span> を押します。</div>
 <div class="step"><b class="no">STEP 3</b> 「🎉 登録が完了しました」と出たら <span class="btn">アプリをはじめる</span> でカレンダーが開きます。</div>
 <div class="mailbox">
-  <div class="subject">📧 このとき届くメール（ドライバー本人宛）　件名：【勤怠アプリ】登録が完了しました</div>
+  <div class="subject">📧 届くメール（ドライバー本人宛）　件名：【勤怠アプリ】登録が完了しました</div>
   <pre><span class="var">運送外注 太郎</span> 様
 
 勤怠アプリへの登録が完了しました。このメールは登録確認のお知らせです。
@@ -240,12 +268,12 @@ https://react-frontend-beige.vercel.app/sign_in
 勤怠アプリ</pre>
   <div class="from"><span class="var">黄色</span>の入りどころ：登録時の表示名とメールアドレス。文面は自動で、編集はできません。</div>
 </div>
-<div class="warn">「⚠️ 招待リンクが無効です」と出た場合は期限切れです。雄太郎様に 5-2 の再送を依頼してください。同じリンクを2回使うことはできません（「✅ この招待は登録済みです」と表示）。</div>
+<div class="warn">「⚠️ 招待リンクが無効です」と出たら期限切れです。雄太郎様に 5-2 の再送を依頼してください。同じリンクは2回使えません（「✅ この招待は登録済みです」と表示）。</div>
 <h3>6-2. ドライバーの権限を変える</h3>
 <ul>
   <li><b>👥 ユーザー一覧</b> の各行で、見える画面（カレンダー・勤怠・請求書・契約書）と勤怠カテゴリを変更できます。</li>
   <li>配布できるのは雄太郎様が持っている画面・カテゴリ（運送）だけです。カテゴリをすべて外すことはできません。</li>
-  <li>雄太郎様ご自身のカテゴリ・管理対象の付け替えは管理者（西野 鷹也）のみ変更できます。</li>
+  <li>雄太郎様ご自身のカテゴリ・管理対象は管理者（西野 鷹也）のみ変更できます。</li>
 </ul>
 
 
@@ -255,14 +283,14 @@ https://react-frontend-beige.vercel.app/sign_in
 <div class="step"><b class="no">STEP 1</b> メニューの <b>📅 カレンダー</b> を開き、日付をタップすると「稼働報告書」の入力画面が開きます。</div>
 <div class="step"><b class="no">STEP 2</b> <b>☑ 稼働</b> にチェックを入れます（チェックを外して保存すると、その日の稼働は削除されます）。</div>
 <div class="step"><b class="no">STEP 3</b> 上から順に入力します（下表）。</div>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:28%">項目</th><th>入力のしかた</th></tr>
-  <tr><td>開始時間 ／ 終了時間</td><td>時刻を選びます。稼働時間はここから自動計算されます（日をまたぐ場合も対応）</td></tr>
+  <tr><td>開始時間 ／ 終了時間</td><td>時刻を選びます。稼働時間は自動計算されます（日をまたぐ場合も対応）</td></tr>
   <tr><td>走行距離 (km)</td><td>その日の走行距離。小数点1桁まで入力できます</td></tr>
   <tr><td>備考欄</td><td>連絡事項・特記事項。高速代・駐車場代の内訳など</td></tr>
   <tr><td>検印</td><td>締日ごとの担当者確認用。<b>一度保存したあと</b>に <span class="btn">検印を押す</span> が押せます。押すと日時が記録され、<span class="btn">検印を解除</span> で取り消せます</td></tr>
   <tr><td>配送件数 (件)</td><td>その日の配送件数</td></tr>
-  <tr><td>開始メーター (km) ／ 終了メーター (km)</td><td><span class="btn">📷 メーターを撮影</span> でメーターの写真を撮ると、AIが数値を読み取って自動入力します（8-1）</td></tr>
+  <tr><td>開始メーター (km) ／ 終了メーター (km)</td><td><span class="btn">📷 メーターを撮影</span> で写真を撮ると、AIが数値を読み取って自動入力します（8-1）</td></tr>
   <tr><td>実費レシート（ガソリン代）</td><td><span class="btn">📷 レシートを撮影して金額を自動入力</span> でレシートを撮ると、AIが税込金額を読み取ります。複数枚可（8-2）</td></tr>
   <tr><td>実費合計 (円)</td><td>レシートの金額が自動で合算されます。必要なら手で直せます</td></tr>
 </table></div>
@@ -288,13 +316,13 @@ https://react-frontend-beige.vercel.app/sign_in
 <h3>8-1. メーターを写真で読み取る</h3>
 <div class="step"><b class="no">STEP 1</b> 「開始メーター (km)」の <span class="btn">📷 メーターを撮影</span> を押し、カメラで撮影します（写真の選択も可）。</div>
 <div class="step"><b class="no">STEP 2</b> 「🤖 AI読取中…」と表示され、数秒で数値が入ります。結果を確認し、違っていれば直します。</div>
-<div class="step"><b class="no">STEP 3</b> 終了時も同じ手順で「終了メーター (km)」を撮影します。</div>
-<div class="warn">写真を添付していない間は数値欄が入力できません（写真と数値のずれを防ぐため）。写真の ✕ を押すと数値も消えます。終了メーターが開始メーターより小さいと「終了メーターは開始メーターより小さい値にできません」と表示され保存できません。</div>
+<div class="step"><b class="no">STEP 3</b> 終了時も「終了メーター (km)」を撮影します。</div>
+<div class="warn">写真を添付するまで数値欄は入力できません（写真と数値のずれを防ぐため）。写真の ✕ を押すと数値も消えます。終了メーターが開始より小さいと保存できません。</div>
 <h3>8-2. ガソリン代などのレシートを読み取る</h3>
 <div class="step"><b class="no">STEP 1</b> 「実費レシート（ガソリン代）」の <span class="btn">📷 レシートを撮影して金額を自動入力</span> を押し、撮影します。</div>
 <div class="step"><b class="no">STEP 2</b> 1枚ごとに金額欄が増え、AIが読み取った税込額が入ります。違えば直し、不要な行は ✕ で消します。</div>
 <div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。保存すると勤怠の実費と請求書の立替金に反映されます。</div>
-<div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代のレシートも同じ手順で入れられます。</div>
+<div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代も同じ手順で入れられます。</div>
 <figure class="shot">
   <div class="row">
     <img src="images/03c_meter_ai.jpg" alt="図8-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算">
@@ -311,13 +339,13 @@ https://react-frontend-beige.vercel.app/sign_in
     <img src="images/08a_attendance_top.jpg" alt="図9-1　左＝勤怠画面の上部（申請・出退勤・請求書プレビュー）。右＝下部の稼働報告書の表">
     <img src="images/08b_attendance_table.jpg" alt="図9-1　左＝勤怠画面の上部（申請・出退勤・請求書プレビュー）。右＝下部の稼働報告書の表">
   </div>
-  <figcaption>図9-1　左＝勤怠画面の上部（申請・出退勤・請求書プレビュー）。右＝下部の稼働報告書の表</figcaption>
+  <figcaption>図9-1　左＝上部（申請・出退勤・請求書プレビュー）。右＝下部の稼働報告書の表</figcaption>
 </figure>
-<div class="step"><b class="no">STEP 1</b> 上部の <span class="btn">←</span> <span class="btn">→</span> で月を切り替えます。「期間: ○月1日 〜 ○月末日」が表示されます。</div>
+<div class="step"><b class="no">STEP 1</b> 上部の <span class="btn">←</span> <span class="btn">→</span> で月を切り替えます。「期間: ○月1日 〜 ○月末日」が出ます。</div>
 <div class="step"><b class="no">STEP 2</b> 表のセルを直接編集すると自動保存されます（保存直後に ✓、保存済みで ● が出ます）。</div>
 <div class="step"><b class="no">STEP 3</b> 表の下に 稼働日数・稼働時間・時間外・走行距離・配送件数 の合計が出ます（紙の提出は不要）。</div>
 <div class="hint">スマホでは表が横にスクロールし、日付列は固定されます。1行の全項目を空にすると、その日の稼働は削除されます。</div>
-<div class="warn">勤怠画面の表ではメーター・レシートの写真は扱えません（数値入力のみ）。写真の読み取りはカレンダー（8章）で行います。</div>
+<div class="warn">この表ではメーター・レシートの写真は扱えません（数値入力のみ）。読み取りはカレンダー（8章）で行います。</div>
 <h3>9-2. 請求書・稼働報告書・立替金のファイルを出す</h3>
 <ul>
   <li>請求書カードに、その月の <b>稼働時間・小計・消費税・合計</b> が自動計算されます（日給×稼働日数＋時間外）。</li>
@@ -325,7 +353,7 @@ https://react-frontend-beige.vercel.app/sign_in
   <li>「立替金」欄には、カレンダーの実費（ガソリン代など）が自動で並びます。<span class="btn">＋ 立替金を追加</span> で手入力も可。</li>
 </ul>
 <h3>9-3. 請求書・立替金を申請する</h3>
-<div class="step"><b class="no">STEP 1</b> まず <span class="btn">📥 ダウンロード</span> で請求書PDFを確認します（確認するまで申請は押せません）。</div>
+<div class="step"><b class="no">STEP 1</b> <span class="btn">📥 ダウンロード</span> で請求書PDFを確認します（確認するまで申請は押せません）。</div>
 <div class="step"><b class="no">STEP 2</b> <span class="btn">📤 申請する（請求書一覧へ登録）</span> を押すと、請求書一覧に「申請中」で登録されます。</div>
 <div class="step"><b class="no">STEP 3</b> 修正して出し直す場合は <span class="btn">🔁 再申請</span>（同月分を上書き）、取り下げる場合は <span class="btn">↩ 取消</span> を押します。</div>
 <div class="hint">ドライバーも同じ手順で自分の分（支払明細＝HAUKUR運送への請求）を申請し、雄太郎様が 9-3 で承認します。</div>
@@ -333,7 +361,7 @@ https://react-frontend-beige.vercel.app/sign_in
 <h2 id="s10">10. 請求書 <span class="role-badge admin-badge">雄太郎様</span></h2>
 <p>メニューの <b>📄 請求書一覧</b> には、ご自身とドライバー全員の請求書・立替金の申請が並びます。</p>
 <h3>10-1. ステータスの意味</h3>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:18%">表示</th><th>意味</th><th style="width:40%">できる操作</th></tr>
   <tr><td>下書き</td><td>作成しただけ。まだ申請していない</td><td>✏️ 編集 ／ 📤 申請 ／ 🗑 削除</td></tr>
   <tr><td>申請中</td><td>申請済みで承認待ち</td><td>✏️ 編集 ／ ✅ 承認 ／ 却下</td></tr>
@@ -351,12 +379,12 @@ https://react-frontend-beige.vercel.app/sign_in
 <div class="step"><b class="no">STEP 3</b> 「請求先（宛先）」と「振込先（口座）」を入れます（郵便番号＋<span class="btn">🔍 検索</span> で住所が入ります）。</div>
 <div class="step"><b class="no">STEP 4</b> <span class="btn">💾 作成のみ（下書き保存）</span> を押します。一覧に「下書き」として追加されます。</div>
 <h3>10-3. ドライバーの申請を確認して承認する</h3>
-<div class="step"><b class="no">STEP 1</b> 一覧で「申請中」の行を探し、<span class="btn">PDF</span> で内容（稼働日数・金額・立替金）を確認します。</div>
+<div class="step"><b class="no">STEP 1</b> 一覧で「申請中」の行を探し、<span class="btn">PDF</span> で稼働日数・金額・立替金を確認します。</div>
 <div class="step"><b class="no">STEP 2</b> 直すときは <span class="btn">✏️ 編集</span> → 各欄を修正 → <span class="btn">💾 保存</span>（合計は明細から自動計算）。</div>
 <div class="hint">立替金（高速代・駐車場代）は自動で表に出ます。追加・修正はカレンダー側で行います。</div>
 <div class="step"><b class="no">STEP 3</b> 問題なければ <span class="btn">✅ 承認</span>、差し戻すなら <span class="btn">却下</span> を押します。「承認しました」と表示されます。</div>
 <h3>10-4. 複数の請求書を1つのPDFにまとめる</h3>
-<div class="step"><b class="no">STEP 1</b> 承認済みの請求書の左端チェックボックスを2件以上チェックします。</div>
+<div class="step"><b class="no">STEP 1</b> 承認済みの請求書を左端のチェックボックスで2件以上選びます。</div>
 <div class="step"><b class="no">STEP 2</b> <span class="btn">🔗 承認N件を統合PDF</span> を押すと、1つのPDFに結合されます（宛名は請求先マスタの宛名を使用）。</div>
 <div class="warn">統合できるのは「承認済み」だけです。下書き・申請中が混ざると「統合できるのは「承認済み」の申請だけです」と出ます。</div>
 <h3>10-5. 取引先へメールで送る</h3>
@@ -367,7 +395,7 @@ https://react-frontend-beige.vercel.app/sign_in
 
 
 <h2 id="s11">11. 業務委託契約書を作って送る <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge client-badge">取引先</span></h2>
-<p>「運送業務委託契約書（全29条・6ページ）」を雄太郎様が甲、相手（ドライバー・協力会社）が乙として作成し、相手にはメールのリンクからスマホで署名してもらいます。紙のやり取りは不要です。</p>
+<p>「運送業務委託契約書（全29条・6ページ）」を雄太郎様が甲、相手（ドライバー・協力会社）が乙として作成します。相手はメールのリンクからスマホで署名でき、紙のやり取りは不要です。</p>
 <h3>11-1. 状態の流れ</h3>
 <div class="flow">
   <span class="box">下書き</span><span class="arrow">→ 📧 送付 →</span>
@@ -391,10 +419,10 @@ https://react-frontend-beige.vercel.app/sign_in
 <div class="step"><b class="no">STEP 2</b> 甲を確認し、乙の <b>氏名・住所・メールアドレス</b> と 契約日・開始日・終了日 を入力します。</div>
 <div class="step"><b class="no">STEP 3</b> 条文は <span class="btn">＋ 条文を追加</span>／✕ 削除／ドラッグで並べ替えできます（個別条件は「特記事項」へ）。</div>
 <div class="step"><b class="no">STEP 4</b> <span class="btn">💾 保存</span> → <span class="btn">📄 PDF プレビュー</span> で仕上がりを確認します（甲の印影は自動）。</div>
-<div class="step"><b class="no">STEP 5</b> <span class="btn">📧 メールで送付</span> を押し、宛先・件名・本文を確認します。</div>
+<div class="step"><b class="no">STEP 5</b> <span class="btn">📧 メールで送付</span> を押し、宛先を確認します。</div>
 <div class="step"><b class="no">STEP 6</b> <span class="btn">🤖 AI添削</span> で整え、<span class="btn">📤 送信する</span> を押すと状態が「送付済」になります。</div>
 <div class="mailbox">
-  <div class="subject">📧 このとき送られるメール（送信前に書き替えられます）　件名：【<span class="var">運送業務委託契約書</span>】ご署名のお願い</div>
+  <div class="subject">📧 送るメール（送信前に書き替え可）　件名：【<span class="var">運送業務委託契約書</span>】ご署名のお願い</div>
   <pre><span class="var">乙の氏名</span> 様
 
 お世話になっております。<span class="var">西野 雄太郎</span>です。
@@ -409,14 +437,14 @@ https://react-frontend-beige.vercel.app/sign_in
 <span class="var">西野 雄太郎</span></pre>
   <div class="from"><span class="var">黄色</span>の入りどころ：乙の氏名・タイトル＝この契約書の入力欄／差出人＝⚙ 設定 → アカウントの表示名／{署名URL} ＝送信時に実際のリンク（30日有効）へ自動で置き換わります。</div>
 </div>
-<div class="hint">メール以外で渡したいときは <span class="btn">🔗 署名リンクを発行</span> → <span class="btn">📋 コピー</span> または <span class="btn">LINE で送る</span> が使えます。リンクの有効期限は<b>30日</b>です。再発行・再送すると古いリンクは無効になります。</div>
+<div class="hint">メール以外で渡すときは <span class="btn">🔗 署名リンクを発行</span> → <span class="btn">📋 コピー</span> または <span class="btn">LINE で送る</span> が使えます。有効期限は<b>30日</b>で、再発行・再送すると古いリンクは無効になります。</div>
 <h2 id="s12">12. 契約書の署名から保管まで <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge client-badge">取引先</span></h2>
 <h3>12-1. 相手が署名する</h3>
 <div class="step"><b class="no">STEP 1</b> <span class="role-badge client-badge">取引先</span> メールのリンクを開くと契約書の全文が表示されます（ログイン不要）。</div>
 <div class="step"><b class="no">STEP 2</b> <span class="role-badge client-badge">取引先</span> 「署名者名」を入力して署名し、2つの同意にチェックして <span class="btn">署名して送信</span> を押します。</div>
 <div class="step"><b class="no">STEP 3</b> 雄太郎様に次のメールが届き、状態が「署名済」になります（以後この契約書は変更できません）。</div>
 <div class="mailbox">
-  <div class="subject">📧 このとき届くメール（雄太郎様宛）　件名：【勤怠アプリ】<span class="var">乙の氏名</span>さんが契約書に署名しました</div>
+  <div class="subject">📧 届くメール（雄太郎様宛）　件名：【勤怠アプリ】<span class="var">乙の氏名</span>さんが契約書に署名しました</div>
   <pre><span class="var">西野 雄太郎</span> 様
 
 「<span class="var">運送業務委託契約書</span>」に署名がありました。
@@ -443,7 +471,7 @@ https://react-frontend-beige.vercel.app/contracts
 </ul>
 
 <h2 id="s13">13. メール送信のまとめ <span class="role-badge admin-badge">雄太郎様</span></h2>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="3"><table>
   <tr><th style="width:26%">いつ</th><th style="width:22%">誰に届く</th><th>件名・内容</th></tr>
   <tr><td>ドライバー追加（5-1）／招待メール再送（5-2）／契約書の 📨 招待（12-1）</td><td>ドライバー・乙</td><td>「【勤怠アプリ】西野 雄太郎さんから招待が届きました」＋登録URL（14日有効）</td></tr>
   <tr><td>ドライバーが登録完了したとき</td><td>ドライバー本人</td><td>「【勤怠アプリ】登録が完了しました」</td></tr>
@@ -454,23 +482,23 @@ https://react-frontend-beige.vercel.app/contracts
 <ul>
   <li><b>送信元</b>：雄太郎様がGoogleでログイン済みなら雄太郎様のGmail（yutaro18551833@gmail.com）から送られます。未連携の間は管理者（西野 鷹也）のGmailから、差出人名だけ「西野 雄太郎」で送られます。</li>
   <li><b>AI添削・再生成</b>：文章の体裁を整えるだけで、URLや金額などは変わりません。AIが使えないときは入力した文面がそのまま送られます（エラーにはなりません）。</li>
-  <li>送信後の取り消しはできません。宛先を間違えたら正しい宛先へ送り直します（再送で古いリンクは無効に）。</li>
+  <li>送信後は取り消せません。宛先を間違えたら正しい宛先へ送り直します（再送で古いリンクは無効に）。</li>
 </ul>
 
 <h2 id="s14">14. ドライバーの画面を代わりに確認する <span class="role-badge admin-badge">雄太郎様</span></h2>
 <div class="step"><b class="no">STEP 1</b> <b>👥 ユーザー一覧</b> でドライバーの行の <span class="btn">🔑 なりすまし</span> を押すと、その人の画面になります。</div>
 <div class="step"><b class="no">STEP 2</b> 上部の「なりすまし中」バナーの <span class="btn">管理者に戻る</span> で自分のアカウントに戻ります。</div>
-<div class="hint">入力せずに勤怠を見るだけなら <span class="btn">👤 として閲覧</span> を押すと、勤怠画面がそのドライバーの内容で開きます。</div>
+<div class="hint">入力せずに勤怠を見るだけなら <span class="btn">👤 として閲覧</span> を押すと、そのドライバーの勤怠画面が開きます。</div>
 
 <h2 id="s15">15. よくある質問・困ったとき</h2>
-<div class="table-wrap"><table>
+<div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:38%">症状・質問</th><th>対処</th></tr>
   <tr><td>パスワードを忘れた</td><td>再設定画面はありません。管理者（西野 鷹也）に連絡してください。Googleでログインすればパスワードは不要です。</td></tr>
-  <tr><td>「Google でログイン」を押しても失敗する</td><td>LINE等のアプリ内ブラウザでは使えません。SafariかChromeでURLを開いてください。登録済みと同じメールアドレスのGoogleアカウントを選んでください。</td></tr>
+  <tr><td>「Google でログイン」を押しても失敗する</td><td>LINE等のアプリ内ブラウザでは使えません。SafariかChromeでURLを開き、登録済みと同じメールアドレスのGoogleアカウントを選んでください。</td></tr>
   <tr><td>設定を変えたのに請求金額が変わらない</td><td>請求書設定は「運送」カテゴリで保存されているか確認してください。勤怠画面を再読み込みすると再計算されます。既に申請済みの請求書は金額が固定されるため、🔁 再申請で出し直してください。</td></tr>
-  <tr><td>メーターの数値欄が入力できない</td><td>写真を添付すると入力できるようになります。写真が撮れない場合は 🕒 勤怠 の表から直接数値を入力してください。</td></tr>
+  <tr><td>メーターの数値欄が入力できない</td><td>写真を添付すると入力できます。写真が撮れない場合は 🕒 勤怠 の表から直接入力してください。</td></tr>
   <tr><td>AIの読み取り値が違う</td><td>読み取り後に数値を手で直して保存してください。暗い・ぶれた写真は誤読しやすいので撮り直しが確実です。</td></tr>
-  <tr><td>申請ボタンが押せない</td><td>先に請求書PDFをダウンロードしてください（内容確認のため必須にしています）。</td></tr>
+  <tr><td>申請ボタンが押せない</td><td>先に請求書PDFをダウンロードしてください（内容確認のため必須です）。</td></tr>
   <tr><td>請求書を削除したい</td><td>削除できるのは「下書き」だけです。申請中は ↩ 取消 で未申請に戻してから削除します。</td></tr>
   <tr><td>契約書の送付先メールを間違えた</td><td>もう一度 📧 メールで送付 で正しい宛先へ送ってください。新しいリンクが発行され、古いリンクは無効になります。</td></tr>
   <tr><td>署名済みの契約書を直したい</td><td>署名済みは変更できません。📑 複製 で新しい下書きを作り、再度署名を取り交わしてください。</td></tr>
