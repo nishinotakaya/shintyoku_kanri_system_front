@@ -48,6 +48,11 @@ export default function UsersPage() {
   const [meAdmin, setMeAdmin] = useState(false)
   const [meSubAdmin, setMeSubAdmin] = useState(false)
   const [inviteBusyId, setInviteBusyId] = useState<number | null>(null)
+  // 外注・メンバーの新規追加（旧: ⚙ 設定 → 👥 ユーザー タブ。実際に人を足すのはこの画面なのでここに置く）
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserName, setNewUserName] = useState('')
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createMsg, setCreateMsg] = useState<string | null>(null)
   // サブ管理者が配れる勤怠カテゴリ = 自分に見えるカテゴリだけ(雄太郎なら運送のみ)。admin は全カテゴリ
   const [meWorkCategories, setMeWorkCategories] = useState<string[] | null>(null)
   const [editingManagee, setEditingManagee] = useState<number | null>(null)
@@ -58,13 +63,34 @@ export default function UsersPage() {
   const [calendarPersonCandidates, setCalendarPersonCandidates] = useState<string[]>([])
   const navigate = useNavigate()
 
-  useEffect(() => {
-    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin); setMeSubAdmin(!!r.data.sub_admin); setMeWorkCategories(r.data.work_categories ?? null) })
+  const loadUsers = () =>
     api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
       .then((r) => { setUsers(r.data.users); setCalendarPersonCandidates(r.data.calendar_person_candidates) })
       .catch((e) => setErr(e?.response?.data?.error ?? e?.message ?? '取得失敗'))
-      .finally(() => setLoading(false))
+
+  useEffect(() => {
+    api.get('/me').then((r) => { setMeId(r.data.id); setMeAdmin(!!r.data.admin); setMeSubAdmin(!!r.data.sub_admin); setMeWorkCategories(r.data.work_categories ?? null) })
+    loadUsers().finally(() => setLoading(false))
   }, [])
+
+  // 作成と同時に招待メール（登録URL）を送る。作成者がサブ管理者なら、その人の管理対象・
+  // テナントメンバーとして作られ、見える画面・勤怠カテゴリ・締日は作成者と同じで始まる。
+  const createUser = async () => {
+    if (!newUserEmail.trim()) { setCreateMsg('メールアドレスを入力してください'); return }
+    setCreateBusy(true); setCreateMsg(null)
+    try {
+      const r = await api.post<{ id: number; invite_sent: boolean; invite_error: string | null }>('/admin/users', {
+        email: newUserEmail.trim(), display_name: newUserName.trim(), send_invite: true,
+      })
+      setCreateMsg(r.data.invite_sent
+        ? `✅ ${newUserEmail.trim()} を追加し、招待メールを送信しました`
+        : `⚠ 追加しました（id=${r.data.id}）が、招待メールの送信に失敗しました: ${r.data.invite_error}`)
+      setNewUserEmail(''); setNewUserName('')
+      await loadUsers()
+    } catch (e: any) {
+      setCreateMsg(`失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setCreateBusy(false) }
+  }
 
   // 「として閲覧」= 管理者のまま as_user_id で見るだけ。データは触れるが自分のログインのまま。
   const viewAs = (u: AdminUser) => navigate(`/attendance?as_user_id=${u.id}`)
@@ -210,13 +236,45 @@ export default function UsersPage() {
           <div className="text-[11px] text-[var(--color-text-sub)]">
             {meAdmin
               ? '管理者のみ。機能権限・管理対象（サブ管理者）を設定できます'
-              : '自分の外注・メンバーだけが表示されます。閲覧できる画面と勤怠カテゴリを設定できます（追加は ⚙ 設定 → ユーザー）'}
+              : '自分の外注・メンバーだけが表示されます。この画面で追加・招待し、閲覧できる画面と勤怠カテゴリを設定できます'}
           </div>
         </div>
         <div className="text-xs text-[var(--color-text-sub)]">{users.length} 件</div>
       </div>
 
       {err && <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">{err}</div>}
+
+      {(meAdmin || meSubAdmin) && (
+        <div className="glass space-y-3 rounded-2xl p-4 shadow-md">
+          <div>
+            <div className="text-sm font-semibold text-[var(--color-text)]">＋ 外注・メンバーを追加</div>
+            <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
+              追加すると登録用の招待メール（Google ログイン案内）が届きます。相手がそのメールアドレスで
+              Google ログインすると、自動でこのアカウントに紐づきます。
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] text-[var(--color-text-sub)]">メールアドレス *</span>
+              <input value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)}
+                type="email" inputMode="email" autoComplete="off" placeholder="example@gmail.com"
+                className="mt-0.5 h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-text)]" />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-[var(--color-text-sub)]">表示名</span>
+              <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="山田 太郎"
+                className="mt-0.5 h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-text)]" />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className={`text-[11px] ${createMsg?.startsWith('✅') ? 'text-emerald-600' : 'text-red-500'}`}>{createMsg ?? ''}</span>
+            <button onClick={createUser} disabled={createBusy}
+              className="h-10 shrink-0 whitespace-nowrap rounded-lg bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 text-sm font-semibold text-white shadow disabled:opacity-50">
+              {createBusy ? '送信中…' : '📧 追加して招待メールを送る'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="glass overflow-x-auto rounded-2xl shadow-md">
         <table className="w-full text-sm">

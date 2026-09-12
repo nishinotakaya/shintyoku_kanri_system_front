@@ -11,7 +11,7 @@ import type { FeatureKey } from '../App'
 
 // タブ定義。feature 付きタブは me.feature_flags で表示可否が決まる(admin は明示的に false のときだけ非表示)。
 // adminOnly は admin またはサブ管理者(テナント代表)にだけ表示する。
-type SettingsTabKey = 'account' | 'invoice' | 'backlog' | 'github' | 'freee' | 'users'
+type SettingsTabKey = 'account' | 'invoice' | 'backlog' | 'github' | 'freee'
 type SettingsTabDefinition = { key: SettingsTabKey; label: string; feature?: FeatureKey; adminOnly?: boolean }
 const SETTINGS_TABS: SettingsTabDefinition[] = [
   { key: 'account', label: 'アカウント' },
@@ -19,7 +19,6 @@ const SETTINGS_TABS: SettingsTabDefinition[] = [
   { key: 'backlog', label: 'バックログ', feature: 'settings_backlog' },
   { key: 'github', label: 'GitHub', feature: 'settings_github' },
   { key: 'freee', label: 'freee', feature: 'settings_freee' },
-  { key: 'users', label: '👥 ユーザー', adminOnly: true },
 ]
 
 type InvoiceSetting = {
@@ -119,37 +118,6 @@ export default function SettingsModal({
     }
   }
 
-  // === admin: ユーザー管理 ===
-  type AdminUser = { id: number; email: string; display_name: string | null; admin: boolean; has_google: boolean; created_at: string | null }
-  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
-  const [newUserEmail, setNewUserEmail] = useState('')
-  const [newUserName, setNewUserName] = useState('')
-  const [userBusy, setUserBusy] = useState(false)
-  const [userMsg, setUserMsg] = useState<string | null>(null)
-  const loadAdminUsers = async () => {
-    try {
-      // API は { users: [...], calendar_person_candidates: [...] } を返す(配列ではない)
-      const r = await api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
-      setAdminUsers(r.data.users ?? [])
-    } catch (e: any) {
-      setUserMsg(`取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-    }
-  }
-  useEffect(() => { if (open && tab === 'users') loadAdminUsers() }, [open, tab])
-  const createAdminUser = async () => {
-    if (!newUserEmail.trim()) { setUserMsg('email を入力してください'); return }
-    setUserBusy(true); setUserMsg(null)
-    try {
-      const r = await api.post<{ id: number; invite_sent: boolean; invite_error: string | null }>('/admin/users', {
-        email: newUserEmail.trim(), display_name: newUserName.trim(), send_invite: true,
-      })
-      setUserMsg(r.data.invite_sent ? `✅ 作成 + 招待メール送信 (id=${r.data.id})` : `⚠ 作成 (id=${r.data.id}) / 招待メール失敗: ${r.data.invite_error}`)
-      setNewUserEmail(''); setNewUserName('')
-      await loadAdminUsers()
-    } catch (e: any) {
-      setUserMsg(`失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
-    } finally { setUserBusy(false) }
-  }
   const [keySet, setKeySet] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [heygenKeySet, setHeygenKeySet] = useState(false)
@@ -1153,65 +1121,6 @@ export default function SettingsModal({
           </div>
         )}
 
-        {tab === 'users' && (isAdmin || me?.sub_admin) && (
-          <div className="mt-5 space-y-4">
-            <div className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] text-sky-700">
-              {isAdmin
-                ? 'admin 権限: 新しいユーザーを作成して招待メール (Google ログイン案内) を送信できます。'
-                : '外注・メンバーを追加して招待メール (Google ログイン案内) を送信できます。追加した人は自分の管理対象になり、勤怠の閲覧対象セレクトとユーザー一覧に出ます。見える画面・勤怠カテゴリ・締日は自分と同じで作成されます。'}
-              <br />招待された人がそのメールアドレスで Google ログインすると、自動で本アカウントに紐づきます。
-            </div>
-
-            <div className="rounded-lg border border-[var(--color-border)] p-3 space-y-2">
-              <div className="text-xs font-semibold">＋ 新規ユーザー追加</div>
-              <div className="grid gap-2 md:grid-cols-3">
-                <label className="block">
-                  <span className="text-[11px] text-[var(--color-text-sub)]">Email *</span>
-                  <input value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="example@gmail.com"
-                    className="mt-0.5 w-full rounded border border-[var(--color-border)] px-2 py-1 text-sm" />
-                </label>
-                <label className="block">
-                  <span className="text-[11px] text-[var(--color-text-sub)]">表示名</span>
-                  <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="山田 太郎"
-                    className="mt-0.5 w-full rounded border border-[var(--color-border)] px-2 py-1 text-sm" />
-                </label>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className={`text-[11px] ${userMsg?.includes('失敗') || userMsg?.includes('⚠') ? 'text-red-500' : 'text-emerald-600'}`}>{userMsg ?? ''}</span>
-                <button onClick={createAdminUser} disabled={userBusy}
-                  className="rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
-                  {userBusy ? '送信中…' : '📧 作成 + 招待メール送信'}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-semibold mb-1">登録済ユーザー ({adminUsers.length}件)</div>
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50 text-[var(--color-text-sub)]">
-                  <tr>
-                    <th className="px-2 py-1 text-left">id</th>
-                    <th className="px-2 py-1 text-left">Email</th>
-                    <th className="px-2 py-1 text-left">表示名</th>
-                    <th className="px-2 py-1 text-center">admin</th>
-                    <th className="px-2 py-1 text-center">Google連携</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminUsers.map((u) => (
-                    <tr key={u.id} className="border-t border-[var(--color-border)]">
-                      <td className="px-2 py-1 font-mono">{u.id}</td>
-                      <td className="px-2 py-1">{u.email}</td>
-                      <td className="px-2 py-1">{u.display_name ?? '—'}</td>
-                      <td className="px-2 py-1 text-center">{u.admin ? '✓' : ''}</td>
-                      <td className="px-2 py-1 text-center">{u.has_google ? '✅' : '⏳ 未ログイン'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
