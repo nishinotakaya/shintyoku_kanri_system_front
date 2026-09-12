@@ -128,8 +128,9 @@ export default function SettingsModal({
   const [userMsg, setUserMsg] = useState<string | null>(null)
   const loadAdminUsers = async () => {
     try {
-      const r = await api.get<AdminUser[]>('/admin/users')
-      setAdminUsers(r.data)
+      // API は { users: [...], calendar_person_candidates: [...] } を返す(配列ではない)
+      const r = await api.get<{ users: AdminUser[]; calendar_person_candidates: string[] }>('/admin/users')
+      setAdminUsers(r.data.users ?? [])
     } catch (e: any) {
       setUserMsg(`取得失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
