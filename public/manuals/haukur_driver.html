@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAUKUR運送 操作手順書（ドライバー用）</title>
+<style>
+  :root {
+    --ground: #f6f7f4; --surface: #ffffff; --ink: #1b2a26; --muted: #5b6b66; --line: #d6ddd9;
+    --accent: #0f7b6c; --accent-soft: #e3f2ee; --amber: #b8690a; --amber-soft: #fbf0df; --violet: #5f48b8; --violet-soft: #ebe6f8;
+    --warn: #b23a3a; --warn-soft: #fbe9e9; --code: #eceeea;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: var(--ground); color: var(--ink); font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 15px; line-height: 1.8; margin: 0; }
+  main { max-width: 760px; margin: 0 auto; padding-block: 16px 60px; padding-inline: 16px; }
+  h1, h2, h3 { text-wrap: balance; }
+  h1 { font-size: 26px; margin: 8px 0 2px; letter-spacing: 1px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 12px; border-top: 3px solid var(--accent); scroll-margin-top: 12px; }
+  h3 { font-size: 16px; color: var(--accent); margin: 20px 0 6px; scroll-margin-top: 12px; }
+  p { margin: 6px 0; }
+  .step { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 12px; margin: 8px 0; }
+  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12.5px; letter-spacing: .5px; padding-top: 2px; min-width: 52px; }
+  .hint { background: var(--accent-soft); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
+  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
+  .url { font-family: ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
+  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
+  .role-badge { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 700; margin-right: 6px; vertical-align: 2px; }
+  .admin-badge { background: var(--accent-soft); color: var(--accent); }
+  .driver-badge { background: var(--amber-soft); color: var(--amber); }
+  .client-badge { background: var(--violet-soft); color: var(--violet); }
+  .page-break { display: none; }
+  .footer { margin-top: 36px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+  .table-wrap { overflow-x: auto; margin: 8px 0; }
+  table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); white-space: nowrap; font-weight: 700; }
+  td { background: var(--surface); }
+  figure.shot { margin: 14px 0 20px; }
+  figure.shot img { display: block; width: 100%; max-width: 280px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; }
+  figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  figure.shot .row img { width: 280px; }
+  .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 10px 14px; margin: 10px 0 16px; }
+  .mailbox .subject { font-weight: 700; font-size: 13.5px; margin-bottom: 6px; }
+  .mailbox pre { margin: 0; font-family: "Hiragino Sans", sans-serif; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .mailbox .var { background: var(--amber-soft); color: var(--amber); border-radius: 4px; padding: 0 3px; }
+  .mailbox .from { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 14px; margin: 10px 0; font-size: 13.5px; }
+  .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--line); }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); outline: none; border-bottom-color: var(--accent); }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; font-size: 13px; }
+  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 9px; background: var(--accent-soft); }
+  .flow .arrow { color: var(--accent); font-weight: 700; }
+  ul { margin: 4px 0 4px 20px; padding: 0; }
+  li { margin: 3px 0; }
+  @media (max-width: 540px) {
+    body { font-size: 14.5px; }
+    main { padding-inline: 14px; }
+    .toc { grid-template-columns: 1fr; }
+    .step { flex-direction: column; gap: 2px; }
+    figure.shot .row { gap: 10px; }
+    figure.shot .row img { width: min(100%, 280px); }
+  }
+</style>
+</head>
+<body>
+<main>
+<h1>操作手順書（ドライバー用）</h1>
+<div class="subtitle">業務管理システム ｜ HAUKUR運送 ドライバー様向け ｜ 毎日の稼働入力・写真からの自動入力・支払明細の申請</div>
+
+<div class="hint">
+  システムURL：<span class="url">https://react-frontend-beige.vercel.app</span><br>
+  ログインID：招待メールが届いたご自身のメールアドレス（パスワードはご自身で設定します）<br>
+  対応環境：スマートフォン・パソコンのブラウザ（Chrome / Safari 推奨）。アプリのインストールは不要です。
+</div>
+
+<h3>この手順書の読み方</h3>
+<ul>
+  <li><span class="role-badge driver-badge">ドライバー</span> ＝ ご自身が行う操作です</li>
+  <li><span class="btn">こう書いた文字</span> は画面上のボタン名そのままです</li>
+  <li>画面図はスマートフォンで開いたときのものです。パソコンでも同じ操作ができます</li>
+</ul>
+
+<h3>目次</h3>
+<div class="toc">
+  <div><a href="#s1">1. このアプリでやること</a></div>
+  <div><a href="#s2">2. 招待メールから登録する</a></div>
+  <div><a href="#s3">3. ログイン・ログアウト</a></div>
+  <div><a href="#s4">4. 画面の構成（メニュー）</a></div>
+  <div><a href="#s5">5. カレンダーで毎日の稼働を入力する</a></div>
+  <div><a href="#s6">6. 写真から自動で入力する</a></div>
+  <div><a href="#s7">7. 勤怠画面で1か月分を確認する</a></div>
+  <div><a href="#s8">8. 支払明細を申請する</a></div>
+  <div><a href="#s9">9. 契約書に署名する</a></div>
+  <div><a href="#s10">10. よくある質問・困ったとき</a></div>
+</div>
+
+<h2 id="s1">1. このアプリでやること</h2>
+<p>紙の稼働報告書の代わりに、毎日の稼働をスマホから入力します。月末はその内容から支払明細が自動で作られます。</p>
+<div class="flow">
+  <span class="box">① 招待メールから登録</span><span class="arrow">→</span>
+  <span class="box">② 毎日カレンダーに稼働を入力</span><span class="arrow">→</span>
+  <span class="box">③ 月末に1か月分を確認</span><span class="arrow">→</span>
+  <span class="box">④ 支払明細を申請</span>
+</div>
+<div class="table-wrap"><table>
+  <tr><th style="width:30%">やること</th><th>いつ</th><th style="width:16%">章</th></tr>
+  <tr><td>登録・ログイン</td><td>最初の1回だけ</td><td>2・3</td></tr>
+  <tr><td>その日の稼働を入力する</td><td>毎日（当日または翌日）</td><td>5・6</td></tr>
+  <tr><td>1か月分を見直す</td><td>締日（末日）のあと</td><td>7</td></tr>
+  <tr><td>支払明細を申請する</td><td>締日のあと</td><td>8</td></tr>
+</table></div>
+<div class="hint">締日は末日、支払いは翌々月10日です。カレンダー・勤怠・支払明細は、締日で区切った1か月で集計します。</div>
+<div class="warn">入力した内容がそのまま支払いの根拠になります。稼働した日は、その日のうちに入れておくと間違いがありません。</div>
+
+<h2 id="s2">2. 招待メールから登録する</h2>
+<p>HAUKUR運送から招待メールが届きます。リンクを開いてパスワードを決めるだけで登録は完了です。</p>
+<div class="step"><b class="no">STEP 1</b> 招待メール内のリンクを開きます（有効期限は14日）。</div>
+<div class="step"><b class="no">STEP 2</b> 表示名を確認し、パスワード（6文字以上）を2か所に入れて <span class="btn">登録を完了する</span> を押します。</div>
+<div class="step"><b class="no">STEP 3</b> 「🎉 登録が完了しました」と出たら <span class="btn">アプリをはじめる</span> でカレンダーが開きます。</div>
+<div class="mailbox">
+  <div class="subject">📧 届くメール　件名：【勤怠アプリ】<span class="var">西野 雄太郎</span>さんから招待が届きました</div>
+  <pre><span class="var">お名前</span> 様
+
+<span class="var">西野 雄太郎</span>さんが勤怠アプリ（<span class="var">HAUKUR運送</span>）にあなたを招待しました。
+
+下記URLからパスワードを設定して、登録を完了してください（リンクの有効期限: 14日間）。
+https://react-frontend-beige.vercel.app/invite/<span class="var">登録用リンク</span>
+
+※ Googleアカウント（このメールアドレス: <span class="var">ご自身のメール</span>）をお持ちの場合は、
+   https://react-frontend-beige.vercel.app/sign_in の「Googleでログイン」からもそのまま利用を開始できます。</pre>
+  <div class="from"><span class="var">黄色</span>の部分に、ご自身の名前・メールアドレスが入ります。</div>
+</div>
+<div class="warn">「⚠️ 招待リンクが無効です」と出たら期限切れです。HAUKUR運送に再送を依頼してください。同じリンクは使えません。</div>
+
+<h2 id="s3">3. ログイン・ログアウト</h2>
+<h3>3-1. ログインする</h3>
+<div class="step"><b class="no">STEP 1</b> ブラウザで <span class="url">https://react-frontend-beige.vercel.app</span> を開きます。</div>
+<div class="step"><b class="no">STEP 2</b> 登録したメールアドレスとパスワードを入れて <span class="btn">サインイン</span> を押します。</div>
+<div class="step"><b class="no">STEP 3</b> カレンダーが開きます。次回からも同じURLを開くだけです。</div>
+<figure class="shot phone">
+  <img src="images/01_signin.jpg" alt="図3-1　ログイン画面。メールとパスワードを入れて「サインイン」">
+  <figcaption>図3-1　ログイン画面。メールとパスワードを入れて「サインイン」</figcaption>
+</figure>
+<h3>3-2. ログアウト・ホーム画面に追加</h3>
+<ul>
+  <li>画面右上の <span class="btn">ログアウト</span> を押すとログイン画面に戻ります。</li>
+  <li>iPhoneはSafariの「共有」、AndroidはChromeのメニューから「ホーム画面に追加」でアプリのように使えます。</li>
+  <li>パスワードを忘れた場合は再設定画面がありません。HAUKUR運送にご連絡ください。</li>
+</ul>
+<div class="hint">Googleアカウントが招待メールと同じアドレスなら、<span class="btn">Google でログイン</span> でもログインできます。</div>
+
+<h2 id="s4">4. 画面の構成（メニュー）</h2>
+<p>画面左（スマホでは左上の ≡）にメニューがあります。表示されるのは次の4つです。</p>
+<div class="table-wrap"><table>
+  <tr><th style="width:26%">メニュー</th><th>できること</th><th style="width:12%">章</th></tr>
+  <tr><td>📅 カレンダー</td><td>その日の稼働を入力する。写真からメーター・ガソリン代を自動入力</td><td>5・6</td></tr>
+  <tr><td>🕒 勤怠</td><td>1か月分を表で確認・修正する。支払明細の申請もここから</td><td>7・8</td></tr>
+  <tr><td>📄 請求書一覧</td><td>申請した支払明細の状態（下書き・申請中・承認済み）を見る</td><td>8</td></tr>
+  <tr><td>📝 契約書</td><td>署名した業務委託契約書を見る</td><td>9</td></tr>
+</table></div>
+<figure class="shot phone">
+  <img src="images/d01_menu.jpg" alt="図4-1　左上の ≡ で開くメニュー。カレンダー・勤怠・請求書一覧・契約書の4つ">
+  <figcaption>図4-1　左上の ≡ で開くメニュー。カレンダー・勤怠・請求書一覧・契約書の4つ</figcaption>
+</figure>
+<div class="hint">⚙ 設定 ではお名前・振込先などを登録できます。振込先は支払明細に印字されるので、最初に入れておきます。</div>
+
+<h2 id="s5">5. カレンダーで毎日の稼働を入力する</h2>
+<h3>5-1. その日の稼働を入力する</h3>
+<div class="step"><b class="no">STEP 1</b> メニューの <b>📅 カレンダー</b> を開き、日付をタップすると「稼働報告書」の入力画面が開きます。</div>
+<div class="step"><b class="no">STEP 2</b> <b>☑ 稼働</b> にチェックを入れます（外して保存すると、その日の稼働は削除されます）。</div>
+<div class="step"><b class="no">STEP 3</b> 上から順に入力します（下表）。</div>
+<div class="table-wrap"><table>
+  <tr><th style="width:30%">項目</th><th>入力のしかた</th></tr>
+  <tr><td>開始時間 ／ 終了時間</td><td>時刻を選びます。稼働時間は自動計算されます（日をまたぐ場合も対応）</td></tr>
+  <tr><td>走行距離 (km)</td><td>その日の走行距離。小数点1桁まで入力できます</td></tr>
+  <tr><td>備考欄</td><td>連絡事項・特記事項。高速代・駐車場代の内訳など</td></tr>
+  <tr><td>配送件数 (件)</td><td>その日の配送件数</td></tr>
+  <tr><td>開始メーター ／ 終了メーター</td><td><span class="btn">📷 メーターを撮影</span> で写真を撮ると数値が自動で入ります（6-1）</td></tr>
+  <tr><td>実費レシート（ガソリン代）</td><td><span class="btn">📷 レシートを撮影して金額を自動入力</span> で金額が自動で入ります（6-2）</td></tr>
+</table></div>
+<div class="step"><b class="no">STEP 4</b> <span class="btn">保存</span> を押します。「稼働報告を保存しました」と出れば完了です。</div>
+<div class="hint">後から直すときは同じ日付をタップして修正し、もう一度 <span class="btn">保存</span> を押します。</div>
+<figure class="shot">
+  <div class="row">
+    <img src="images/d02_calendar.jpg" alt="図5-1　左＝カレンダー。日付をタップして入力。右＝開いた稼働報告書（① 稼働にチェック）">
+    <img src="images/03_day_report.jpg" alt="図5-1　左＝カレンダー。日付をタップして入力。右＝開いた稼働報告書（① 稼働にチェック）">
+  </div>
+  <figcaption>図5-1　左＝カレンダー。日付をタップして入力。右＝開いた稼働報告書（① 稼働にチェック）</figcaption>
+</figure>
+<h3>5-2. 月の集計を見る</h3>
+<ul>
+  <li>カレンダー上部に <b>月度稼働日数(日)・稼働時間(h)・時間外(h)・走行距離(km)</b> が表示されます（1日〜末日）。</li>
+  <li>← → で前月・翌月に移動します。</li>
+</ul>
+
+<h2 id="s6">6. 写真から自動で入力する（メーター・レシート）</h2>
+<p>メーターとガソリン代は、写真を撮るだけでAIが数値を読み取り、そのまま欄に入ります。手打ちは不要です。</p>
+<h3>6-1. メーターを写真で読み取る</h3>
+<div class="step"><b class="no">STEP 1</b> 「開始メーター (km)」の <span class="btn">📷 メーターを撮影</span> を押し、カメラで撮影します（写真の選択も可）。</div>
+<div class="step"><b class="no">STEP 2</b> 「🤖 AI読取中…」と表示され、数秒で数値が入ります。結果を確認し、違っていれば直します。</div>
+<div class="step"><b class="no">STEP 3</b> 終了時も同じ手順で「終了メーター (km)」を撮影します。</div>
+<div class="warn">写真を添付するまで数値は入力できません。✕ を押すと数値も消えます。終了メーターが開始より小さいと保存できません。</div>
+<h3>6-2. ガソリン代などのレシートを読み取る</h3>
+<div class="step"><b class="no">STEP 1</b> 「実費レシート（ガソリン代）」の <span class="btn">📷 レシートを撮影して金額を自動入力</span> を押し、撮影します。</div>
+<div class="step"><b class="no">STEP 2</b> 1枚ごとに金額欄が増え、AIが読み取った税込額が入ります。違えば直し、不要な行は ✕ で消します。</div>
+<div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。保存すると勤怠の実費と支払明細の立替金に反映されます。</div>
+<div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代のレシートも同じ手順で入れられます。</div>
+<figure class="shot">
+  <div class="row">
+    <img src="images/03c_meter_ai.jpg" alt="図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算">
+    <img src="images/03d_receipt_ai.jpg" alt="図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算">
+  </div>
+  <figcaption>図6-1　左＝メーターを撮影するとAIがkmを自動入力。右＝レシートを撮影するとAIが金額を読み、実費合計に自動で合算</figcaption>
+</figure>
+
+<h2 id="s7">7. 勤怠画面で1か月分を確認する</h2>
+<p>メニューの <b>🕒 勤怠</b> は、カレンダーで入れた1か月分を表で見る画面です。同じデータで、どちらで直しても反映。</p>
+<div class="step"><b class="no">STEP 1</b> 上部の <span class="btn">←</span> <span class="btn">→</span> で月を切り替えます。「期間: ○月1日 〜 ○月末日」が出ます。</div>
+<div class="step"><b class="no">STEP 2</b> 表のセルを直接編集すると自動保存されます（保存直後に ✓、保存済みで ● が出ます）。</div>
+<div class="step"><b class="no">STEP 3</b> 表の下に 稼働日数・稼働時間・時間外・走行距離・配送件数 の合計が出ます（紙の提出は不要）。</div>
+<div class="hint">スマホでは表が横にスクロールし、日付列は固定されます。1行の全項目を空にすると、その日の稼働は削除されます。</div>
+<div class="warn">勤怠画面の表では写真は扱えません（数値入力のみ）。写真の読み取りはカレンダー（6章）で行います。</div>
+<figure class="shot">
+  <div class="row">
+    <img src="images/d03_attendance.jpg" alt="図7-1　左＝勤怠画面の上部（申請・出退勤・今期サマリ）。右＝下部の稼働報告書の表">
+    <img src="images/d04_attendance_table.jpg" alt="図7-1　左＝勤怠画面の上部（申請・出退勤・今期サマリ）。右＝下部の稼働報告書の表">
+  </div>
+  <figcaption>図7-1　左＝勤怠画面の上部（申請・出退勤・今期サマリ）。右＝下部の稼働報告書の表</figcaption>
+</figure>
+
+<h2 id="s8">8. 支払明細を申請する</h2>
+<p>締日（末日）を過ぎたら、その月の支払明細をHAUKUR運送へ申請します。金額は入力した稼働から自動計算されます。</p>
+<h3>8-1. 申請する</h3>
+<div class="step"><b class="no">STEP 1</b> <b>🕒 勤怠</b> を開き、上部の月が申請したい月になっているか確認します。</div>
+<div class="step"><b class="no">STEP 2</b> <span class="btn">📥 ダウンロード</span> でPDFを開いて内容を確認します（確認するまで申請は押せません）。</div>
+<div class="step"><b class="no">STEP 3</b> <span class="btn">📤 申請する（請求書一覧へ登録）</span> を押すと「申請中」で登録されます。</div>
+<div class="step"><b class="no">STEP 4</b> 直して出し直すときは <span class="btn">🔁 再申請</span>、取り下げるときは <span class="btn">↩ 取消</span> を押します。</div>
+<div class="hint">ガソリン代などの実費は「立替金」として、支払明細とは別に申請します。どちらも同じ手順です。</div>
+<h3>8-2. 状態を確認する</h3>
+<div class="table-wrap"><table>
+  <tr><th style="width:22%">状態</th><th>意味</th><th style="width:30%">できること</th></tr>
+  <tr><td>下書き</td><td>まだ申請していない</td><td>編集・削除・申請</td></tr>
+  <tr><td>申請中</td><td>HAUKUR運送の確認待ち</td><td>取消して直す</td></tr>
+  <tr><td>承認済み</td><td>内容が承認された</td><td>内容の確認のみ</td></tr>
+  <tr><td>却下</td><td>差し戻し。直して出し直す</td><td>再申請</td></tr>
+</table></div>
+<figure class="shot phone">
+  <img src="images/d05_invoices.jpg" alt="図8-1　📄 請求書一覧。申請した支払明細・立替金の状態が並ぶ">
+  <figcaption>図8-1　📄 請求書一覧。申請した支払明細・立替金の状態が並ぶ</figcaption>
+</figure>
+
+<h2 id="s9">9. 契約書に署名する</h2>
+<p>業務委託契約書はHAUKUR運送からメールで届きます。ログインは不要で、スマホの画面上で署名できます。</p>
+<div class="step"><b class="no">STEP 1</b> 届いたメールの署名URLを開きます（有効期限は30日）。</div>
+<div class="step"><b class="no">STEP 2</b> 契約書の内容を最後まで確認します。</div>
+<div class="step"><b class="no">STEP 3</b> 署名欄に指（マウス）で署名し、<span class="btn">署名して同意する</span> を押します。</div>
+<div class="step"><b class="no">STEP 4</b> 署名済みPDFが作られ、メニューの <b>📝 契約書</b> からいつでも確認できます。</div>
+<div class="mailbox">
+  <div class="subject">📧 届くメール　件名：【<span class="var">運送業務委託契約書</span>】ご署名のお願い</div>
+  <pre><span class="var">お名前</span> 様
+
+お世話になっております。<span class="var">HAUKUR運送</span>の<span class="var">西野 雄太郎</span>です。
+<span class="var">運送業務委託契約書</span>をお送りいたします。
+
+下記のリンクから内容をご確認のうえ、ご署名をお願いいたします。
+<span class="var">署名URL</span></pre>
+  <div class="from"><span class="var">黄色</span>の部分は契約書の内容によって変わります。本文はHAUKUR運送が編集できます。</div>
+</div>
+<div class="warn">「この契約書は無効になっています」と出たら、作り直されています。HAUKUR運送に最新のリンクを依頼してください。</div>
+
+<h2 id="s10">10. よくある質問・困ったとき</h2>
+<div class="table-wrap"><table>
+  <tr><th style="width:40%">こんなとき</th><th>こうしてください</th></tr>
+  <tr><td>招待メールが届かない</td><td>迷惑メールフォルダを確認し、無ければHAUKUR運送に再送を依頼してください。</td></tr>
+  <tr><td>パスワードを忘れた</td><td>再設定画面はありません。HAUKUR運送にご連絡ください。</td></tr>
+  <tr><td>「Google でログイン」が失敗する</td><td>LINE等のアプリ内ブラウザでは使えません。SafariかChromeでURLを開いてください。</td></tr>
+  <tr><td>メーターの数値が入力できない</td><td>写真を添付するまで入力できません。先に <span class="btn">📷 メーターを撮影</span> を押してください。</td></tr>
+  <tr><td>AIが読み取った数値が違う</td><td>数値欄をタップして手で直せます。保存されるのは直したあとの数値です。</td></tr>
+  <tr><td>終了メーターが保存できない</td><td>開始メーターより小さい値は入りません。撮り直すか数値を直してください。</td></tr>
+  <tr><td>申請ボタンが押せない</td><td>先にPDFをダウンロードして内容を確認してください。</td></tr>
+  <tr><td>申請を取り消したい</td><td>「申請中」なら <span class="btn">↩ 取消</span> で下書きに戻せます。</td></tr>
+  <tr><td>表が途中で切れて見えない</td><td>稼働報告書の表は横にスクロールします。日付の列は固定されています。</td></tr>
+</table></div>
+<div class="footer">
+  お問い合わせ：HAUKUR運送 西野 雄太郎 ｜ yutaro18551833@gmail.com ｜ 業務管理システム 操作手順書（ドライバー様向け）v1.0（2026年9月12日）｜ 画面図はスマートフォン表示・2026年9月12日時点のものです。
+</div>
+</main>
+</body>
+</html>

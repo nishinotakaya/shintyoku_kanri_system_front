@@ -18,6 +18,7 @@ import ContractsPage from './pages/ContractsPage'
 import ContractSignPage from './pages/ContractSignPage'
 import InvitePage from './pages/InvitePage'
 import SettingsModal from './components/SettingsModal'
+import ManualModal, { type ManualDocument } from './components/ManualModal'
 import BusinessExpensesPage from './pages/BusinessExpensesPage'
 import { isAuthed, signOut } from './lib/auth'
 import { stopImpersonation, startImpersonation, fetchImpersonationCandidates,
@@ -33,6 +34,32 @@ type SubmissionLite = { id: number; year: number; month: number; category: strin
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthed()) return <Navigate to="/sign_in" replace />
   return <>{children}</>
+}
+
+// テナントごとの操作手順書。代表者(サブ管理者)と、その配下メンバーで別冊になっている。
+// 実体は public/manuals/ 配下（docs/manuals/build_web.py が印刷用HTMLから生成）。
+const TENANT_MANUALS: Record<string, { owner: ManualDocument; member: ManualDocument }> = {
+  'HAUKUR運送': {
+    owner: {
+      title: 'HAUKUR運送 操作手順書（代表者用）',
+      htmlUrl: '/manuals/haukur_owner.html',
+      pdfUrl: '/manuals/haukur_owner.pdf',
+      pdfFileName: '操作手順書_西野雄太郎様向け.pdf',
+    },
+    member: {
+      title: 'HAUKUR運送 操作手順書（ドライバー用）',
+      htmlUrl: '/manuals/haukur_driver.html',
+      pdfUrl: '/manuals/haukur_driver.pdf',
+      pdfFileName: '操作手順書_ドライバー様向け.pdf',
+    },
+  },
+}
+
+/** そのユーザーに出す手順書。テナントに手順書が無ければ何も出さない。 */
+function manualForUser(me: Me | null | undefined): ManualDocument | undefined {
+  if (!me || me.admin) return undefined
+  const manuals = me.tenant_name ? TENANT_MANUALS[me.tenant_name] : undefined
+  return manuals && (me.sub_admin ? manuals.owner : manuals.member)
 }
 
 // 各画面の閲覧権限 (admin は常に全部見れる)。値は users.feature_flags のキー。
@@ -98,6 +125,9 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [bellOpen, setBellOpen] = useState(false)
   // 全ユーザー共通の設定モーダル（振込先などの請求書設定・アカウント設定）をヘッダーから開く
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // 操作手順書モーダル（テナントに手順書があるユーザーだけヘッダーにボタンが出る）
+  const [manualOpen, setManualOpen] = useState(false)
+  const manual = manualForUser(me)
   // 既読にした申請の ID セット（リロードしてもバッジが復活しないよう localStorage に永続化）
   const [seenApplicationIds, setSeenApplicationIds] = useState<Set<string>>(() => {
     try {
@@ -360,6 +390,16 @@ function Layout({ children }: { children: React.ReactNode }) {
             )}
             <div className="ml-auto flex items-center gap-2 sm:gap-4">
               <div className="hidden max-w-[140px] truncate whitespace-nowrap text-sm text-[var(--color-text-sub)] sm:block">{me?.display_name ?? me?.email ?? '—'}</div>
+              {manual && (
+                <button
+                  type="button"
+                  onClick={() => setManualOpen(true)}
+                  title={manual.title}
+                  className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] sm:px-3"
+                >
+                  📘<span className="hidden sm:inline"> マニュアル</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}
@@ -391,6 +431,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 min-w-0">{children}</main>
       </div>
+      {manual && manualOpen && <ManualModal {...manual} onClose={() => setManualOpen(false)} />}
       <SettingsModal
         open={settingsOpen}
         initialTab="account"
