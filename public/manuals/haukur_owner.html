@@ -205,7 +205,7 @@
   <figcaption>図3-1　左＝ホーム画面（① メニュー ② 設定）。右＝メニューを開いたところ（5つの画面）</figcaption>
 </figure>
 <h2 id="s4">4. 最初に行う設定 <span class="role-badge admin-badge">雄太郎様</span></h2>
-<p>右上の <span class="btn">⚙ 設定</span> を押すと設定画面が開きます。上部のタブで切り替えます。運用に必要なのは「アカウント」と「請求書」の2つです（バックログ・GitHub・freee のタブは使いません）。</p>
+<p>右上の <span class="btn">⚙ 設定</span> で設定画面が開きます。上部のタブで切り替え、使うのは「アカウント」と「請求書」だけです。</p>
 <h3>4-1. アカウント タブ</h3>
 <div class="table-wrap" data-cols="2"><table>
   <tr><th style="width:30%">項目</th><th>設定内容</th></tr>
@@ -220,10 +220,19 @@
 <div class="step"><b class="no">STEP 2</b> 日給を選ぶと 日給・所定時間・超過単価 の欄が出ます（現在 17,000円／8h／2,656円）。</div>
 <figure class="shot phone"><img src="images/05_settings_invoice.jpg" alt="図4-2　設定「請求書」タブ（報酬形態・日給・超過単価）"><figcaption>図4-2　設定「請求書」タブ（報酬形態・日給・超過単価）</figcaption></figure>
 </div>
+<div class="keep">
 <div class="step"><b class="no">STEP 3</b> 「振込先」に金融機関・口座番号・口座名義を入力します。請求書PDFの振込先欄に印字されます。</div>
-<div class="step"><b class="no">STEP 4</b> 「請求先マスタ」で <span class="btn">＋ 追加</span> → 取引先名・敬称・件名・住所・TEL・担当者 を入れて保存します。</div>
-<div class="step"><b class="no">STEP 5</b> 画面下の <span class="btn">保存</span> を押します。</div>
-<div class="hint">請求先マスタに登録すると、請求書を作るときにプルダウンで宛名を選べます。使わなくなった取引先は削除ではなく「アーカイブ」になり、過去の請求書の宛名は残ります。</div>
+<figure class="shot phone wide"><img src="images/05b_settings_bank.jpg" alt="図4-3　振込先。請求書PDFの振込先欄に印字されます"><figcaption>図4-3　振込先。請求書PDFの振込先欄に印字されます</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 4</b> 「請求先（宛先）」の <span class="btn">＋ 請求先を追加</span> で 会社名・敬称・件名・担当者・TEL・住所 を入れて <span class="btn">保存</span>。</div>
+<figure class="shot phone wide"><img src="images/05c_settings_clients.jpg" alt="図4-4　「請求先（宛先）」に取引先を登録する"><figcaption>図4-4　「請求先（宛先）」に取引先を登録する</figcaption></figure>
+</div>
+<div class="keep">
+<div class="step"><b class="no">STEP 5</b> 画面下の <span class="btn">請求書設定を保存</span> を押します。</div>
+<figure class="shot phone wide"><img src="images/05d_settings_save.jpg" alt="図4-5　最後に「請求書設定を保存」を押す"><figcaption>図4-5　最後に「請求書設定を保存」を押す</figcaption></figure>
+</div>
+<div class="hint">登録しておくと、請求書を作るときにプルダウンで宛名を選べます。<span class="btn">削除</span> を押しても実際は保管（アーカイブ）されるだけなので、過去の請求書の宛名は残ります。</div>
 <div class="warn">超過単価が空欄・0なら 日給 ÷ 所定時間 × 1.25（労基法の割増率）で自動計算。単価が決まっているときは必ず入力を。</div>
 
 <h2 id="s5">5. ドライバーの追加と招待 <span class="role-badge admin-badge">雄太郎様</span></h2>
@@ -336,7 +345,8 @@ https://react-frontend-beige.vercel.app/sign_in
 <div class="step"><b class="no">STEP 2</b> 1枚ごとに金額欄が増え、AIが読み取った税込額が入ります。違えば直し、不要な行は ✕ で消します。</div>
 <figure class="shot phone"><img src="images/03d_receipt_ai.jpg" alt="図8-2　レシートを撮影するとAIが金額を読み、実費合計に合算"><figcaption>図8-2　レシートを撮影するとAIが金額を読み、実費合計に合算</figcaption></figure>
 </div>
-<div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。保存すると勤怠の実費と請求書の立替金に反映されます。</div>
+<div class="step"><b class="no">STEP 3</b> 「実費合計 (円)」に合計が自動で入ります。</div>
+<div class="hint">保存すると 🕒 <b>勤怠</b> の「立替金」欄にも自動で並び（9-2）、月末はその合計が立替金の申請額になります。</div>
 <div class="hint">レシートは1日に何枚でも追加できます。高速代・駐車場代も同じ手順で入れられます。</div>
 
 <h2 id="s9">9. 勤怠画面で月の稼働を確認・修正する <span class="role-badge admin-badge">雄太郎様</span><span class="role-badge driver-badge">ドライバー</span></h2>
