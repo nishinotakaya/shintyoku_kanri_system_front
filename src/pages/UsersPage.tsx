@@ -249,8 +249,8 @@ export default function UsersPage() {
           <div>
             <div className="text-sm font-semibold text-[var(--color-text)]">＋ 外注・メンバーを追加</div>
             <div className="mt-0.5 text-[11px] text-[var(--color-text-sub)]">
-              追加すると登録用の招待メール（Google ログイン案内）が届きます。相手がそのメールアドレスで
-              Google ログインすると、自動でこのアカウントに紐づきます。
+              追加すると登録用の招待メールが届きます。相手はメールのリンクからパスワードを設定して
+              登録し、以後はメールアドレスとパスワードでログインします。
             </div>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
