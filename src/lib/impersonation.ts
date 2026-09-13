@@ -67,18 +67,15 @@ export async function startImpersonation(userId: number): Promise<Impersonation>
 
 // なりすましを終了して管理者アカウントに戻す。
 // サーバがトークンから戻り先を判断するので、localStorage が消えていても戻れる。
+// 使い終わったなりすましトークンの失効もサーバ側(DELETE)で行う。ここで sign_out を呼ぶと、
+// api の interceptor が Authorization を localStorage の(差し替え済み)管理者トークンで上書きするため、
+// 管理者トークンの方を失効させてしまい、直後の /me が 401 → ログアウトに飛ばされていた。
 export async function stopImpersonation(): Promise<boolean> {
-  const impersonationToken = localStorage.getItem('jwt')
   try {
     const res = await api.delete('/admin/impersonations')
     const { token } = res.data as { token: string }
     localStorage.setItem('jwt', token)
     clearImpersonationCache()
-    // 使い終わったなりすましトークンは失効させる(使い回されないように)。
-    // 戻り先を確保した後なので、失敗しても管理者には戻れている。
-    if (impersonationToken) {
-      api.delete('/auth/sign_out', { headers: { Authorization: `Bearer ${impersonationToken}` } }).catch(() => {})
-    }
     return true
   } catch {
     // 戻り先を持たない古いトークンのときだけ、退避しておいた管理者トークンに頼る

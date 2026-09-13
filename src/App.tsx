@@ -25,7 +25,7 @@ import { stopImpersonation, startImpersonation, fetchImpersonationCandidates,
   type ImpersonationCandidate } from './lib/impersonation'
 import { useMe, clearMeCache } from './lib/useMe'
 import ToastHost from './components/ToastHost'
-import { api } from './lib/api'
+import { api, IMPERSONATION_ENDED_NOTICE_KEY } from './lib/api'
 import type { Me } from './lib/api'
 import { canUseFeature } from './lib/featureFlags'
 
@@ -139,6 +139,15 @@ function Layout({ children }: { children: React.ReactNode }) {
   // なりすまし中かどうかはサーバの /me が返す impersonator を正とする。
   // localStorage が飛んでもバナーが出るので、管理者に戻れなくなる状態が構造的に起きない。
   const impersonator = me?.impersonator ?? null
+  // 401 でなりすましが強制終了されたときの理由。黙って管理者に戻ると
+  // 「まだ○○として見ているつもり」で管理者の画面を見てしまうので、閉じるまで出し続ける
+  const [impersonationEndedNotice, setImpersonationEndedNotice] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(IMPERSONATION_ENDED_NOTICE_KEY) } catch { return null }
+  })
+  const dismissImpersonationEndedNotice = () => {
+    try { sessionStorage.removeItem(IMPERSONATION_ENDED_NOTICE_KEY) } catch { /* 表示だけ消せればよい */ }
+    setImpersonationEndedNotice(null)
+  }
   // なりすまし中の乗り換え先。バナーのセレクトで使う
   const [switchCandidates, setSwitchCandidates] = useState<ImpersonationCandidate[]>([])
   useEffect(() => {
@@ -270,6 +279,12 @@ function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main area */}
       <div className="flex-1 min-w-0 flex flex-col">
+        {impersonationEndedNotice && !impersonator && (
+          <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 bg-rose-600 px-3 py-1.5 text-[11px] font-semibold text-white sm:px-6">
+            <span>⚠️ {impersonationEndedNotice} いまは管理者アカウントの画面です。</span>
+            <button onClick={dismissImpersonationEndedNotice} className="rounded-md bg-white/20 px-2.5 py-1 hover:bg-white/30">閉じる</button>
+          </div>
+        )}
         {/* なりすまし中は常時バナーを出す(誰として操作しているかを見失わないため) */}
         {impersonator && (
           <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 bg-amber-500 px-3 py-1.5 text-[11px] font-semibold text-white sm:px-6">

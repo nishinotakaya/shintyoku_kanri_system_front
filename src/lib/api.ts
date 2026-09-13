@@ -12,6 +12,9 @@ export const api = axios.create({
   baseURL: resolveApiBaseUrl(),
 })
 
+// 401 でなりすましを強制終了したとき、次の画面に理由を渡すための sessionStorage キー
+export const IMPERSONATION_ENDED_NOTICE_KEY = 'impersonation_ended_notice'
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('jwt')
   if (token) {
@@ -30,9 +33,17 @@ api.interceptors.response.use(
   },
   (err) => {
     if (err.response?.status === 401) {
-      // なりすまし中にトークンが切れたら、サインイン画面ではなく管理者アカウントに戻す
+      // なりすまし中にトークンが切れたら、サインイン画面ではなく管理者アカウントに戻す。
+      // 黙って戻すと「まだなりすまし中のつもりで管理者の画面を見ている」状態になるので、
+      // 戻った理由を次の画面で必ず知らせる(sessionStorage 経由。表示は Layout)。
       const adminToken = localStorage.getItem('jwt_admin')
       if (adminToken) {
+        const impersonatedName = (() => {
+          try { return JSON.parse(localStorage.getItem('impersonation') || 'null')?.display_name as string | undefined } catch { return undefined }
+        })()
+        const requestPath = String(err.config?.url ?? '')
+        sessionStorage.setItem(IMPERSONATION_ENDED_NOTICE_KEY,
+          `${impersonatedName ? `「${impersonatedName}」への` : ''}なりすましを終了して管理者アカウントに戻りました（${requestPath} が認証エラー 401 を返したため）。`)
         localStorage.setItem('jwt', adminToken)
         localStorage.removeItem('jwt_admin')
         localStorage.removeItem('impersonation')
