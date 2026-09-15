@@ -73,7 +73,7 @@ type NotionTaskOption = {
   title_prev?: string | null // 修正後(タスク名)
   start_date: string | null
   end_date: string | null
-  start_date_prev: string | null // 修正前(前回同期値)
+  start_date_prev: string | null // 修正後(開始日)。Notion 同期値 start_date が修正前
   end_date_prev: string | null
   workload: number | null
   workload_prev?: number | null // 修正後(工数)

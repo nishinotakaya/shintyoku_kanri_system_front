@@ -85,10 +85,11 @@ type NotionTask = {
   note: string | null
   memo?: string | null
   url?: string | null
-  start_date_prev?: string | null
-  end_date_prev?: string | null
-  progress_rate_prev?: number | null
-  status_prev?: string | null
+  // 前回同期で Notion 側の値が変わったときの「変更前の値」。LINE 報告の「修正前」に出す
+  start_date_before_sync?: string | null
+  end_date_before_sync?: string | null
+  progress_rate_before_sync?: number | null
+  status_before_sync?: string | null
 }
 
 type TrelloTask = {
@@ -656,7 +657,7 @@ export default function DayDetailModal({
       return next
     })
   }
-  // 修正後の既定値と、文面の「修正前」に出す値。リビングだけ前回同期値(*_prev)を持つ
+  // 修正後の既定値と、文面の「修正前」に出す値。リビングだけ前回同期値(*_before_sync)を持つ
   const notionDraftDefaults = (task: NotionTask): LineReportDraft => ({
     start: task.start_date ?? '',
     end: task.end_date ?? '',
@@ -665,12 +666,12 @@ export default function DayDetailModal({
     note: task.note ?? '',
   })
   const notionBefore = (task: NotionTask): LineReportBefore => ({
-    start: task.start_date_prev ?? task.start_date,
-    end: task.end_date_prev ?? task.end_date,
-    ratePercent: task.progress_rate_prev != null
-      ? Math.round(Number(task.progress_rate_prev) * 100)
+    start: task.start_date_before_sync ?? task.start_date,
+    end: task.end_date_before_sync ?? task.end_date,
+    ratePercent: task.progress_rate_before_sync != null
+      ? Math.round(Number(task.progress_rate_before_sync) * 100)
       : (task.progress_rate != null ? Math.round(Number(task.progress_rate) * 100) : null),
-    status: task.status_prev ?? task.status,
+    status: task.status_before_sync ?? task.status,
   })
   const wingsDraftDefaults = (task: BacklogTask): LineReportDraft => ({
     start: task.start_date ?? '', end: task.end_date ?? '', ratePercent: null,
@@ -698,7 +699,7 @@ export default function DayDetailModal({
       return rest
     }),
   })
-  // リビングは送信後にサーバ側で変更差分(*_prev)をクリアするため、選択中の Notion タスクのキーを渡す
+  // リビングは送信後にサーバ側で前回同期値(*_before_sync)をクリアするため、選択中の Notion タスクのキーを渡す
   const selectedNotionIssueKeys = () =>
     Object.values(notionTasksByAssignee).flat()
       .filter((task) => lineSelectedKeys.has(lineDraftKey('notion', task.id)))
