@@ -147,7 +147,9 @@ export default function FolderSaveButtons({ label, monthFolderName, fetchSpec, f
           <button
             onClick={saveToRemembered}
             disabled={busy}
-            className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap text-white shadow disabled:opacity-50"
+            /* savedDirName はユーザーが選んだ実フォルダ名で長さが不定。
+               whitespace-nowrap のままだと長い名前でボタンがページ幅を押し広げるため break-words で折り返す */
+            className="max-w-full rounded-lg break-words bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow disabled:opacity-50"
             title={`記憶済み: ${savedDirName}/${monthFolderName}/`}
           >
             {busy ? '保存中…' : `📁 ${savedDirName}/${monthFolderName} に${label ?? ''}保存`}

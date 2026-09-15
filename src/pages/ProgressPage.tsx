@@ -370,8 +370,10 @@ export default function ProgressPage() {
           このURLは「{selectedWorkspace.name}」専用に保存され、{selectedWorkspace.name}のタスクだけを書き出します
         </div>
         <div className="mt-3 flex gap-2">
+          {/* input はブラウザ既定の min-width: auto を持ち、flex-1 だけでは 320px 幅で
+              「開く」リンク分を縮められず横溢れするため min-w-0 で縮む側にする */}
           <input value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} placeholder={`${selectedWorkspace.name} のスプレッドシート URL`}
-            className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5 text-sm text-[var(--color-text)] placeholder-gray-400" />
+            className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5 text-sm text-[var(--color-text)] placeholder-gray-400" />
           <a
             href={sheetUrl || '#'}
             target="_blank"

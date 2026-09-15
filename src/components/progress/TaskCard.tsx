@@ -306,10 +306,11 @@ function TaskCard({
             {task.source === 'trello' ? (
               <span className="font-semibold">👤 {task.assignee_name ?? '担当なし'}</span>
             ) : (
+              // option の担当者名が長いと select が中身の幅まで伸びてカード(ひいてはページ)を横に押し広げるため min-w-0 max-w-full で縮む側にする
               <select value={task.assignee_name ?? ''}
                 onChange={(e) => onAssigneeChanged?.(task.id, e.target.value)}
                 onClick={stopPropagation}
-                className="rounded bg-[var(--color-bg)] px-1 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] border-none outline-none">
+                className="min-w-0 max-w-full rounded bg-[var(--color-bg)] px-1 py-0.5 text-[11px] font-semibold text-[var(--color-text-sub)] border-none outline-none">
                 <option value="">担当</option>
                 {assigneeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>

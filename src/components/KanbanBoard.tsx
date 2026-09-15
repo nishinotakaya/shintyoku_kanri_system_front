@@ -121,8 +121,10 @@ export default function KanbanBoard({
 
   return (
     <div>
-      {/* ビュー切替 + 検索 (sticky) */}
-      <div className="sticky top-[57px] z-10 bg-[var(--color-bg)] py-3 -mx-1 px-1 mb-1 flex items-center gap-3">
+      {/* ビュー切替 + 検索 (sticky)。
+          検索欄が sm 未満で w-full になるため、行に flex-wrap が無いと
+          ボタン・担当者セレクトと合わせて 320px 幅を押し広げる */}
+      <div className="sticky top-[57px] z-10 bg-[var(--color-bg)] py-3 -mx-1 px-1 mb-1 flex flex-wrap items-center gap-3">
         <button
           onClick={() => setViewMode('board')}
           className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
@@ -140,8 +142,9 @@ export default function KanbanBoard({
           タブ
         </button>
         {assignees.length > 0 && (
+          // option の文字列(担当者名)が長いと select が中身の幅まで伸びてページごと横に溢れるため min-w-0 max-w-full で縮む側にする
           <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)]">
+            className="min-w-0 max-w-full rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)]">
             <option value="all">全担当者</option>
             {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
