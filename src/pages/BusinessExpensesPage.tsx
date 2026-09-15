@@ -62,6 +62,8 @@ type TaxSummary = {
     special_label?: string
     general_estimate: number
     recommended: 'special20' | 'general'
+    partner_invoice_registered?: boolean // 外注パートナー全員がインボイス登録済みなら true（免税事業者が1人でもいれば false）
+    exempt_supplier_deduction_bands?: { from_month: number; to_month: number; percent: number }[] // 免税事業者からの仕入控除の経過措置（請求月ごとの控除率）
   }
   income_items: { month: number; user_name: string | null; category: string; total: number; source: 'own' | 'subcontract'; note: string | null }[]
 }
@@ -528,6 +530,16 @@ export default function BusinessExpensesPage() {
 
   const filtered = useMemo(() => (catFilter ? items.filter((it) => it.account_category === catFilter) : items), [items, catFilter])
   const maxCatTotal = Math.max(1, ...(summary?.by_category.map((c) => c.total) ?? [1]))
+  // 免税事業者からの外注費仕入税額控除率（経過措置）の表示用テキスト。例: 「1〜9月分=80% / 10〜12月分=50%」
+  // 控除率は日付で変わる値なので、API から帯が取れないときは具体的な数値を出さない
+  const exemptSupplierDeductionBands = tax?.consumption_tax.exempt_supplier_deduction_bands
+  const exemptDeductionNote = exemptSupplierDeductionBands && exemptSupplierDeductionBands.length > 0
+    ? exemptSupplierDeductionBands
+      .map((band) => (band.from_month === band.to_month ? `${band.from_month}月分=${band.percent}%` : `${band.from_month}〜${band.to_month}月分=${band.percent}%`))
+      .join(' / ')
+    : '請求月ごとの経過措置控除率'
+  const hasSubcontractPartners = (tax?.subcontract_total ?? 0) > 0
+  const allPartnersInvoiceRegistered = tax?.consumption_tax.partner_invoice_registered === true
   const shiftMonth = (diff: number) => {
     const [y, m] = month.split('-').map(Number)
     const d = new Date(y, m - 1 + diff, 1)
@@ -655,7 +667,8 @@ export default function BusinessExpensesPage() {
       {/* ============ 月次ビュー ============ */}
       {view === 'month' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          {/* 320px 幅だと月ナビ + 明細CSV取込ボタンが横に収まらないため折り返す */}
+          <div className="flex flex-wrap items-center justify-between gap-y-2">
             <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-1 py-0.5">
               <button onClick={() => shiftMonth(-1)} className="px-2 text-[var(--color-text-sub)]">‹</button>
               <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)}
@@ -875,7 +888,13 @@ export default function BusinessExpensesPage() {
                   📌 <b>あなたは適格請求書発行事業者（課税事業者）なので消費税の申告・納税が必要です。</b><br />
                   ・「<b>2割特例</b>」= 売上の消費税額の2割だけ納める制度。事前届出不要で申告時に選べます。<b>2026年分（令和8年分）までの適用</b>です。<br />
                   ・<b>2027・2028年分（令和9・10年分）は個人事業者限定で「3割特例」に延長</b>（2026年度税制改正）。納付は売上税額の3割になり、事前届出不要なのは同じです。2029年分以降は「簡易課税」（サービス業＝第5種・売上税額の実質50%納付、要届出）か「一般課税」を選ぶことになります。<br />
-                  ・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。<b>パートナーは免税事業者（インボイス未登録）のため、一般課税での外注費の仕入税額控除は80%（経過措置・〜2026/9）で計算しています</b>。2026/10以降は50%に下がるため、一般課税を選ぶ場合は不利になります。
+                  {hasSubcontractPartners && (
+                    allPartnersInvoiceRegistered ? (
+                      <>・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。パートナーは全員インボイス登録済みのため、一般課税での外注費の仕入税額控除は100%で計算しています。</>
+                    ) : (
+                      <>・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。<b>免税事業者（インボイス未登録）のパートナー分は、一般課税での外注費の仕入税額控除を経過措置により {exemptDeductionNote} で計算しています</b>。経過措置は2026/10から50%、2029/10から控除なしになります。</>
+                    )
+                  )}
                 </div>
               </div>
 
