@@ -530,7 +530,7 @@ export default function BusinessExpensesPage() {
 
   const filtered = useMemo(() => (catFilter ? items.filter((it) => it.account_category === catFilter) : items), [items, catFilter])
   const maxCatTotal = Math.max(1, ...(summary?.by_category.map((c) => c.total) ?? [1]))
-  // 免税事業者からの外注費仕入税額控除率（経過措置）の表示用テキスト。例: 「1〜9月分=80% / 10〜12月分=50%」
+  // 免税事業者からの外注費仕入税額控除率（経過措置）の表示用テキスト。例: 「1〜9月分=80% / 10〜12月分=70%」
   // 控除率は日付で変わる値なので、API から帯が取れないときは具体的な数値を出さない
   const exemptSupplierDeductionBands = tax?.consumption_tax.exempt_supplier_deduction_bands
   const exemptDeductionNote = exemptSupplierDeductionBands && exemptSupplierDeductionBands.length > 0
@@ -892,7 +892,7 @@ export default function BusinessExpensesPage() {
                     allPartnersInvoiceRegistered ? (
                       <>・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。パートナーは全員インボイス登録済みのため、一般課税での外注費の仕入税額控除は100%で計算しています。</>
                     ) : (
-                      <>・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。<b>免税事業者（インボイス未登録）のパートナー分は、一般課税での外注費の仕入税額控除を経過措置により {exemptDeductionNote} で計算しています</b>。経過措置は2026/10から50%、2029/10から控除なしになります。</>
+                      <>・パートナー分の売上合算（{yen(tax.subcontract_total)}）は外注工賃で控除済み。<b>免税事業者（インボイス未登録）のパートナー分は、一般課税での外注費の仕入税額控除を経過措置により {exemptDeductionNote} で計算しています</b>。経過措置は2026年度税制改正で段階化され、2026/10から70%、2028/10から50%、2030/10から30%、2031/10から控除なしになります。</>
                     )
                   )}
                 </div>
