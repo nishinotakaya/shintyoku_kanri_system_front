@@ -107,9 +107,7 @@ export function templateDiffers(task: NotionTaskEffectiveSource, field: NotionTa
 }
 
 // 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる(=赤セルにすべき)か。
-// 進捗率が100%(1以上)のタスクは日付等の差分を報告不要とし、どのフィールドも赤にしない。
+// 進捗率 100% のタスクも例外にしない(「100% にした」ことも報告したい変更)。サーバ側 NotionTask#red_cell? と同じ判定。
 export function isRedCell(task: NotionTaskEffectiveSource, field: NotionTaskEffectiveField): boolean {
-  const effectiveProgressRate = effectiveTaskValue(task, 'progress_rate')
-  if (effectiveProgressRate !== null && effectiveProgressRate >= 1) return false
   return hasUnsubmittedChange(task, field) && templateDiffers(task, field)
 }
