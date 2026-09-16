@@ -138,6 +138,21 @@ export type Me = {
   impersonator?: { id: number; display_name: string } | null
   gender?: 'male' | 'female' | null
   work_categories?: string[] | null
+  // 確定申告書・消費税申告書PDFへの印字用。個人番号そのものは返らず末尾4桁だけ
+  my_number_registered?: boolean
+  my_number_last4?: string | null
+  birth_date?: string | null
+}
+
+// マイナンバーカード読み取り(申告書PDF印字用)。個人番号は読み取り直後のこのレスポンスにだけ含まれ、
+// 保存後は /me の my_number_last4(末尾4桁) しか返らない
+export type MyNumberCardReadResult = {
+  my_number: string | null
+  my_number_valid: boolean
+  birth_date: string | null
+  name: string | null
+  address: string | null
+  confidence: number
 }
 
 // スキルシート

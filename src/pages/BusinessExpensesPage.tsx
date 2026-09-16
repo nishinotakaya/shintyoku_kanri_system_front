@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import MyNumberCardSection from '../components/MyNumberCardSection'
 
 // 確定申告用の事業経費。レシート撮影(📷FAB)・明細CSV取込・年間集計(申告)まで。
 // 画面は「月次」「年間(申告)」のピル切替 + 右下フローティング撮影ボタンのみ（下部タブは置かない）。
@@ -15,7 +16,9 @@ type BusinessExpense = {
   memo: string | null
   business_ratio: number
   deductible_amount: number
-  status: 'needs_review' | 'confirmed'
+  // excluded=対象外(事業関連性が薄い等。行は残して集計から外す。削除すると freee 再取込で復活するため)
+  status: 'needs_review' | 'confirmed' | 'excluded'
+  excluded_reason: string | null
   ai_confidence: number | null
   has_receipt: boolean
   payment_source: string | null
@@ -28,6 +31,8 @@ type Summary = {
   deductible_total: number
   count: number
   needs_review_count: number
+  excluded_count?: number
+  excluded_total?: number
   by_category: { category: string; total: number; count: number }[]
 }
 type ImportRow = {
@@ -460,7 +465,7 @@ export default function BusinessExpensesPage() {
       await api.patch(`/business_expenses/${editing.id}`, {
         expense_date: editing.expense_date, store_name: editing.store_name ?? '', amount: editing.amount,
         tax_rate: editing.tax_rate, account_category: editing.account_category, memo: editing.memo ?? '',
-        business_ratio: editing.business_ratio, status: 'confirmed',
+        business_ratio: editing.business_ratio, status: editing.status === 'excluded' ? 'excluded' : 'confirmed',
       })
       if (!opts.keepModal) setEditing(null)
       await load()
@@ -473,6 +478,32 @@ export default function BusinessExpensesPage() {
     await api.delete(`/business_expenses/${editing.id}`)
     setEditing(null)
     await load()
+  }
+
+  // 対象外(excluded): 行を残して集計から外す。理由を入れて確定する2段階(1回目で理由欄を開く)
+  const [excludeReasonDraft, setExcludeReasonDraft] = useState<string | null>(null)
+  const markExcluded = async () => {
+    if (!editing) return
+    try {
+      await api.patch(`/business_expenses/${editing.id}`, { status: 'excluded', excluded_reason: excludeReasonDraft ?? '' })
+      setExcludeReasonDraft(null)
+      setEditing(null)
+      await load()
+      setMsg('⛔ 対象外にしました（集計から除外・行は残ります）')
+    } catch (e: any) {
+      setMsg(`対象外にできませんでした: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
+  const restoreExcluded = async () => {
+    if (!editing) return
+    try {
+      await api.patch(`/business_expenses/${editing.id}`, { status: 'confirmed' })
+      setEditing(null)
+      await load()
+      setMsg('↩ 対象外を解除しました')
+    } catch (e: any) {
+      setMsg(`解除できませんでした: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
   }
 
   const addAsset = async () => {
@@ -625,8 +656,9 @@ export default function BusinessExpensesPage() {
           </span>
         </span>
         <span className="text-right">
-          <span className="block text-sm font-semibold tabular-nums">{yen(it.amount)}</span>
+          <span className={`block text-sm font-semibold tabular-nums ${it.status === 'excluded' ? 'text-gray-400 line-through' : ''}`}>{yen(it.amount)}</span>
           {it.status === 'needs_review' && <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">要確認</span>}
+          {it.status === 'excluded' && <span className="inline-block rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600" title={it.excluded_reason ?? '対象外'}>⛔ 対象外</span>}
         </span>
       </button>
     </div>
@@ -686,7 +718,7 @@ export default function BusinessExpensesPage() {
             <div className="rounded-2xl bg-gradient-to-r from-fuchsia-500 to-pink-500 p-4 text-white shadow-md">
               <div className="text-xs opacity-90">今月の経費（計上額・家事按分後）</div>
               <div className="mt-1 text-3xl font-bold tabular-nums">{yen(summary.deductible_total)}</div>
-              <div className="mt-1 text-[11px] opacity-90">{summary.count}件 ／ 税込支払額 {yen(summary.total)}{summary.needs_review_count > 0 ? ` ／ ⚠️ 要確認 ${summary.needs_review_count}件` : ''}</div>
+              <div className="mt-1 text-[11px] opacity-90">{summary.count}件 ／ 税込支払額 {yen(summary.total)}{summary.needs_review_count > 0 ? ` ／ ⚠️ 要確認 ${summary.needs_review_count}件` : ''}{(summary.excluded_count ?? 0) > 0 ? ` ／ ⛔ 対象外 ${summary.excluded_count}件（${yen(summary.excluded_total ?? 0)}）` : ''}</div>
             </div>
           )}
 
@@ -763,6 +795,8 @@ export default function BusinessExpensesPage() {
               <button onClick={() => downloadTaxCsv('details')} className="rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="経費明細の一覧CSV">📄 明細CSV</button>
             </div>
           </div>
+
+          <MyNumberCardSection onMessage={setMsg} />
 
           {/* ============ freee 連携パネル（アコーディオン） ============ */}
           <div className="overflow-hidden rounded-2xl border border-[#2864f0]/25 bg-gradient-to-br from-[#eef4ff] to-white shadow-sm">
@@ -1131,6 +1165,7 @@ export default function BusinessExpensesPage() {
               <div className="text-sm font-bold">
                 {batchIndex > 0 ? `📸 ${batchIndex}/${batchTotal} 枚目` : '🧾 経費の確認'}
                 {editing.status === 'needs_review' && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">AI読取{editing.ai_confidence != null ? ` (確信度${editing.ai_confidence}%)` : ''}</span>}
+                {editing.status === 'excluded' && <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] text-gray-600">⛔ 対象外{editing.excluded_reason ? `: ${editing.excluded_reason}` : ''}</span>}
               </div>
               {batchIndex === 0 && <button onClick={() => setEditing(null)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>}
             </div>
@@ -1160,6 +1195,13 @@ export default function BusinessExpensesPage() {
               <label className="block"><span className="text-[11px] font-semibold">事業使用割合（家事按分）: {editing.business_ratio}%</span>
                 <input type="range" min={10} max={100} step={5} value={editing.business_ratio} onChange={(e) => setEditing({ ...editing, business_ratio: Number(e.target.value) })} className="w-full accent-fuchsia-500" /></label>
             </div>
+            {excludeReasonDraft !== null && editing.status !== 'excluded' && batchIndex === 0 && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
+                <input value={excludeReasonDraft} onChange={(e) => setExcludeReasonDraft(e.target.value)} placeholder="対象外にする理由（例: 私的支出／領収書と金額不一致）"
+                  className="flex-1 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs" />
+                <button onClick={markExcluded} className="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-semibold text-white">確定</button>
+              </div>
+            )}
             <div className="mt-4 flex items-center justify-between gap-2">
               {batchIndex > 0 ? (
                 <>
@@ -1171,6 +1213,9 @@ export default function BusinessExpensesPage() {
               ) : (
                 <>
                   <button onClick={removeEditing} className="rounded-md border border-red-200 px-3 py-2 text-xs text-red-500 hover:bg-red-50">🗑 削除</button>
+                  {editing.status === 'excluded'
+                    ? <button onClick={restoreExcluded} className="rounded-md border border-gray-300 px-3 py-2 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="集計に戻す">↩ 対象外を解除</button>
+                    : <button onClick={() => setExcludeReasonDraft((prev) => (prev === null ? '' : null))} className="rounded-md border border-gray-300 px-3 py-2 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="行を残したまま集計から外す（削除すると freee 再取込で復活するため）">⛔ 対象外</button>}
                   {editing.status === 'needs_review'
                     ? <button onClick={saveAndAdvanceReview} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 確認して次へ</button>
                     : <button onClick={() => saveEditing()} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 保存</button>}
