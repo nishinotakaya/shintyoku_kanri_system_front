@@ -102,12 +102,12 @@ export default function ExpenseTable({
 
   return (
     <div className="glass rounded-2xl px-4 py-3 shadow-md">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-xs font-semibold text-[var(--color-text)]">立替金 — {year}年 {month}月分</div>
           <div className="text-[11px] text-[var(--color-text-sub)]">※ 業務報告の乗車区間・交通費から自動計算</div>
         </div>
-        <div className="flex flex-col gap-1 items-end">
+        <div className="flex flex-col gap-1 items-start sm:items-end">
           <FolderSaveButtons
             label="立替金Excel"
             monthFolderName={`${month}月`}

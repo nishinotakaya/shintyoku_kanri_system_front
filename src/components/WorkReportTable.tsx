@@ -149,7 +149,8 @@ export default function WorkReportTable({
   return (
     <div className="glass overflow-hidden rounded-2xl shadow-md">
       <div className="flex flex-col gap-1 border-b border-[var(--color-border)] px-4 py-2">
-        <div className="flex items-center justify-between">
+        {/* スマホはタイトルとボタン群を縦積みにする(横並びだと保存ボタンが語の途中で改行される) */}
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs font-semibold text-[var(--color-text)]">
             業務報告 — {year}年 {month}月分
             {period && <span className="ml-2 text-[11px] text-[var(--color-text-sub)]">({period.from} 〜 {period.to})</span>}
