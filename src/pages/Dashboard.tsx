@@ -143,6 +143,10 @@ export default function Dashboard() {
       })
   }, [linkPosQ.data, category, targetUserId])
   const [linkPoId, setLinkPoId] = useState<number | ''>('')
+  // option に出す文字列。スマホでは select 内で途中で切れるので、選択中の 1 件は select の下にも折り返して出す
+  const linkCandidateLabel = (candidate: (typeof linkCandidates)[number]) =>
+    `${candidate.order_no} ／ ${candidate.subject ?? '(件名なし)'}${candidate.user_display_name ? ` ／ ${candidate.user_display_name}` : ''}${candidate.total_amount ? ` ／ ¥${candidate.total_amount.toLocaleString()}` : ''}`
+  const selectedLinkCandidate = linkCandidates.find((candidate) => candidate.id === linkPoId)
   // カテゴリ/月切替時に未選択なら、当月にかかる PO を自動選択
   useEffect(() => {
     if (linkPoId !== '') return
@@ -402,14 +406,13 @@ export default function Dashboard() {
                 value={linkPoId}
                 onChange={(e) => setLinkPoId(e.target.value === '' ? '' : Number(e.target.value))}
                 /* option の文字列("ORD-… ／ 件名 ／ 氏名 ／ 金額")が長く、
-                   放っておくと select が中身の幅まで伸びてページごと横に溢れる */
-                className="min-w-0 max-w-full flex-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs"
+                   放っておくと select が中身の幅まで伸びてページごと横に溢れる。
+                   スマホでは 1 行まるごと使わせて、少しでも長く読めるようにする */
+                className="min-w-0 w-full max-w-full rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs sm:w-auto sm:flex-1"
               >
                 <option value="">選択してください ({linkCandidates.length} 件)</option>
-                {linkCandidates.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.order_no} ／ {p.subject ?? '(件名なし)'}{p.user_display_name ? ` ／ ${p.user_display_name}` : ''}{p.total_amount ? ` ／ ¥${p.total_amount.toLocaleString()}` : ''}
-                  </option>
+                {linkCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>{linkCandidateLabel(candidate)}</option>
                 ))}
               </select>
               <button
@@ -417,6 +420,9 @@ export default function Dashboard() {
                 disabled={!linkPoId}
                 className="rounded border border-sky-400 bg-white px-2 py-1 text-xs text-sky-600 hover:bg-sky-50 disabled:opacity-40"
               >🔍 確認</button>
+              {selectedLinkCandidate && (
+                <div className="w-full break-words text-[11px] text-[var(--color-text-sub)] sm:hidden">{linkCandidateLabel(selectedLinkCandidate)}</div>
+              )}
             </div>
           </div>
           {/* スマホでは w-full で下段に落として左寄せ(ボタンが細切れに改行されるのを防ぐ) */}

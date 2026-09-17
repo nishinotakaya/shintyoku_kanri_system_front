@@ -211,7 +211,8 @@ function TaskCard({
   )
 
   const deployFields = (labelClass: string, fieldClass: string) => (
-    <div className="mt-2 flex items-center gap-2">
+    // 日付入力だけで 110px あるので、列が狭いときはメモ入力を次の行へ折り返す(はみ出して切れるのを防ぐ)
+    <div className="mt-2 flex flex-wrap items-center gap-2">
       <span className={`${labelClass} text-[var(--color-text-sub)] whitespace-nowrap`}>適用予定:</span>
       <input type="date" value={deployDate}
         onChange={(e) => changeDeployDate(e.target.value)}
@@ -221,7 +222,7 @@ function TaskCard({
         onChange={(e) => changeDeployNote(e.target.value)}
         onClick={stopPropagation}
         placeholder="例: 4/14夜適用"
-        className={`flex-1 rounded border border-[var(--color-border)] bg-white text-[var(--color-text)] placeholder-gray-400 ${fieldClass}`} />
+        className={`min-w-[7rem] flex-1 rounded border border-[var(--color-border)] bg-white text-[var(--color-text)] placeholder-gray-400 ${fieldClass}`} />
     </div>
   )
 

@@ -165,12 +165,13 @@ export default function KanbanBoard({
 
       <DragDropContext onDragEnd={onDragEnd}>
         {viewMode === 'board' ? (
-          /* ===== ボードモード: 横4列 ===== */
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+          /* ===== ボードモード: PC は横4列。スマホは 2 列に詰めるとカードが 120px 幅に潰れて
+             入力欄が列からはみ出すので、1 列ずつ横スワイプで切り替える ===== */
+          <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2 md:grid md:grid-cols-2 md:gap-3 md:overflow-visible md:pb-0 lg:grid-cols-4">
             {COLUMNS.map((column) => {
               const columnTasks = columnTasksOf(column.id)
               return (
-                <div key={column.id} className={`rounded-2xl border-t-4 ${column.color} ${column.bg} p-2 sm:p-3 max-h-[80vh] flex flex-col`}>
+                <div key={column.id} className={`w-[84vw] shrink-0 snap-start rounded-2xl border-t-4 ${column.color} ${column.bg} p-2 sm:p-3 max-h-[80vh] flex flex-col md:w-auto`}>
                   <div className="flex items-center justify-between mb-3">
                     <span className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs font-bold sm:px-3 sm:text-sm ${column.badge}`}>{column.label}</span>
                     <span className="text-sm font-semibold text-[var(--color-text-sub)]">
