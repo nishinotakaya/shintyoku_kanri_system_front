@@ -167,15 +167,18 @@ export default function WorkReportTable({
         </div>
       </div>
       <div className="max-h-[520px] overflow-auto">
-        {/* スマホは横スクロール(min-w)でヘッダーを縦潰れさせない。日付列は sticky で固定 */}
-        <table className="w-full min-w-[640px] text-sm">
+        {/* スマホは横スクロール(min-w)でヘッダーを縦潰れさせない。日付列は sticky で固定。
+            table-fixed にしているのは、既定の自動レイアウトだと日付(nowrap)が必要なだけ幅を取り、
+            中身が w-full の input しかない作業内容列が 61px まで潰れてしまうため */}
+        <table className="w-full min-w-[640px] table-fixed text-sm">
           <thead className="sticky top-0 z-20 bg-gray-50 backdrop-blur">
             <tr className="text-left text-[10px] uppercase tracking-wider text-[var(--color-text-sub)] whitespace-nowrap">
-              <th className="sticky left-0 z-10 bg-gray-50 px-4 py-1.5 w-32">日付</th>
+              {/* 作業内容だけ幅指定なし = 残り幅を全部もらう(リビングで約440px、ウイングスで約250px) */}
+              <th className="sticky left-0 z-10 bg-gray-50 px-2 py-1.5 w-24">日付</th>
               <th className="px-2 py-1.5">{fieldLabel(category, 'content')}</th>
-              <th className="px-2 py-1.5 w-20 text-right">時間</th>
-              {category !== 'living' && <th className="px-2 py-1.5 w-32">{fieldLabel(category, 'transit_section')}</th>}
-              {category !== 'living' && <th className="px-2 py-1.5 w-24 text-right">{fieldLabel(category, 'transit_fee')}</th>}
+              <th className="px-2 py-1.5 w-16 text-right">時間</th>
+              {category !== 'living' && <th className="px-2 py-1.5 w-28">{fieldLabel(category, 'transit_section')}</th>}
+              {category !== 'living' && <th className="px-2 py-1.5 w-20 text-right">{fieldLabel(category, 'transit_fee')}</th>}
               <th className="px-2 py-1.5 w-10"></th>
             </tr>
           </thead>
@@ -191,11 +194,12 @@ export default function WorkReportTable({
                     d.holiday ? 'bg-red-50' : d.weekend ? 'bg-gray-50/50' : ''
                   } hover:bg-gray-50`}
                 >
-                  <td className={`sticky left-0 z-10 px-4 py-1 whitespace-nowrap ${
+                  <td className={`sticky left-0 z-10 px-2 py-1 ${
                     d.holiday ? 'bg-red-50' : d.weekend ? 'bg-gray-50' : 'bg-white'
                   } ${colorFor(d)}`}>
-                    <div className="flex items-baseline gap-2">
-                      <span>{d.mm}/{String(d.dd).padStart(2, '0')} ({d.w})</span>
+                    {/* 祝日名は日付の下に折り返す(列を 96px に絞ったので横に並べると溢れる) */}
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="whitespace-nowrap">{d.mm}/{String(d.dd).padStart(2, '0')} ({d.w})</span>
                       {d.holiday && (
                         <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] text-red-500">
                           {d.holiday}
@@ -203,7 +207,7 @@ export default function WorkReportTable({
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-2">
                     <input
                       value={e.content}
                       onChange={(ev) => set(d.date, 'content', ev.target.value)}
@@ -211,16 +215,16 @@ export default function WorkReportTable({
                       className="w-full rounded-lg bg-transparent px-2 py-1 font-mono text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
                     />
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-2 py-2 text-right">
                     <input
                       value={e.hours}
                       onChange={(ev) => set(d.date, 'hours', ev.target.value)}
                       placeholder="—"
-                      className="w-16 rounded-lg bg-transparent px-2 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
+                      className="w-full rounded-lg bg-transparent px-1 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
                     />
                   </td>
                   {category !== 'living' && (
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <input
                         value={e.transit_section}
                         onChange={(ev) => set(d.date, 'transit_section', ev.target.value)}
@@ -230,16 +234,16 @@ export default function WorkReportTable({
                     </td>
                   )}
                   {category !== 'living' && (
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-2 py-2 text-right">
                       <input
                         value={e.transit_fee}
                         onChange={(ev) => set(d.date, 'transit_fee', ev.target.value)}
                         placeholder="—"
-                        className="w-20 rounded-lg bg-transparent px-2 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
+                        className="w-full rounded-lg bg-transparent px-1 py-1 text-right font-mono tabular-nums text-[var(--color-text)] placeholder-gray-400 outline-none focus:bg-gray-50"
                       />
                     </td>
                   )}
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-1 py-2 text-right">
                     {justSaved ? (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-600">
                         ✓
