@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
 import { downloadBlob } from '../lib/downloadBlob'
@@ -748,7 +748,8 @@ function SummaryView({
 }
 
 // Notion(WBS) タスク一覧ビュー（上部タブで Backlog 報告と切替）。
-// 担当 / WBSレベル / タスク名 / 開始日 / 終了日 / 工数 / 進捗率 / 進捗状況 / 優先度 / 備考。ソート・フィルター対応。
+// 担当 / WBSレベル / タスク名 / 開始日 / 終了日 / 工数 / 進捗率 / 進捗状況 / 優先度 / 備考。
+// WBSレベル順に並べ、担当者・開始日・終了日(いずれも修正後があればその値)で絞り込める。
 // 修正後(prev 列)編集の楽観更新を NotionTaskOption に反映する。
 function applyNotionPatch(task: NotionTaskOption, patch: Record<string, string>): NotionTaskOption {
   const next = { ...task }
@@ -818,6 +819,25 @@ function StatusBadge({ status, muted }: { status: string | null; muted?: boolean
 // 元 xlsm の本文フォント。プロジェクト情報行〜表全体で共通して使う。
 const WBS_EXCEL_FONT_FAMILY = '"Meiryo UI", Meiryo, sans-serif'
 
+// 開始日・終了日の期間フィルター。各境界は yyyy-mm-dd(空文字は制限なし)。
+type WbsDateFilter = { startFrom: string; startTo: string; endFrom: string; endTo: string }
+const EMPTY_WBS_DATE_FILTER: WbsDateFilter = { startFrom: '', startTo: '', endFrom: '', endTo: '' }
+const WBS_DATE_FILTER_INPUT_CLASS = 'rounded border border-slate-300 bg-white px-1 py-0.5 text-xs'
+
+// yyyy-mm-dd の日付が from〜to に収まるか(文字列比較で日付順になる)。境界が空なら制限なし。
+// 境界が指定されているのに日付が無いタスクは「期間に入らない」として除外する。
+function isDateWithinBounds(dateValue: string | null, from: string, to: string): boolean {
+  if (!from && !to) return true
+  if (!dateValue) return false
+  if (from && dateValue < from) return false
+  if (to && dateValue > to) return false
+  return true
+}
+
+// 固定列(WBS_TABLE_COLUMNS)の右に最低これだけガントが見える幅が無いときは、列を固定せず表全体を横スクロールさせる。
+// sticky のままだと left オフセットが枠幅を超える列(進捗率〜終了)が画面外に固定され、スマホでは永遠に見えない。
+const MINIMUM_GANTT_VISIBLE_DAYS_FOR_STICKY_COLUMNS = 7
+
 // Excel 出力・提出済判定の対象になる修正後フィールド(WBS_TABLE_COLUMNS のうち WBSレベルを除く6列)。
 const WBS_SUBMITTABLE_FIELDS: NotionTaskEffectiveField[] = ['title', 'assignee_name', 'progress_rate', 'workload', 'start_date', 'end_date']
 
@@ -827,6 +847,9 @@ function NotionView({ tasks, onPatch, onReload }: {
   onReload: () => Promise<void>
 }) {
   const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState<WbsDateFilter>(EMPTY_WBS_DATE_FILTER)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [scrollContainerWidthPx, setScrollContainerWidthPx] = useState(0)
   const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
   const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
   const [excelTemplateLoaded, setExcelTemplateLoaded] = useState(false)
@@ -849,11 +872,27 @@ function NotionView({ tasks, onPatch, onReload }: {
   )
 
   const sortedTasks = useMemo(() => {
-    const filtered = assigneeFilter
-      ? tasks.filter((task) => effectiveTaskValue(task, 'assignee_name') === assigneeFilter)
-      : tasks
+    const filtered = tasks.filter((task) => {
+      if (assigneeFilter && effectiveTaskValue(task, 'assignee_name') !== assigneeFilter) return false
+      if (!isDateWithinBounds(effectiveTaskValue(task, 'start_date'), dateFilter.startFrom, dateFilter.startTo)) return false
+      if (!isDateWithinBounds(effectiveTaskValue(task, 'end_date'), dateFilter.endFrom, dateFilter.endTo)) return false
+      return true
+    })
     return [...filtered].sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level))
-  }, [tasks, assigneeFilter])
+  }, [tasks, assigneeFilter, dateFilter])
+  const isFiltered = assigneeFilter !== '' || dateFilter !== EMPTY_WBS_DATE_FILTER
+  const clearFilters = () => { setAssigneeFilter(''); setDateFilter(EMPTY_WBS_DATE_FILTER) }
+  const updateDateFilter = (key: keyof WbsDateFilter, value: string) => setDateFilter((prev) => ({ ...prev, [key]: value }))
+
+  // スクロール枠の幅を追う(スマホ幅・ウィンドウ縮小で固定列の可否を切り替えるため)。枠はタスクがある時だけ描画される。
+  const hasTasks = tasks.length > 0
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const observer = new ResizeObserver((entries) => setScrollContainerWidthPx(entries[0].contentRect.width))
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [hasTasks])
 
   // ガントの起点・終点は Excel の K5 式と同じ規則。
   // 起点 = min(project_start(テンプレ), 全タスクの実効開始日の最小値)がある週の月曜(project_start が無ければ実効開始日の最小値、それも無ければ今日)。
@@ -910,7 +949,11 @@ function NotionView({ tasks, onPatch, onReload }: {
   // sticky 列の間に隙間ができてガント側が透けて見える。colgroup の合計と一致させる。
   const stickyColumnsWidthPx = WBS_TABLE_COLUMNS.reduce((sum, column) => sum + column.widthPx, 0)
   const tableWidthPx = stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX + ganttRange.days.length * DAY_WIDTH_PX
-  const monthLabelStickyLeftPx = stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX
+  // 幅が未計測(0)の初回描画は従来どおり固定しておき、計測後に枠が狭ければ固定を外す
+  const stickyColumnsEnabled =
+    scrollContainerWidthPx === 0 ||
+    scrollContainerWidthPx >= stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX + DAY_WIDTH_PX * MINIMUM_GANTT_VISIBLE_DAYS_FOR_STICKY_COLUMNS
+  const monthLabelStickyLeftPx = stickyColumnsEnabled ? stickyColumnsWidthPx + SPACER_COLUMN_WIDTH_PX : 0
 
   const toggleTaskOpen = (notionBlockId: string) =>
     setOpenTaskBlockIds((prev) => ({ ...prev, [notionBlockId]: !prev[notionBlockId] }))
@@ -1068,6 +1111,24 @@ function NotionView({ tasks, onPatch, onReload }: {
             {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
+        <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
+          開始日
+          <input type="date" value={dateFilter.startFrom} onChange={(e) => updateDateFilter('startFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に開始するタスク" />
+          〜
+          <input type="date" value={dateFilter.startTo} onChange={(e) => updateDateFilter('startTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに開始するタスク" />
+        </label>
+        <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
+          終了日
+          <input type="date" value={dateFilter.endFrom} onChange={(e) => updateDateFilter('endFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に終了するタスク" />
+          〜
+          <input type="date" value={dateFilter.endTo} onChange={(e) => updateDateFilter('endTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに終了するタスク" />
+        </label>
+        {isFiltered && (
+          <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+            {sortedTasks.length} / {tasks.length} 件
+            <button onClick={clearFilters} className="rounded border border-slate-300 px-2 py-0.5 hover:bg-slate-100">絞込を解除</button>
+          </span>
+        )}
       </div>
 
       {tasks.length === 0 ? (
@@ -1097,7 +1158,7 @@ function NotionView({ tasks, onPatch, onReload }: {
               </div>
             </div>
           )}
-          <div className="overflow-auto max-h-[75vh] rounded-xl border border-slate-300 shadow-sm">
+          <div ref={scrollContainerRef} className="overflow-auto max-h-[75vh] rounded-xl border border-slate-300 shadow-sm">
             <table className="table-fixed border-separate border-spacing-0" style={{ width: tableWidthPx }}>
               <colgroup>
                 {WBS_TABLE_COLUMNS.map((column) => <col key={column.key} style={{ width: column.widthPx }} />)}
@@ -1111,13 +1172,13 @@ function NotionView({ tasks, onPatch, onReload }: {
                       key={column.key}
                       rowSpan={3}
                       style={{
-                        left: wbsColumnLeftOffset(columnIndex),
+                        left: stickyColumnsEnabled ? wbsColumnLeftOffset(columnIndex) : undefined,
                         backgroundColor: WBS_EXCEL_COLORS.headerBackground,
                         color: WBS_EXCEL_COLORS.headerText,
                         borderBottom: `2px solid ${WBS_EXCEL_COLORS.borderMedium}`, // Excel 行7 は B〜H に縦罫線なし・下罫線 medium のみ
                         boxShadow: `1px 0 0 0 ${WBS_EXCEL_COLORS.headerBackground}`, // sticky セルは別レイヤーに描かれ境界に 1px の継ぎ目が出るので、同色の影で右隣へ 1px 重ねて埋める
                       }}
-                      className={`sticky z-40 whitespace-pre-line px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
+                      className={`${stickyColumnsEnabled ? 'sticky z-40' : ''} whitespace-pre-line px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
                     >
                       {column.label}
                     </th>
@@ -1181,12 +1242,20 @@ function NotionView({ tasks, onPatch, onReload }: {
                 </tr>
               </thead>
               <tbody>
+                {sortedTasks.length === 0 && (
+                  <tr>
+                    <td colSpan={WBS_TABLE_COLUMNS.length + 1 + ganttRange.days.length} className="px-3 py-6 text-center text-sm text-slate-400">
+                      絞込条件に合うタスクがありません
+                    </td>
+                  </tr>
+                )}
                 {sortedTasks.map((task) => (
                   <NotionGanttRow
                     key={task.notion_block_id}
                     task={task}
                     ganttRange={ganttRange}
                     todayIndex={todayIndex}
+                    stickyColumnsEnabled={stickyColumnsEnabled}
                     open={!!openTaskBlockIds[task.notion_block_id]}
                     onToggleOpen={() => toggleTaskOpen(task.notion_block_id)}
                     onPatch={onPatch}
@@ -1203,10 +1272,11 @@ function NotionView({ tasks, onPatch, onReload }: {
 
 // ガントの1タスク行。左7列はスティッキーな編集可能セル(Excel入力セル色)、
 // スペーサーを挟んで右はトラック1本(絶対配置バー2本、経過=グレー/残り=紫)。
-function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPatch }: {
+function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, open, onToggleOpen, onPatch }: {
   task: NotionTaskOption
   ganttRange: { rangeStart: Date; rangeEnd: Date; days: Date[] }
   todayIndex: number
+  stickyColumnsEnabled: boolean
   open: boolean
   onToggleOpen: () => void
   onPatch: (notionBlockId: string, patch: Record<string, string>) => void
@@ -1229,7 +1299,9 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
   const elapsedWidthPx = elapsedDays * DAY_WIDTH_PX
   const remainingWidthPx = durationDays != null ? (durationDays - elapsedDays) * DAY_WIDTH_PX : 0
 
-  const stickyCellClassName = 'sticky z-10 px-1.5 py-1 text-[15px] text-slate-800'
+  const stickyCellClassName = `${stickyColumnsEnabled ? 'sticky z-10' : ''} px-1.5 py-1 text-[15px] text-slate-800`
+  // 列を固定するときだけ left オフセットを付ける(固定しない幅では通常セルとして流す)
+  const pinnedLeft = (columnIndex: number) => (stickyColumnsEnabled ? { left: wbsColumnLeftOffset(columnIndex) } : {})
   // sticky セルは別レイヤーに描かれ境界に 1px の継ぎ目が出るので、背景と同色の影で右隣へ 1px 重ねて埋める
   const stickyCellStyleWithBackground = (backgroundColor: string) => ({
     backgroundColor,
@@ -1244,10 +1316,10 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
   return (
     <Fragment>
       <tr className="h-10">
-        <td className={`${stickyCellClassName} text-left tabular-nums`} style={{ ...stickyCellStyle, left: wbsColumnLeftOffset(0) }}>
+        <td className={`${stickyCellClassName} text-left tabular-nums`} style={{ ...stickyCellStyle, ...pinnedLeft(0) }}>
           {task.wbs_level || ''}
         </td>
-        <td className={`${stickyCellClassName} text-left`} style={{ ...stickyCellStyleFor('title'), left: wbsColumnLeftOffset(1) }}>
+        <td className={`${stickyCellClassName} text-left`} style={{ ...stickyCellStyleFor('title'), ...pinnedLeft(1) }}>
           <span className="flex items-center gap-1">
             <button onClick={onToggleOpen} className="shrink-0 text-[10px] text-slate-500 hover:text-slate-900" title="詳細(備考・メモ・進捗状況・優先度)を開閉">
               {open ? '▲' : '▼'}
@@ -1263,12 +1335,12 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
             </span>
           </span>
         </td>
-        <td className={`${stickyCellClassName} text-center`} style={{ ...stickyCellStyleFor('assignee_name'), left: wbsColumnLeftOffset(2) }}>
+        <td className={`${stickyCellClassName} text-center`} style={{ ...stickyCellStyleFor('assignee_name'), ...pinnedLeft(2) }}>
           <EditableCell kind="text" raw={effectiveAssigneeName ?? ''}
             display={<OverrideMarkedValue value={effectiveAssigneeName || '—'} overridden={hasTaskOverride(task, 'assignee_name')} previousValue={task.assignee_name} />}
             onSave={(value) => onPatch(task.notion_block_id, { assignee_name_prev: value })} />
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('progress_rate'), left: wbsColumnLeftOffset(3) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('progress_rate'), ...pinnedLeft(3) }}>
           {/* Excel のデータバー(グレー、0〜100%で幅比例)を背景に敷いた上に NN% を表示 */}
           <div
             className="relative -mx-1.5 -my-1 px-1.5 py-1"
@@ -1279,17 +1351,17 @@ function NotionGanttRow({ task, ganttRange, todayIndex, open, onToggleOpen, onPa
               onSave={(value) => onPatch(task.notion_block_id, { progress_rate_prev: value })} />
           </div>
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('workload'), left: wbsColumnLeftOffset(4) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('workload'), ...pinnedLeft(4) }}>
           <EditableCell kind="text" raw={effectiveWorkload == null ? '' : String(effectiveWorkload)}
             display={<OverrideMarkedValue value={effectiveWorkload == null ? '—' : String(effectiveWorkload)} overridden={hasTaskOverride(task, 'workload')} previousValue={task.workload == null ? null : String(task.workload)} />}
             onSave={(value) => onPatch(task.notion_block_id, { workload_prev: value })} />
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('start_date'), left: wbsColumnLeftOffset(5) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('start_date'), ...pinnedLeft(5) }}>
           <EditableCell kind="date" raw={effectiveStartDate ?? ''}
             display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveStartDate) || '—'} overridden={hasTaskOverride(task, 'start_date')} previousValue={task.start_date} />}
             onSave={(value) => onPatch(task.notion_block_id, { start_date_prev: value })} />
         </td>
-        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('end_date'), left: wbsColumnLeftOffset(6) }}>
+        <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('end_date'), ...pinnedLeft(6) }}>
           <EditableCell kind="date" raw={effectiveEndDate ?? ''}
             display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveEndDate) || '—'} overridden={hasTaskOverride(task, 'end_date')} previousValue={task.end_date} />}
             onSave={(value) => onPatch(task.notion_block_id, { end_date_prev: value })} />
