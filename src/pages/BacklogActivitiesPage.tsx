@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
 import { downloadBlob } from '../lib/downloadBlob'
@@ -28,6 +28,29 @@ import {
   wbsIndent,
   weekdayLetter,
 } from '../lib/wbsGantt'
+
+
+// スクロール枠の内側幅(px)。初回は clientWidth を即読み、以後は ResizeObserver と window の resize で追従する。
+// (ResizeObserver だけに頼ると、コールバックが来ない環境で 0 のまま固定列が有効になり続ける)
+// 固定列(sticky + left)の合計幅が枠より広いスマホ幅では、left オフセットが枠幅を超える列が画面外に固定されて
+// 永遠に見えなくなるため、呼び出し側はこの幅を見て固定の有無を切り替える。
+function useScrollContainerWidthPx(containerRef: RefObject<HTMLDivElement | null>, isContainerRendered: boolean): number {
+  const [widthPx, setWidthPx] = useState(0)
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const measure = () => setWidthPx(container.clientWidth)
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(container)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [containerRef, isContainerRendered])
+  return widthPx
+}
 
 type Target = { id: number; display_name: string; email: string; activity_count: number }
 type MonthSummary = {
@@ -550,22 +573,16 @@ const TD = 'border border-slate-300 px-3 py-2 align-top'
 const NOTION_NONE = '__none'
 const NOTION_LINKED = '__linked'
 
-// 横スクロール時に左へ固定する先頭3列。left は各列幅(96/112)の累積。Tailwind JIT のため文字列リテラルで持つ。
-const FZ_HEAD = [
-  'sticky left-0 z-30 w-[116px] min-w-[116px] max-w-[116px]',
-  'sticky left-[116px] z-30 w-[124px] min-w-[124px] max-w-[124px]',
-  'sticky left-[240px] z-30 w-[248px] min-w-[248px] max-w-[248px]',
+// 横スクロール時に左へ固定する先頭3列(月/課題/概要)。left は各列幅(116/124/248)の累積。Tailwind JIT のため文字列リテラルで持つ。
+const PINNED_COLUMN_WIDTH_CLASSES = [
+  'w-[116px] min-w-[116px] max-w-[116px]',
+  'w-[124px] min-w-[124px] max-w-[124px]',
+  'w-[248px] min-w-[248px] max-w-[248px]',
 ]
-const FZ_FILTER = [
-  'sticky left-0 top-[94px] z-30 bg-slate-50 w-[116px] min-w-[116px] max-w-[116px] border border-slate-300 px-1.5 py-1',
-  'sticky left-[116px] top-[94px] z-30 bg-slate-50 w-[124px] min-w-[124px] max-w-[124px] border border-slate-300 px-1.5 py-1',
-  'sticky left-[240px] top-[94px] z-30 bg-slate-50 w-[248px] min-w-[248px] max-w-[248px] border border-slate-300 px-1.5 py-1',
-]
-const FZ_BODY = [
-  'sticky left-0 z-10 bg-white w-[116px] min-w-[116px] max-w-[116px]',
-  'sticky left-[116px] z-10 bg-white w-[124px] min-w-[124px] max-w-[124px]',
-  'sticky left-[240px] z-10 bg-white w-[248px] min-w-[248px] max-w-[248px]',
-]
+const PINNED_COLUMN_LEFT_CLASSES = ['left-0', 'left-[116px]', 'left-[240px]']
+const PINNED_COLUMNS_WIDTH_PX = 116 + 124 + 248
+// 固定列の右にこれだけ表示幅が無い(スマホ幅)ときは固定を外し、表全体を横スクロールさせる
+const MINIMUM_SCROLLABLE_WIDTH_BESIDE_PINNED_COLUMNS_PX = 240
 
 function SummaryView({
   rows, legend, notionTasks, savingKey, onSaveNote, onSaveStatus, onSaveNotion,
@@ -581,6 +598,18 @@ function SummaryView({
   const [sort, setSort] = useState<SortState>({ key: 'month', dir: 'desc' })
   const [filters, setFilters] = useState({ month: '', issue_key: '', summary: '', status: '', note: '', notion: '' })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerWidthPx = useScrollContainerWidthPx(scrollContainerRef, true)
+  // 幅が未計測(0)の初回描画は従来どおり固定しておき、計測後に枠が狭ければ固定を外す
+  const pinnedColumnsEnabled =
+    scrollContainerWidthPx === 0 || scrollContainerWidthPx >= PINNED_COLUMNS_WIDTH_PX + MINIMUM_SCROLLABLE_WIDTH_BESIDE_PINNED_COLUMNS_PX
+  // 見出し行は TH 側の sticky top を活かしたまま、左固定(left)だけを付け外しする
+  const pinnedHeadClass = (index: number) =>
+    `${pinnedColumnsEnabled ? `${PINNED_COLUMN_LEFT_CLASSES[index]} z-30` : ''} ${PINNED_COLUMN_WIDTH_CLASSES[index]}`
+  const pinnedFilterClass = (index: number) =>
+    `sticky top-[94px] z-30 ${pinnedColumnsEnabled ? PINNED_COLUMN_LEFT_CLASSES[index] : ''} bg-slate-50 ${PINNED_COLUMN_WIDTH_CLASSES[index]} border border-slate-300 px-1.5 py-1`
+  const pinnedBodyClass = (index: number) =>
+    `${pinnedColumnsEnabled ? `sticky ${PINNED_COLUMN_LEFT_CLASSES[index]} z-10` : ''} bg-white ${PINNED_COLUMN_WIDTH_CLASSES[index]}`
 
   const notionById = useMemo(() => {
     const map: Record<string, NotionTaskOption> = {}
@@ -642,13 +671,13 @@ function SummaryView({
         </div>
       </div>
 
-      <div className="max-w-full overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
+      <div ref={scrollContainerRef} className="max-w-full overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
         <table className="min-w-max text-sm border-collapse">
           <thead>
             <tr className="bg-slate-100 text-slate-600 text-left text-xs">
-              <SortTh label="月" k="month" sort={sort} onSort={toggleSort} className={FZ_HEAD[0]} />
-              <SortTh label="課題" k="issue_key" sort={sort} onSort={toggleSort} className={FZ_HEAD[1]} />
-              <SortTh label="概要" k="summary" sort={sort} onSort={toggleSort} className={FZ_HEAD[2]} />
+              <SortTh label="月" k="month" sort={sort} onSort={toggleSort} className={pinnedHeadClass(0)} />
+              <SortTh label="課題" k="issue_key" sort={sort} onSort={toggleSort} className={pinnedHeadClass(1)} />
+              <SortTh label="概要" k="summary" sort={sort} onSort={toggleSort} className={pinnedHeadClass(2)} />
               <SortTh label="状態推移" k="status" sort={sort} onSort={toggleSort} />
               <SortTh label="開始日 (予定→実績)" k="start_on" sort={sort} onSort={toggleSort} />
               <SortTh label="処理済日" k="shori_on" sort={sort} onSort={toggleSort} />
@@ -657,9 +686,9 @@ function SummaryView({
               <th className={TH}>Notion (WBS)</th>
             </tr>
             <tr className="bg-slate-50 text-xs">
-              <th className={FZ_FILTER[0]}><FilterInput value={filters.month} onChange={(v) => setFilter('month', v)} placeholder="月で絞込" /></th>
-              <th className={FZ_FILTER[1]}><FilterInput value={filters.issue_key} onChange={(v) => setFilter('issue_key', v)} placeholder="課題で絞込" /></th>
-              <th className={FZ_FILTER[2]}><FilterInput value={filters.summary} onChange={(v) => setFilter('summary', v)} placeholder="概要で絞込" /></th>
+              <th className={pinnedFilterClass(0)}><FilterInput value={filters.month} onChange={(v) => setFilter('month', v)} placeholder="月で絞込" /></th>
+              <th className={pinnedFilterClass(1)}><FilterInput value={filters.issue_key} onChange={(v) => setFilter('issue_key', v)} placeholder="課題で絞込" /></th>
+              <th className={pinnedFilterClass(2)}><FilterInput value={filters.summary} onChange={(v) => setFilter('summary', v)} placeholder="概要で絞込" /></th>
               <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1">
                 <select value={filters.status} onChange={(e) => setFilter('status', e.target.value)} className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-xs">
                   <option value="">全て</option>
@@ -688,15 +717,15 @@ function SummaryView({
               return (
                 <Fragment key={key}>
                   <tr className="hover:bg-slate-50/60">
-                    <td className={`${FZ_BODY[0]} ${TD} tabular-nums text-slate-500 whitespace-nowrap`}>{row.month}</td>
-                    <td className={`${FZ_BODY[1]} ${TD} whitespace-nowrap`}>
+                    <td className={`${pinnedBodyClass(0)} ${TD} tabular-nums text-slate-500 whitespace-nowrap`}>{row.month}</td>
+                    <td className={`${pinnedBodyClass(1)} ${TD} whitespace-nowrap`}>
                       {row.url ? (
                         <a href={row.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline font-medium">{row.issue_key}</a>
                       ) : (
                         <span className="font-medium text-slate-700">{row.issue_key}</span>
                       )}
                     </td>
-                    <td className={`${FZ_BODY[2]} ${TD} text-slate-700 whitespace-pre-wrap break-words`}>{row.summary}</td>
+                    <td className={`${pinnedBodyClass(2)} ${TD} text-slate-700 whitespace-pre-wrap break-words`}>{row.summary}</td>
                     <td className={`${TD} whitespace-nowrap`}>
                       <select
                         value={row.status_override}
@@ -849,7 +878,6 @@ function NotionView({ tasks, onPatch, onReload }: {
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [dateFilter, setDateFilter] = useState<WbsDateFilter>(EMPTY_WBS_DATE_FILTER)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const [scrollContainerWidthPx, setScrollContainerWidthPx] = useState(0)
   const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
   const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
   const [excelTemplateLoaded, setExcelTemplateLoaded] = useState(false)
@@ -884,15 +912,8 @@ function NotionView({ tasks, onPatch, onReload }: {
   const clearFilters = () => { setAssigneeFilter(''); setDateFilter(EMPTY_WBS_DATE_FILTER) }
   const updateDateFilter = (key: keyof WbsDateFilter, value: string) => setDateFilter((prev) => ({ ...prev, [key]: value }))
 
-  // スクロール枠の幅を追う(スマホ幅・ウィンドウ縮小で固定列の可否を切り替えるため)。枠はタスクがある時だけ描画される。
-  const hasTasks = tasks.length > 0
-  useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    const observer = new ResizeObserver((entries) => setScrollContainerWidthPx(entries[0].contentRect.width))
-    observer.observe(container)
-    return () => observer.disconnect()
-  }, [hasTasks])
+  // スクロール枠の幅(固定列の可否の判定に使う)。枠はタスクがある時だけ描画される。
+  const scrollContainerWidthPx = useScrollContainerWidthPx(scrollContainerRef, tasks.length > 0)
 
   // ガントの起点・終点は Excel の K5 式と同じ規則。
   // 起点 = min(project_start(テンプレ), 全タスクの実効開始日の最小値)がある週の月曜(project_start が無ければ実効開始日の最小値、それも無ければ今日)。
