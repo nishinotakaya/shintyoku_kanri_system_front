@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAUKUR運送 トラブル別対応</title>
+<style>
+  :root {
+    --ground: #f5f7f5; --surface: #ffffff; --ink: #16231f; --muted: #5c6b66; --line: #d8dfdb;
+    --accent: #0f7b6c; --accent-soft: #e4f2ee; --amber: #b06a08; --amber-soft: #fbf0dd;
+    --violet: #5a46b0; --violet-soft: #eae5f7; --warn: #b03a3a; --warn-soft: #fbe9e9; --code: #edefec;
+    --pad: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--ground); color: var(--ink); margin: 0;
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.75;
+    font-feature-settings: "palt" 1;
+  }
+  main { max-width: 720px; margin: 0 auto; padding-block: 14px 56px; padding-inline: var(--pad); }
+  p, li, .step, .hint, .warn, figcaption { text-wrap: pretty; }
+  h1, h2, h3 { text-wrap: balance; }
+  h1 { font-size: 25px; margin: 6px 0 2px; letter-spacing: .5px; line-height: 1.4; }
+  .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  h2 { font-size: 19px; margin: 32px 0 8px; padding-top: 11px; border-top: 3px solid var(--accent); scroll-margin-top: 10px; line-height: 1.45; }
+  h3 { font-size: 15.5px; color: var(--accent); margin: 18px 0 5px; scroll-margin-top: 10px; }
+  p { margin: 6px 0; }
+  ul { margin: 4px 0 4px 19px; padding: 0; }
+  li { margin: 3px 0; }
+
+  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 12px; margin: 6px 0; }
+  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12px; letter-spacing: .4px; margin-right: 6px; }
+  .hint { background: var(--accent-soft); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
+  .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
+  .url { font-family: ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
+  .btn { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
+
+  .role-badge { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 700; margin-right: 5px; vertical-align: 2px; }
+  .admin-badge { background: var(--accent-soft); color: var(--accent); }
+  .driver-badge { background: var(--amber-soft); color: var(--amber); }
+  .client-badge { background: var(--violet-soft); color: var(--violet); }
+  .page-break { display: none; }
+  .footer { margin-top: 32px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 9px; }
+
+  .table-wrap { overflow-x: auto; margin: 7px 0; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-wrap[data-cols="3"] table { min-width: 400px; }
+  .table-wrap[data-cols="4"] table, .table-wrap[data-cols="5"] table { min-width: 540px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); white-space: nowrap; font-weight: 700; }
+  td { background: var(--surface); }
+
+  figure.shot { margin: 12px 0 18px; }
+  figure.shot img { display: block; width: 100%; max-width: 270px; margin-inline: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  figure.shot.wide img { max-width: 340px; }
+  figure.shot.strip img { max-width: 340px; }
+  figure.shot.pc img { max-width: 460px; }
+  figure.shot.duo img { max-width: 640px; }
+  figure.shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
+  figure.shot .row { display: flex; gap: 12px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  figure.shot .row img { width: 270px; }
+
+  .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 9px 13px; margin: 9px 0 14px; }
+  .mailbox .subject { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .mailbox .var { background: var(--amber-soft); color: var(--amber); border-radius: 4px; padding: 0 3px; }
+  .mailbox .from { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 11px 13px; margin: 9px 0; font-size: 13.5px; }
+  .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--line); }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); outline: none; border-bottom-color: var(--accent); }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 9px 0; font-size: 12.5px; }
+  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; background: var(--accent-soft); }
+  .flow .arrow { color: var(--accent); font-weight: 700; }
+
+  /* スマホ。1行に入る文字数を稼ぐため、余白と文字を少しだけ詰める */
+  @media (max-width: 560px) {
+    :root { --pad: 12px; }
+    body { font-size: 14px; line-height: 1.72; }
+    h1 { font-size: 21px; }
+    h2 { font-size: 17.5px; margin-top: 26px; }
+    h3 { font-size: 14.5px; }
+    .step { padding: 7px 10px; }
+    .step b.no { font-size: 11.5px; margin-right: 5px; }
+    .hint, .warn { padding: 7px 10px; font-size: 13px; }
+    .toc { grid-template-columns: 1fr; font-size: 13px; }
+    .mailbox .subject { font-size: 12px; }
+    table { font-size: 12.5px; }
+    th, td { padding: 4px 6px; }
+    th[style], td[style] { width: auto !important; }
+    .table-wrap[data-cols="3"] table { min-width: 0; }
+    figure.shot .row img { width: min(100%, 270px); }
+  }
+</style>
+</head>
+<body>
+<main>
+<h1>トラブル別対応</h1>
+<div class="subtitle">HAUKUR運送 ドライバー様向け ｜ 事故・荷物破損・誤配・クレーム・遅延・車両トラブルが起きたときの動き方</div>
+
+<div class="hint">
+  基本ルールは <b>「安全確保 → 状況確認 → HAUKURへLINE → 指示を待つ」</b> の4つです。<br>
+  迷った場合も、自己判断せずHAUKURへLINEしてください。
+</div>
+<div class="flow">
+  <span class="box">① 安全確保</span><span class="arrow">→</span>
+  <span class="box">② 状況確認</span><span class="arrow">→</span>
+  <span class="box">③ HAUKURへLINE</span><span class="arrow">→</span>
+  <span class="box">④ 指示を待つ</span>
+</div>
+
+<h3>目次</h3>
+<div class="toc">
+  <div><a href="#s1">1. 事故・接触</a></div>
+  <div><a href="#s2">2. 荷物破損</a></div>
+  <div><a href="#s3">3. 誤配</a></div>
+  <div><a href="#s4">4. クレーム</a></div>
+  <div><a href="#s5">5. 遅延</a></div>
+  <div><a href="#s6">6. 車両トラブル</a></div>
+  <div><a href="#s7">7. LINE報告の共通フォーマット</a></div>
+</div>
+
+<div class="keep">
+<h2 id="s1">1. 🚨 事故・接触</h2>
+<div class="step"><b class="no">① まず安全確保</b>
+  <ul>
+    <li>周囲の安全を確認</li>
+    <li>可能であれば安全な場所へ移動</li>
+    <li>ケガ人がいないか確認</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② 必要な連絡</b>
+  <ul>
+    <li>ケガ・緊急性がある場合 → <b>119</b></li>
+    <li>事故の場合 → <b>110</b></li>
+    <li>必要に応じて保険会社・ロードサービス等へ連絡</li>
+  </ul>
+</div>
+<div class="step"><b class="no">③ HAUKURへLINE</b> 以下を報告してください。
+  <ul>
+    <li>発生場所 ／ 発生日時</li>
+    <li>事故の状況</li>
+    <li>ケガ人の有無 ／ 相手方の有無</li>
+    <li>車両の状態 ／ 荷物の状態</li>
+    <li>写真</li>
+  </ul>
+</div>
+<div class="warn">⚠️ その場で過失や補償について勝手に判断・約束しないでください。</div>
+</div>
+
+<div class="keep">
+<h2 id="s2">2. 📦 荷物破損</h2>
+<div class="step"><b class="no">① 荷物を確認</b>
+  <ul>
+    <li>何が破損したか ／ 何個破損したか</li>
+    <li>どの程度の破損か</li>
+    <li>いつ破損に気づいたか</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② 写真を撮影</b>
+  <ul>
+    <li>荷物全体</li>
+    <li>破損箇所</li>
+    <li>外箱・梱包状態</li>
+  </ul>
+</div>
+<div class="step"><b class="no">③ 荷物を保管</b> 勝手に廃棄・返却・処分しないでください。</div>
+<div class="step"><b class="no">④ HAUKURへLINE</b> 写真とともに状況を報告してください。</div>
+<div class="hint">➡️ 報告後、指示を待つ</div>
+</div>
+
+<div class="keep">
+<h2 id="s3">3. 📍 誤配</h2>
+<div class="step"><b class="no">① 状況確認</b>
+  <ul>
+    <li>どこへ届けたか ／ 本来の届け先はどこか</li>
+    <li>荷物は誰に渡したか</li>
+    <li>荷物を回収できる状態か</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② HAUKURへLINE</b></div>
+<div class="step"><b class="no">③ 指示を待つ</b></div>
+<div class="warn">⚠️ 自分の判断でお客様へ再配達・返金・謝罪内容の約束などをしないでください。</div>
+</div>
+
+<div class="keep">
+<h2 id="s4">4. 😠 クレーム</h2>
+<div class="step"><b class="no">① まず落ち着いて対応</b>
+  <ul>
+    <li>相手の話を最後まで聞く</li>
+    <li>言い訳・反論をしない</li>
+    <li>感情的にならない</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② 内容を確認</b>
+  <ul>
+    <li>何についてのクレームか</li>
+    <li>いつ・どこで起きたか</li>
+    <li>お客様が何を求めているか</li>
+  </ul>
+</div>
+<div class="step"><b class="no">③ HAUKURへLINE</b> 分かる範囲で事実をそのまま報告してください。</div>
+<div class="warn">⚠️ 返金・補償・特別対応などを自己判断で約束しないでください。</div>
+</div>
+
+<div class="keep">
+<h2 id="s5">5. ⏰ 遅延</h2>
+<div class="step"><b class="no">① 遅れる可能性が出たら早めに報告</b> 確認すること：
+  <ul>
+    <li>現在地 ／ 遅延理由</li>
+    <li>何分程度遅れそうか</li>
+    <li>配送先 ／ 指定時間</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② HAUKURへLINE</b> 例：「○○道路の渋滞により、到着が約30分遅れる見込みです。」</div>
+<div class="hint">➡️ 遅れてからではなく、遅れる可能性が分かった時点で報告</div>
+</div>
+
+<div class="keep">
+<h2 id="s6">6. 🚗 車両トラブル</h2>
+<div class="step"><b class="no">① 安全確保</b>
+  <ul>
+    <li>無理に走行しない</li>
+    <li>安全な場所へ停車</li>
+    <li>周囲の交通に注意</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② 状況確認</b>
+  <ul>
+    <li>現在地</li>
+    <li>エンジンがかかるか ／ 走行できるか</li>
+    <li>荷物の状態</li>
+    <li>レッカー等が必要か</li>
+  </ul>
+</div>
+<div class="step"><b class="no">③ HAUKURへLINE</b></div>
+<div class="step"><b class="no">④ 指示を待つ</b></div>
+<div class="warn">⚠️ 無理に運転を続けないでください。</div>
+</div>
+
+<div class="keep">
+<h2 id="s7">7. 📱 LINE報告の共通フォーマット</h2>
+<p>どのトラブルでも、この形でLINEに送ると漏れがありません。コピーして使ってください。</p>
+<div class="mailbox">
+  <div class="subject">【トラブル報告】</div>
+  <pre>ドライバー名：
+発生日時：
+発生場所：
+トラブル内容：
+現在の状況：
+荷物の状況：
+相手方の有無：
+写真：あり・なし</pre>
+</div>
+<div class="hint">
+  <b>⭐ 基本ルール</b>　「安全確保 → 状況確認 → HAUKURへLINE → 指示を待つ」<br>
+  迷った場合も、自己判断せずHAUKURへLINEしてください。
+</div>
+<div class="footer">
+  お問い合わせ：HAUKUR運送 西野 雄太郎 ｜ yutaro18551833@gmail.com ｜ トラブル別対応（ドライバー様向け）v1.0（2026年9月21日）
+</div>
+</div>
+</main>
+</body>
+</html>

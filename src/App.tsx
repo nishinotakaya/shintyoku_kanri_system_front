@@ -36,27 +36,44 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-// テナントごとの操作手順書。代表者(サブ管理者)と、その配下メンバーで別冊になっている。
+// テナントごとの冊子。操作手順書は代表者(サブ管理者)と配下メンバーで別冊、
+// トラブル別対応(事故・荷物破損・誤配など)はドライバー向けだが代表者にも同じものを見せる。
 // 実体は public/manuals/ 配下（docs/manuals/build_web.py が印刷用HTMLから生成）。
-const TENANT_MANUALS: Record<string, { owner: ManualDocument; member: ManualDocument }> = {
+// 招待メールに添付する冊子は backend の UserProvisioning::MEMBER_MANUALS と揃える。
+const HAUKUR_TROUBLE_GUIDE: ManualDocument = {
+  title: 'HAUKUR運送 トラブル別対応',
+  tabLabel: '🚚 トラブル別対応',
+  htmlUrl: '/manuals/haukur_trouble.html',
+  pdfUrl: '/manuals/haukur_trouble.pdf',
+  pdfFileName: 'トラブル別対応_ドライバー様向け.pdf',
+}
+const TENANT_MANUALS: Record<string, { owner: ManualDocument[]; member: ManualDocument[] }> = {
   'HAUKUR運送': {
-    owner: {
-      title: 'HAUKUR運送 操作手順書（代表者用）',
-      htmlUrl: '/manuals/haukur_owner.html',
-      pdfUrl: '/manuals/haukur_owner.pdf',
-      pdfFileName: '操作手順書_西野雄太郎様向け.pdf',
-    },
-    member: {
-      title: 'HAUKUR運送 操作手順書（ドライバー用）',
-      htmlUrl: '/manuals/haukur_driver.html',
-      pdfUrl: '/manuals/haukur_driver.pdf',
-      pdfFileName: '操作手順書_ドライバー様向け.pdf',
-    },
+    owner: [
+      {
+        title: 'HAUKUR運送 操作手順書（代表者用）',
+        tabLabel: '📘 操作手順書',
+        htmlUrl: '/manuals/haukur_owner.html',
+        pdfUrl: '/manuals/haukur_owner.pdf',
+        pdfFileName: '操作手順書_西野雄太郎様向け.pdf',
+      },
+      HAUKUR_TROUBLE_GUIDE,
+    ],
+    member: [
+      {
+        title: 'HAUKUR運送 操作手順書（ドライバー用）',
+        tabLabel: '📘 操作手順書',
+        htmlUrl: '/manuals/haukur_driver.html',
+        pdfUrl: '/manuals/haukur_driver.pdf',
+        pdfFileName: '操作手順書_ドライバー様向け.pdf',
+      },
+      HAUKUR_TROUBLE_GUIDE,
+    ],
   },
 }
 
-/** そのユーザーに出す手順書。テナントに手順書が無ければ何も出さない。 */
-function manualForUser(me: Me | null | undefined): ManualDocument | undefined {
+/** そのユーザーに出す冊子。テナントに冊子が無ければ何も出さない。 */
+function manualsForUser(me: Me | null | undefined): ManualDocument[] | undefined {
   if (!me || me.admin) return undefined
   const manuals = me.tenant_name ? TENANT_MANUALS[me.tenant_name] : undefined
   return manuals && (me.sub_admin ? manuals.owner : manuals.member)
@@ -127,7 +144,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 操作手順書モーダル（テナントに手順書があるユーザーだけヘッダーにボタンが出る）
   const [manualOpen, setManualOpen] = useState(false)
-  const manual = manualForUser(me)
+  const manuals = manualsForUser(me)
   // 既読にした申請の ID セット（リロードしてもバッジが復活しないよう localStorage に永続化）
   const [seenApplicationIds, setSeenApplicationIds] = useState<Set<string>>(() => {
     try {
@@ -405,11 +422,11 @@ function Layout({ children }: { children: React.ReactNode }) {
             )}
             <div className="ml-auto flex items-center gap-2 sm:gap-4">
               <div className="hidden max-w-[140px] truncate whitespace-nowrap text-sm text-[var(--color-text-sub)] sm:block">{me?.display_name ?? me?.email ?? '—'}</div>
-              {manual && (
+              {manuals && (
                 <button
                   type="button"
                   onClick={() => setManualOpen(true)}
-                  title={manual.title}
+                  title={manuals.map((manual) => manual.title).join(' / ')}
                   className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)] sm:px-3"
                 >
                   📘<span className="hidden sm:inline"> マニュアル</span>
@@ -446,7 +463,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 min-w-0">{children}</main>
       </div>
-      {manual && manualOpen && <ManualModal {...manual} onClose={() => setManualOpen(false)} />}
+      {manuals && manualOpen && <ManualModal documents={manuals} onClose={() => setManualOpen(false)} />}
       <SettingsModal
         open={settingsOpen}
         initialTab="account"
