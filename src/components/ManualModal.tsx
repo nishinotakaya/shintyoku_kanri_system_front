@@ -50,7 +50,7 @@ export default function ManualModal({ documents, onClose }: Props) {
             title="PDFをダウンロード"
             className="whitespace-nowrap rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-sub)] hover:bg-[var(--color-bg)]"
           >
-            ⬇<span className="hidden sm:inline"> ダウンロード</span>
+            ⬇<span className="hidden sm:inline"> PDFを保存</span>
           </a>
           <button
             type="button"

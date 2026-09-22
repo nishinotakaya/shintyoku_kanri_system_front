@@ -30,8 +30,8 @@
   ul { margin: 4px 0 4px 19px; padding: 0; }
   li { margin: 3px 0; }
 
-  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 12px; margin: 6px 0; }
-  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12px; letter-spacing: .4px; margin-right: 6px; }
+  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; margin: 6px 0; }
+  .step b.no { display: inline-block; color: var(--accent); white-space: nowrap; font-size: 16.5px; line-height: 1.5; margin-right: 7px; }
   .hint { background: var(--accent-soft); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
   .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
   .url { font-family: ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
@@ -72,9 +72,64 @@
   .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--line); }
   .toc a:hover, .toc a:focus-visible { color: var(--accent); outline: none; border-bottom-color: var(--accent); }
 
-  .flow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 9px 0; font-size: 12.5px; }
-  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; background: var(--accent-soft); }
-  .flow .arrow { color: var(--accent); font-weight: 700; }
+  /* 基本ルールの5コマ */
+  .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 10px 0; font-size: 12.5px; }
+  .flow .box { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; line-height: 1.4;
+    border: 1px solid var(--accent); border-radius: 9px; padding: 8px 5px; background: var(--accent-soft); }
+  .flow .box svg { width: 28px; height: 28px; }
+
+  /* 章の頭。左に絵、右に「どんな場面か」 */
+  .case { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--surface); padding: 9px 13px; margin: 6px 0 9px; }
+  .case svg { width: 54px; height: 54px; flex: 0 0 auto; }
+  .case-lead { font-size: 13px; line-height: 1.65; }
+  .case-lead b { display: block; font-size: 15px; color: var(--accent); }
+
+  /* 119/110/#9910。スマホではそのままタップで発信できる */
+  .dial { display: flex; gap: 9px; margin: 9px 0; }
+  .tel { flex: 1; display: flex; align-items: center; gap: 10px; border: 2px solid; border-radius: 12px;
+    padding: 8px 13px; text-decoration: none; color: var(--ink); background: var(--surface); }
+  .tel svg { width: 28px; height: 28px; flex: 0 0 auto; }
+  .tel-num { font-size: 32px; font-weight: 800; letter-spacing: 2px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .tel-text { display: flex; flex-direction: column; line-height: 1.35; }
+  .tel-text b { font-size: 14px; }
+  .tel-text span { font-size: 12px; color: var(--muted); }
+  .tel.fire { border-color: var(--warn); background: var(--warn-soft); }
+  .tel.fire .tel-num { color: var(--warn); } .tel.fire svg { fill: var(--warn); }
+  .tel.police { border-color: #1d4ed8; background: #eef4ff; }
+  .tel.police .tel-num { color: #1d4ed8; } .tel.police svg { fill: #1d4ed8; }
+  .tel.road { border-color: var(--amber); background: var(--amber-soft); }
+  .tel.road .tel-num { color: var(--amber); letter-spacing: 1px; font-size: 28px; } .tel.road svg { fill: var(--amber); }
+  .telchip { display: inline-block; font-size: 17px; font-weight: 800; letter-spacing: 1px; line-height: 1.5;
+    border: 1.6px solid; border-radius: 7px; padding: 0 8px; text-decoration: none; vertical-align: -2px; }
+  .telchip.fire { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+  .telchip.police { color: #1d4ed8; border-color: #1d4ed8; background: #eef4ff; }
+  .telchip.road { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
+
+  /* 言ってよい / 言ってはいけない */
+  .say { display: flex; gap: 8px; margin: 7px 0; }
+  .say > div { flex: 1; border-radius: 10px; padding: 8px 12px; font-size: 12.5px; }
+  .say .ok { background: var(--accent-soft); border: 1px solid #b7ddd4; }
+  .say .ng { background: var(--warn-soft); border: 1px solid #efc9c9; }
+  .say .head { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+  .say .ok .head { color: var(--accent); }
+  .say .ng .head { color: var(--warn); }
+  .say ul { margin: 0 0 0 16px; }
+
+  /* 会社が不利になる言動 */
+  .never { border: 2px solid var(--warn); border-radius: 11px; background: var(--warn-soft); padding: 10px 15px; margin: 11px 0; }
+  .never .head { font-weight: 800; color: var(--warn); font-size: 15px; margin-bottom: 5px; }
+  .never ol { margin: 0 0 0 19px; padding: 0; font-size: 13px; }
+  .never li { margin: 3px 0; }
+
+  /* 絵つきの目次。ページ番号は紙だけの案内なので画面では隠す */
+  .toc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  .toc-cards a { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 6px; background: var(--surface);
+    text-decoration: none; color: var(--ink); font-size: 12.5px; line-height: 1.4; }
+  .toc-cards a:hover, .toc-cards a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+  .toc-cards svg { width: 38px; height: 38px; }
+  .toc-cards .pg { display: none; }
 
   /* スマホ。1行に入る文字数を稼ぐため、余白と文字を少しだけ詰める */
   @media (max-width: 560px) {
@@ -87,6 +142,15 @@
     .step b.no { font-size: 11.5px; margin-right: 5px; }
     .hint, .warn { padding: 7px 10px; font-size: 13px; }
     .toc { grid-template-columns: 1fr; font-size: 13px; }
+    .step b.no { font-size: 15.5px; }
+    .flow { grid-template-columns: repeat(2, 1fr); }
+    .flow .box:last-child { grid-column: 1 / -1; }
+    .case { gap: 10px; padding: 8px 11px; }
+    .case svg { width: 46px; height: 46px; }
+    .dial { flex-direction: column; }
+    .tel { padding: 10px 14px; }
+    .say { flex-direction: column; }
+    .toc-cards { grid-template-columns: repeat(2, 1fr); }
     .mailbox .subject { font-size: 12px; }
     table { font-size: 12.5px; }
     th, td { padding: 4px 6px; }
@@ -101,168 +165,239 @@
 <h1>トラブル別対応</h1>
 <div class="subtitle">HAUKUR運送 ドライバー様向け ｜ 事故・荷物破損・誤配・クレーム・遅延・車両トラブルが起きたときの動き方</div>
 
+<div class="keep">
+<h3>緊急のときは、まずこの番号へ（会社への連絡より先）</h3>
+<div class="dial">
+  <a class="tel fire" href="tel:119"><svg viewBox="0 0 24 24" stroke="none" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span class="tel-num">119</span><span class="tel-text"><b>救急・消防</b><span>ケガ人がいる・火が出た</span></span></a>
+  <a class="tel police" href="tel:110"><svg viewBox="0 0 24 24" stroke="none" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span class="tel-num">110</span><span class="tel-text"><b>警察</b><span>事故を起こした・巻き込まれた</span></span></a>
+</div>
 <div class="hint">
-  基本ルールは <b>「安全確保 → 状況確認 → HAUKURへLINE → 指示を待つ」</b> の4つです。<br>
-  迷った場合も、自己判断せずHAUKURへLINEしてください。
+  基本ルールは <b>「安全確保 → 119・110 → 写真で記録 → HAUKURへLINE → 指示に従う」</b> の5つです。<br>
+  <b>人の命と通報が先、会社への連絡はそのあと。</b>それ以外で迷った場合も、自己判断せずHAUKURへLINEしてください。
 </div>
-<div class="flow">
-  <span class="box">① 安全確保</span><span class="arrow">→</span>
-  <span class="box">② 状況確認</span><span class="arrow">→</span>
-  <span class="box">③ HAUKURへLINE</span><span class="arrow">→</span>
-  <span class="box">④ 指示を待つ</span>
+<div class="flow"><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="安全確保"><path d="M32 6l20 7v16c0 13-8 21-20 27-12-6-20-14-20-27V13Z"/><path d="M22 31l7 7 14-15"/></svg><span>① 安全確保</span></span><span class="box"><svg viewBox="0 0 24 24" stroke="none" fill="#0f7b6c" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span>② 119・110</span></span><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="写真"><rect x="6" y="18" width="52" height="34" rx="6"/><circle cx="32" cy="35" r="11"/><path d="M22 18l4-6h12l4 6"/></svg><span>③ 写真で記録</span></span><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="LINE"><path d="M8 12h48a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H30l-12 10V44H8a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z"/><path d="M18 24h28M18 32h18"/></svg><span>④ HAUKURへLINE</span></span><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="指示"><path d="M20 9h24L32 32l12 23H20l12-23Z"/><path d="M17 9h30M17 55h30"/></svg><span>⑤ 指示に従う</span></span></div>
+<div class="never">
+  <div class="head">🚫 どのトラブルでも、この6つは絶対にしない</div>
+  <ol>
+    <li>「弁償します」「返金します」など<b>お金の約束をする</b></li>
+    <li>「私が悪いです」など<b>過失を認める</b>／逆に「責任はありません」と言い切る</li>
+    <li><b>警察を呼ばずに示談する</b>・その場で現金をやり取りする・念書にサインする</li>
+    <li>荷物を<b>勝手に開ける・捨てる・持ち帰る</b>／伝票やサインを書き換える</li>
+    <li>ドライブレコーダーの映像を<b>消す・上書きさせる</b></li>
+    <li>お客様の名前・住所・事故の写真を<b>SNSや私用の連絡先に送る</b></li>
+  </ol>
 </div>
-
-<h3>目次</h3>
-<div class="toc">
-  <div><a href="#s1">1. 事故・接触</a></div>
-  <div><a href="#s2">2. 荷物破損</a></div>
-  <div><a href="#s3">3. 誤配</a></div>
-  <div><a href="#s4">4. クレーム</a></div>
-  <div><a href="#s5">5. 遅延</a></div>
-  <div><a href="#s6">6. 車両トラブル</a></div>
-  <div><a href="#s7">7. LINE報告の共通フォーマット</a></div>
 </div>
 
-<div class="keep">
-<h2 id="s1">1. 🚨 事故・接触</h2>
-<div class="step"><b class="no">① まず安全確保</b>
+<h3>目次（トラブル1件＝1ページ）</h3>
+<div class="toc-cards"><a href="#s1"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="事故・接触"><path d="M4 52h56"/><path d="M6 46V38l6-9h16l7 9h4a5 5 0 0 1 5 5v3Z"/><path d="M15 31h11v6H15z"/><circle cx="16" cy="46" r="4.5"/><circle cx="37" cy="46" r="4.5"/><path d="M58 24v28" stroke="#dc2626" stroke-width="3"/><path d="M47 34l6-4M47 40h7M47 45l6 4" stroke="#dc2626"/></svg><span>1. 事故・接触</span><span class="pg">P.2</span></a><a href="#s2"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="荷物破損"><rect x="9" y="24" width="46" height="30" rx="3"/><path d="M9 34h46M32 24v10"/><path d="M30 38l-5 6 5 3-5 7" stroke="#dc2626"/><path d="M14 15l4 5M32 11v6M50 15l-4 5" stroke="#dc2626"/></svg><span>2. 荷物破損</span><span class="pg">P.3</span></a><a href="#s3"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="誤配"><path d="M4 54h56"/><path d="M9 54V30l16-13 16 13v24Z"/><path d="M19 54V42h12v12"/><circle cx="51" cy="19" r="10" stroke="#dc2626"/><path d="M47 15l8 8M55 15l-8 8" stroke="#dc2626"/></svg><span>3. 誤配</span><span class="pg">P.4</span></a><a href="#s4"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="クレーム"><circle cx="15" cy="22" r="7.5"/><path d="M4 50c0-7 5-12 11-12s11 5 11 12"/><path d="M36 12h20a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H44l-7 8v-8h-1a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z" stroke="#dc2626"/><path d="M46 19v8" stroke="#dc2626"/><circle cx="46" cy="31.5" r="1.5" fill="#dc2626" stroke="none"/></svg><span>4. クレーム</span><span class="pg">P.5</span></a><a href="#s5"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="遅延"><circle cx="35" cy="34" r="19"/><path d="M35 34V21M35 34l9 6" stroke="#dc2626"/><path d="M4 24h9M2 34h8M4 44h9"/></svg><span>5. 遅延</span><span class="pg">P.6</span></a><a href="#s6"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="車両トラブル"><path d="M2 52h60"/><path d="M4 46V26h26v20Z"/><path d="M30 46V34l7-8h8l7 8v12Z"/><circle cx="13" cy="46" r="4.5"/><circle cx="43" cy="46" r="4.5"/><path d="M44 5l11 18H33Z" stroke="#dc2626"/><path d="M44 12v5" stroke="#dc2626"/><circle cx="44" cy="20" r="1.4" fill="#dc2626" stroke="none"/></svg><span>6. 車両トラブル</span><span class="pg">P.7</span></a><a href="#s7"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="LINE報告の書き方"><rect x="16" y="6" width="32" height="52" rx="5"/><path d="M16 14h32M16 50h32"/><rect x="21" y="19" width="17" height="8" rx="3"/><rect x="27" y="31" width="17" height="8" rx="3" fill="#0f7b6c" stroke="none"/><rect x="21" y="43" width="13" height="8" rx="3"/></svg><span>7. LINE報告の書き方</span><span class="pg">P.8</span></a></div>
+<div class="sec">
+<h2 id="s1">1. 事故・接触</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="車が壁に接触している絵"><path d="M4 52h56"/><path d="M6 46V38l6-9h16l7 9h4a5 5 0 0 1 5 5v3Z"/><path d="M15 31h11v6H15z"/><circle cx="16" cy="46" r="4.5"/><circle cx="37" cy="46" r="4.5"/><path d="M58 24v28" stroke="#dc2626" stroke-width="3"/><path d="M47 34l6-4M47 40h7M47 45l6 4" stroke="#dc2626"/></svg><div class="case-lead"><b>ぶつけた・ぶつけられた・人と接触した</b>救護と110番が最優先。会社への連絡はそのあとです。物損だけでも、単独でぶつけただけでも必ず届け出ます。</div></div>
+<div class="step"><b class="no">① 二次事故を防ぎ、ケガ人を助ける</b>
   <ul>
-    <li>周囲の安全を確認</li>
-    <li>可能であれば安全な場所へ移動</li>
-    <li>ケガ人がいないか確認</li>
+    <li>ハザードを点け、停止表示器材（三角表示板）・発炎筒を車の後方に置く</li>
+    <li>ケガ人に声をかける。<b>むやみに動かさない</b>（火災・漏れ・後続車の危険があるときだけ避難させる）</li>
+    <li>車を動かす前に、<b>止まっている位置とぶつかった箇所を撮る</b>。そのうえで安全な場所へ寄せる</li>
+    <li>高速道路では車内・車の前後に残らず、ガードレールの外側へ避難する</li>
   </ul>
 </div>
-<div class="step"><b class="no">② 必要な連絡</b>
+<div class="step"><b class="no">② 電話をかける（会社より先）</b>
+  <div class="dial">
+    <a class="tel fire" href="tel:119"><svg viewBox="0 0 24 24" stroke="none" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span class="tel-num">119</span><span class="tel-text"><b>救急・消防</b><span>ケガ人がいる・分からない・火や煙が出た</span></span></a>
+    <a class="tel police" href="tel:110"><svg viewBox="0 0 24 24" stroke="none" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span class="tel-num">110</span><span class="tel-text"><b>警察</b><span>事故は必ず届け出る</span></span></a>
+  </div>
   <ul>
-    <li>ケガ・緊急性がある場合 → <b>119</b></li>
-    <li>事故の場合 → <b>110</b></li>
-    <li>必要に応じて保険会社・ロードサービス等へ連絡</li>
+    <li><b>物損だけでも110番。</b>壁・電柱・ガードレールにぶつけた単独事故も同じです</li>
+    <li>相手に「警察は呼ばなくていい」と言われても<b>応じない</b>。届け出ないと交通事故証明書が出ず、保険が使えません</li>
+    <li>ケガの有無を自分で判断しない。相手が「大丈夫」と言っても、痛み・しびれ・頭を打ったなら119番</li>
+    <li>一人で手が回らないときは、周りの人に「119番をお願いします」と<b>具体的に</b>頼む</li>
+    <li><b>当て逃げされたら追いかけない。</b>ナンバー・車種・色・逃げた方向をメモして110番</li>
   </ul>
 </div>
-<div class="step"><b class="no">③ HAUKURへLINE</b> 以下を報告してください。
+<div class="step"><b class="no">③ 相手と現場の情報を控える</b>
   <ul>
-    <li>発生場所 ／ 発生日時</li>
-    <li>事故の状況</li>
-    <li>ケガ人の有無 ／ 相手方の有無</li>
-    <li>車両の状態 ／ 荷物の状態</li>
-    <li>写真</li>
+    <li>相手の <b>氏名・電話番号・住所</b>／車の <b>ナンバー</b>／<b>加入保険会社名</b>／目撃者がいれば連絡先</li>
+    <li>写真：ぶつかった箇所（近く／遠く）・両方の車の全体・現場全体・信号や標識</li>
+    <li>警察の<b>受理番号</b>と警察署名を聞いてメモする</li>
+    <li>ドライブレコーダーは上書きされる前に保存する（免許証を撮るときは相手の了承を得る）</li>
   </ul>
 </div>
-<div class="warn">⚠️ その場で過失や補償について勝手に判断・約束しないでください。</div>
-</div>
-
-<div class="keep">
-<h2 id="s2">2. 📦 荷物破損</h2>
+<div class="step"><b class="no">④ HAUKURへLINE</b> 下の記入例をそのまま埋めて送ってください。</div>
+<div class="mailbox"><div class="subject">【トラブル報告】事故・接触</div><pre>ドライバー名：山田太郎
+発生日時：9月22日 10時40分ごろ
+発生場所：川崎市中原区〇〇 1-2 コンビニ前の交差点
+内容：右折待ちの際、後方から追突されました
+ケガ人：なし（相手・自分とも痛みなし）
+119番：不要　110番：済み（実況見分待ち／受理番号 確認中）
+相手方：あり 〇〇様 090-0000-0000 △△保険 品川 300 あ 12-34
+車両：リアバンパーにへこみ、走行は可能
+荷物：荷崩れなし
+写真：あり（このあと送ります）　ドラレコ：保存済み</pre></div>
+<div class="warn">⚠️ <b>禁止</b>：「弁償します」「私が悪いです」と言わない／示談・その場での金銭のやり取り・念書へのサインをしない。強く求められても「会社に確認します」で止めてください。</div>
+</div><div class="sec">
+<h2 id="s2">2. 荷物破損</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="ひびの入った段ボールの絵"><rect x="9" y="24" width="46" height="30" rx="3"/><path d="M9 34h46M32 24v10"/><path d="M30 38l-5 6 5 3-5 7" stroke="#dc2626"/><path d="M14 15l4 5M32 11v6M50 15l-4 5" stroke="#dc2626"/></svg><div class="case-lead"><b>割れた・へこんだ・濡れた・荷崩れした</b>触りすぎない。開けない。捨てない。まず写真を撮ってLINE。</div></div>
 <div class="step"><b class="no">① 荷物を確認</b>
   <ul>
-    <li>何が破損したか ／ 何個破損したか</li>
-    <li>どの程度の破損か</li>
-    <li>いつ破損に気づいたか</li>
+    <li>何が・何個 ／ どの程度の破損か ／ いつ気づいたか（積込時・走行後・配達先で）</li>
+    <li>中身を確かめるために<b>勝手に開梱しない</b>（開けると責任の切り分けができなくなります）</li>
+    <li>冷凍・冷蔵品は、庫内温度・商品の温度・ドアが開いていた時間も確認する</li>
   </ul>
 </div>
-<div class="step"><b class="no">② 写真を撮影</b>
+<div class="step"><b class="no">② 写真を撮る（4枚＋α）</b>
   <ul>
-    <li>荷物全体</li>
-    <li>破損箇所</li>
-    <li>外箱・梱包状態</li>
+    <li>① 荷物全体 ／ ② 破損箇所のアップ ／ ③ 外箱・梱包の状態 ／ ④ 送り状（伝票番号が読めるように）</li>
+    <li>濡れ・温度異常があるときは、荷室内と<b>温度計の表示</b>も撮る</li>
   </ul>
 </div>
-<div class="step"><b class="no">③ 荷物を保管</b> 勝手に廃棄・返却・処分しないでください。</div>
-<div class="step"><b class="no">④ HAUKURへLINE</b> 写真とともに状況を報告してください。</div>
-<div class="hint">➡️ 報告後、指示を待つ</div>
-</div>
-
-<div class="keep">
-<h2 id="s3">3. 📍 誤配</h2>
+<div class="step"><b class="no">③ 荷物を保管</b> 勝手に廃棄・返却・処分しないでください。ほかの荷物と分けて、指示があるまで保管します。</div>
+<div class="step"><b class="no">④ HAUKURへLINE</b></div>
+<div class="mailbox"><div class="subject">【トラブル報告】荷物破損</div><pre>ドライバー名：山田太郎
+発生日時：9月22日 13時20分 配達先で確認
+発生場所：〇〇株式会社（伝票 1234-5678-9012）
+内容：段ボール側面がつぶれ、中の箱にへこみあり
+気づいた時点：配達先で降ろすときに気づきました
+中身：未開封のため不明
+現在の状況：未配達のまま、他の荷物と分けて車内で保管しています
+写真：あり（全体・破損部・外箱・送り状）
+指示をお願いします</pre></div>
+<div class="hint">➡️ 走行中に<b>荷物を落とした・道路にばらまいた</b>ときは、車道に取りに戻らないでください。安全な場所に停めて <a class="telchip police" href="tel:110">110</a> または <a class="telchip road" href="tel:9910">#9910</a> に連絡します。</div>
+<div class="warn">⚠️ 配達先で気づいた場合、<b>受領印をもらう前に</b>LINEで指示を仰いでください。再冷凍・納品・廃棄を自分で決めないでください。</div>
+</div><div class="sec">
+<h2 id="s3">3. 誤配</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="家に×印が付いた絵"><path d="M4 54h56"/><path d="M9 54V30l16-13 16 13v24Z"/><path d="M19 54V42h12v12"/><circle cx="51" cy="19" r="10" stroke="#dc2626"/><path d="M47 15l8 8M55 15l-8 8" stroke="#dc2626"/></svg><div class="case-lead"><b>違う住所・違う人に渡した／置いてきた</b>自分で取り返しに行く前にLINE。相手への声かけは下の例のとおりに。</div></div>
 <div class="step"><b class="no">① 状況確認</b>
   <ul>
-    <li>どこへ届けたか ／ 本来の届け先はどこか</li>
-    <li>荷物は誰に渡したか</li>
-    <li>荷物を回収できる状態か</li>
+    <li>どこへ届けたか ／ 本来の届け先はどこか ／ 伝票番号</li>
+    <li>誰に渡したか（本人・家族・置き配・宅配ボックス）</li>
+    <li>まだ回収できる状態か</li>
+  </ul>
+</div>
+<div class="step"><b class="no">② 相手への声かけ</b> 気づいた時点で、渡した相手に丁寧に伝えます。</div>
+<div class="say"><div class="ok"><div class="head">◎ そのまま言ってOK</div><ul><li>「大変失礼いたしました。こちらの手違いで、別のお客様のお荷物をお届けしてしまいました」</li><li>「開封せず、そのままお待ちいただけますでしょうか」</li><li>「恐れ入りますが、お荷物をお返しいただけますでしょうか」</li><li>「開封されていても構いません。こちらの手違いですのでご安心ください」</li></ul></div><div class="ng"><div class="head">✕ 言ってはいけない</div><ul><li>「間違えました、返してください」（一方的な言い方）</li><li>「勝手に開けたんですか」と相手を責める</li><li>「お詫びに〇〇します」と品物・金銭を約束する</li><li>留守宅の敷地に無断で入って持ち帰る</li></ul></div></div>
+<div class="step"><b class="no">③ HAUKURへLINE</b> 回収できたかどうかも含めて報告してください。返却を拒まれたときは、口論せずそのまま報告します。</div>
+<div class="step"><b class="no">④ 指示を待つ</b></div>
+<div class="warn">⚠️ 自分の判断で再配達・返金・謝罪内容を約束しないでください。<b>本来の受取人に、誤配先の名前や住所を伝えないでください</b>（個人情報です）。置き配の誤配も、回収前に必ずLINEで指示を受けてください。</div>
+</div><div class="sec">
+<h2 id="s4">4. クレーム</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="人が怒って吹き出しを出している絵"><circle cx="15" cy="22" r="7.5"/><path d="M4 50c0-7 5-12 11-12s11 5 11 12"/><path d="M36 12h20a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H44l-7 8v-8h-1a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z" stroke="#dc2626"/><path d="M46 19v8" stroke="#dc2626"/><circle cx="46" cy="31.5" r="1.5" fill="#dc2626" stroke="none"/></svg><div class="case-lead"><b>怒られた・苦情を受けた</b>反論しない。判断しない。聞いて、事実だけをLINEで伝える。</div></div>
+<div class="step"><b class="no">① まず落ち着いて対応</b>
+  <ul>
+    <li><b>安全が確保できる範囲で</b>、相手の話を遮らずに聞く</li>
+    <li>言い訳・反論をしない ／ 感情的にならない</li>
+    <li>お詫びするのは「ご不便・ご不快をおかけしたこと」まで。<b>非を認める言い方はしない</b></li>
+  </ul>
+</div>
+<div class="say"><div class="ok"><div class="head">◎ そのまま言ってOK</div><ul><li>「ご不快な思いをさせてしまい、申し訳ございません」</li><li>「状況を確認しますので、順番にお話しいただけますか」</li><li>「私ではお約束できませんので、会社に確認して折り返しご連絡いたします」</li><li>「担当者からご連絡いたします。お名前とご連絡先を伺えますでしょうか」</li><li>「お怒りのお気持ちは承りました。内容を正確に会社へ報告します」</li></ul></div><div class="ng"><div class="head">✕ 言ってはいけない</div><ul><li>「弁償します」「返金します」（補償の約束）</li><li>「私のミスです」「こちらの責任です」（過失を認める）</li><li>「それはお客様の勘違いです」「でも」（反論）</li><li>「必ず今日中に解決します」（期限の約束）</li><li>「よくあることです」「会社に言っても変わりませんよ」</li></ul></div></div>
+<div class="step"><b class="no">② 内容を確認</b>
+  <ul>
+    <li>何についてのクレームか ／ いつ・どこで起きたか</li>
+    <li>お客様が何を求めているか（謝罪・再配達・弁償・担当者からの連絡 など）</li>
+    <li>相手のお名前・連絡先（教えていただけた場合）</li>
+  </ul>
+</div>
+<div class="step"><b class="no">③ HAUKURへLINE</b> 分かる範囲で<b>事実をそのまま</b>報告してください。自分の推測や言い訳は書かなくて構いません。</div>
+<div class="mailbox"><div class="subject">【トラブル報告】クレーム</div><pre>ドライバー名：山田太郎
+発生日時：9月22日 15時10分
+発生場所：〇〇マンション 3階廊下
+内容：インターホンの音が大きい、置き方が雑だとのお叱りを受けました
+相手方：〇〇様（部屋番号 305／連絡先は伺えませんでした）
+ご要望：担当者から連絡がほしい
+対応：お話を伺い、会社から連絡する旨をお伝えしました</pre></div>
+<div class="warn">⚠️ 暴言・威嚇・体に触れられるなど<b>身の危険を感じたら、対応を打ち切ってその場を離れてください。</b>「安全のため、これ以上この場での対応はできません。会社から連絡いたします」と伝えて離れ、危険なら <a class="telchip police" href="tel:110">110</a> に通報。そのあとHAUKURへLINEします。</div>
+</div><div class="sec">
+<h2 id="s5">5. 遅延</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="時計の針が赤くなっている絵"><circle cx="35" cy="34" r="19"/><path d="M35 34V21M35 34l9 6" stroke="#dc2626"/><path d="M4 24h9M2 34h8M4 44h9"/></svg><div class="case-lead"><b>指定時間に間に合わない</b>遅れてからでは遅い。「間に合わないかも」と思った時点で連絡する。</div></div>
+<div class="step"><b class="no">① 遅れる可能性が出たら、すぐ報告</b> 伝えること：
+  <ul>
+    <li>現在地 ／ 遅延理由 ／ 何分くらい遅れそうか</li>
+    <li>配送先 ／ 指定時間</li>
+    <li>見込みが読めないときは<b>「未定」と書き、次に報告する時刻を決めて伝える</b></li>
   </ul>
 </div>
 <div class="step"><b class="no">② HAUKURへLINE</b></div>
-<div class="step"><b class="no">③ 指示を待つ</b></div>
-<div class="warn">⚠️ 自分の判断でお客様へ再配達・返金・謝罪内容の約束などをしないでください。</div>
-</div>
-
-<div class="keep">
-<h2 id="s4">4. 😠 クレーム</h2>
-<div class="step"><b class="no">① まず落ち着いて対応</b>
-  <ul>
-    <li>相手の話を最後まで聞く</li>
-    <li>言い訳・反論をしない</li>
-    <li>感情的にならない</li>
-  </ul>
-</div>
-<div class="step"><b class="no">② 内容を確認</b>
-  <ul>
-    <li>何についてのクレームか</li>
-    <li>いつ・どこで起きたか</li>
-    <li>お客様が何を求めているか</li>
-  </ul>
-</div>
-<div class="step"><b class="no">③ HAUKURへLINE</b> 分かる範囲で事実をそのまま報告してください。</div>
-<div class="warn">⚠️ 返金・補償・特別対応などを自己判断で約束しないでください。</div>
-</div>
-
-<div class="keep">
-<h2 id="s5">5. ⏰ 遅延</h2>
-<div class="step"><b class="no">① 遅れる可能性が出たら早めに報告</b> 確認すること：
-  <ul>
-    <li>現在地 ／ 遅延理由</li>
-    <li>何分程度遅れそうか</li>
-    <li>配送先 ／ 指定時間</li>
-  </ul>
-</div>
-<div class="step"><b class="no">② HAUKURへLINE</b> 例：「○○道路の渋滞により、到着が約30分遅れる見込みです。」</div>
-<div class="hint">➡️ 遅れてからではなく、遅れる可能性が分かった時点で報告</div>
-</div>
-
-<div class="keep">
-<h2 id="s6">6. 🚗 車両トラブル</h2>
+<div class="mailbox"><div class="subject">【遅延連絡】</div><pre>ドライバー名：山田太郎
+現在地：第三京浜 都筑IC付近
+配送先：〇〇株式会社（指定 14:00）
+遅延理由：事故渋滞
+見込み：30分ほど遅れ、14:30ごろ到着の見込みです
+　（読めない場合）見込み：未定。13:30に再確認して報告します
+先方への連絡：まだしていません（指示をお願いします）</pre></div>
+<div class="step"><b class="no">③ 配送先へ電話する場合</b> HAUKURから指示があったときだけ、直接ご連絡します。</div>
+<div class="say"><div class="ok"><div class="head">◎ そのまま言ってOK</div><ul><li>「HAUKUR運送の山田と申します。本日14時お約束のお荷物ですが、事故渋滞のため30分ほど遅れる見込みです。申し訳ございません」</li><li>「到着は14時30分ごろを予定しております。改めてご連絡が必要でしたらお申し付けください」</li></ul></div><div class="ng"><div class="head">✕ 言ってはいけない</div><ul><li>「道が混んでて…」と理由だけを話して見込み時刻を伝えない</li><li>指示を受ける前に、自分の判断で配送先へ電話する</li><li>遅れたあとで事後報告する</li></ul></div></div>
+<div class="hint">➡️ 到着見込みは<b>少し余裕をもって</b>伝えます。「20分」と言って30分かかるのが一番嫌われます。</div>
+</div><div class="sec">
+<h2 id="s6">6. 車両トラブル</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="トラックに警告マークが出ている絵"><path d="M2 52h60"/><path d="M4 46V26h26v20Z"/><path d="M30 46V34l7-8h8l7 8v12Z"/><circle cx="13" cy="46" r="4.5"/><circle cx="43" cy="46" r="4.5"/><path d="M44 5l11 18H33Z" stroke="#dc2626"/><path d="M44 12v5" stroke="#dc2626"/><circle cx="44" cy="20" r="1.4" fill="#dc2626" stroke="none"/></svg><div class="case-lead"><b>動かない・異音・警告灯・パンク</b>無理に走らない。高速道路では車の中にも、車の前後にも残らない。</div></div>
 <div class="step"><b class="no">① 安全確保</b>
   <ul>
-    <li>無理に走行しない</li>
-    <li>安全な場所へ停車</li>
-    <li>周囲の交通に注意</li>
+    <li>ハザードを点け、無理に走行せず、路肩など安全な場所へ停める</li>
+    <li>停止表示器材（三角表示板）・発炎筒を車の後方に置く</li>
+    <li><b>高速道路では車内・車の前後に絶対に留まらない。</b>ガードレールの外側へ避難し、<b>荷物を取りに車へ戻らない</b></li>
   </ul>
 </div>
-<div class="step"><b class="no">② 状況確認</b>
+<div class="step"><b class="no">② 助けを呼ぶ</b>
+  <div class="dial">
+    <a class="tel road" href="tel:%239910"><svg viewBox="0 0 24 24" stroke="none" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span class="tel-num">#9910</span><span class="tel-text"><b>道路緊急ダイヤル</b><span>高速・国道の故障（24時間・無料）</span></span></a>
+    <a class="tel police" href="tel:110"><svg viewBox="0 0 24 24" stroke="none" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span class="tel-num">110</span><span class="tel-text"><b>警察</b><span>車線をふさいで危険なとき</span></span></a>
+  </div>
   <ul>
-    <li>現在地</li>
-    <li>エンジンがかかるか ／ 走行できるか</li>
-    <li>荷物の状態</li>
-    <li>レッカー等が必要か</li>
+    <li>高速道路では、路肩の<b>非常電話</b>を使うと場所が自動で伝わります</li>
+    <li>ロードサービス・保険会社への手配は、HAUKURの指示を受けてから（連絡先は車検証入れを確認）</li>
   </ul>
 </div>
-<div class="step"><b class="no">③ HAUKURへLINE</b></div>
-<div class="step"><b class="no">④ 指示を待つ</b></div>
-<div class="warn">⚠️ 無理に運転を続けないでください。</div>
+<div class="step"><b class="no">③ 状況確認</b>
+  <ul>
+    <li>現在地（高速なら<b>上り／下り</b>と、路肩のキロポスト・非常電話番号）</li>
+    <li>エンジンがかかるか ／ 自走できるか ／ 警告灯の色と種類</li>
+    <li>荷物の状態 ／ レッカーが必要か</li>
+  </ul>
 </div>
-
-<div class="keep">
-<h2 id="s7">7. 📱 LINE報告の共通フォーマット</h2>
-<p>どのトラブルでも、この形でLINEに送ると漏れがありません。コピーして使ってください。</p>
-<div class="mailbox">
-  <div class="subject">【トラブル報告】</div>
-  <pre>ドライバー名：
+<div class="step"><b class="no">④ HAUKURへLINE → 指示を待つ</b></div>
+<div class="mailbox"><div class="subject">【トラブル報告】車両トラブル</div><pre>ドライバー名：山田太郎
+発生日時：9月22日 9時05分
+発生場所：東名高速 上り 横浜町田IC手前 路肩（キロポスト 22.4）
+内容：エンジン警告灯が点灯し、出力が落ちて自走できません
+避難：ガードレールの外に出ています
+荷物：〇〇株式会社行き 12個（14時指定）／配送残 8件
+手配：#9910 に連絡済み、レッカー待ちです</pre></div>
+<div class="warn">⚠️ 警告灯が点いたまま「行けるところまで」は禁止です。故障が大きくなるだけでなく、高速道路上での停止は追突事故につながります。</div>
+</div><div class="sec">
+<h2 id="s7">7. LINE報告の共通フォーマット</h2>
+<div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="スマートフォンのトーク画面の絵"><rect x="16" y="6" width="32" height="52" rx="5"/><path d="M16 14h32M16 50h32"/><rect x="21" y="19" width="17" height="8" rx="3"/><rect x="27" y="31" width="17" height="8" rx="3" fill="#0f7b6c" stroke="none"/><rect x="21" y="43" width="13" height="8" rx="3"/></svg><div class="case-lead"><b>何を書けばいいか分からないとき</b>どのトラブルでも、この型をコピーして埋めるだけ。漏れがなくなります。</div></div>
+<div class="mailbox"><div class="subject">【トラブル報告】</div><pre>ドライバー名：
 発生日時：
 発生場所：
-トラブル内容：
-現在の状況：
+配送先・伝票番号：
+何が起きたか：
+ケガ人：あり・なし・分からない
+119番：済・不要　110番：済・不要
+今の安全状況：
+車両：自走できる・できない
 荷物の状況：
-相手方の有無：
-写真：あり・なし</pre>
-</div>
+相手方（氏名・連絡先）：
+写真：あり・なし　ドラレコ：保存した・していない
+今やっていること：
+次に報告する時刻：</pre></div>
+<h3>緊急連絡先（配属時に書き込んでください）</h3>
+<div class="table-wrap" data-cols="2"><table>
+  <tr><th>救急・消防</th><td><b>119</b></td></tr>
+  <tr><th>警察</th><td><b>110</b></td></tr>
+  <tr><th>道路緊急ダイヤル</th><td><b>#9910</b></td></tr>
+  <tr><th>HAUKUR（昼）</th><td>　</td></tr>
+  <tr><th>HAUKUR（夜間・休日）</th><td>　</td></tr>
+  <tr><th>荷主・運行管理</th><td>　</td></tr>
+  <tr><th>保険会社</th><td>　</td></tr>
+  <tr><th>ロードサービス</th><td>　</td></tr>
+  <tr><th>車両の所有者・リース会社</th><td>　</td></tr>
+</table></div>
 <div class="hint">
-  <b>⭐ 基本ルール</b>　「安全確保 → 状況確認 → HAUKURへLINE → 指示を待つ」<br>
-  迷った場合も、自己判断せずHAUKURへLINEしてください。
+  <b>⭐ 基本ルール</b>　「安全確保 → 119・110 → 写真で記録 → HAUKURへLINE → 指示に従う」<br>
+  <b>命の確保と通報が最優先です。会社の返事を待たずに119番・110番してください。</b>
+  それ以外で迷った場合は、自己判断せずHAUKURへLINE。報告が早いほど、会社が打てる手が多くなります。
 </div>
-<div class="footer">
-  お問い合わせ：HAUKUR運送 西野 雄太郎 ｜ yutaro18551833@gmail.com ｜ トラブル別対応（ドライバー様向け）v1.0（2026年9月21日）
-</div>
-</div>
+</div><div class="footer">お問い合わせ：HAUKUR運送 西野 雄太郎 ｜ yutaro18551833@gmail.com ｜ トラブル別対応（ドライバー様向け）v1.1（2026年9月22日）</div>
 </main>
 </body>
 </html>

@@ -30,8 +30,8 @@
   ul { margin: 4px 0 4px 19px; padding: 0; }
   li { margin: 3px 0; }
 
-  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 12px; margin: 6px 0; }
-  .step b.no { color: var(--accent); white-space: nowrap; font-size: 12px; letter-spacing: .4px; margin-right: 6px; }
+  .step { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; margin: 6px 0; }
+  .step b.no { display: inline-block; color: var(--accent); white-space: nowrap; font-size: 16.5px; line-height: 1.5; margin-right: 7px; }
   .hint { background: var(--accent-soft); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
   .warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 9px; padding: 8px 12px; font-size: 13.5px; margin: 7px 0; }
   .url { font-family: ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
@@ -72,9 +72,64 @@
   .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--line); }
   .toc a:hover, .toc a:focus-visible { color: var(--accent); outline: none; border-bottom-color: var(--accent); }
 
-  .flow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 9px 0; font-size: 12.5px; }
-  .flow .box { border: 1px solid var(--accent); border-radius: 6px; padding: 3px 8px; background: var(--accent-soft); }
-  .flow .arrow { color: var(--accent); font-weight: 700; }
+  /* 基本ルールの5コマ */
+  .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 10px 0; font-size: 12.5px; }
+  .flow .box { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; line-height: 1.4;
+    border: 1px solid var(--accent); border-radius: 9px; padding: 8px 5px; background: var(--accent-soft); }
+  .flow .box svg { width: 28px; height: 28px; }
+
+  /* 章の頭。左に絵、右に「どんな場面か」 */
+  .case { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--surface); padding: 9px 13px; margin: 6px 0 9px; }
+  .case svg { width: 54px; height: 54px; flex: 0 0 auto; }
+  .case-lead { font-size: 13px; line-height: 1.65; }
+  .case-lead b { display: block; font-size: 15px; color: var(--accent); }
+
+  /* 119/110/#9910。スマホではそのままタップで発信できる */
+  .dial { display: flex; gap: 9px; margin: 9px 0; }
+  .tel { flex: 1; display: flex; align-items: center; gap: 10px; border: 2px solid; border-radius: 12px;
+    padding: 8px 13px; text-decoration: none; color: var(--ink); background: var(--surface); }
+  .tel svg { width: 28px; height: 28px; flex: 0 0 auto; }
+  .tel-num { font-size: 32px; font-weight: 800; letter-spacing: 2px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .tel-text { display: flex; flex-direction: column; line-height: 1.35; }
+  .tel-text b { font-size: 14px; }
+  .tel-text span { font-size: 12px; color: var(--muted); }
+  .tel.fire { border-color: var(--warn); background: var(--warn-soft); }
+  .tel.fire .tel-num { color: var(--warn); } .tel.fire svg { fill: var(--warn); }
+  .tel.police { border-color: #1d4ed8; background: #eef4ff; }
+  .tel.police .tel-num { color: #1d4ed8; } .tel.police svg { fill: #1d4ed8; }
+  .tel.road { border-color: var(--amber); background: var(--amber-soft); }
+  .tel.road .tel-num { color: var(--amber); letter-spacing: 1px; font-size: 28px; } .tel.road svg { fill: var(--amber); }
+  .telchip { display: inline-block; font-size: 17px; font-weight: 800; letter-spacing: 1px; line-height: 1.5;
+    border: 1.6px solid; border-radius: 7px; padding: 0 8px; text-decoration: none; vertical-align: -2px; }
+  .telchip.fire { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+  .telchip.police { color: #1d4ed8; border-color: #1d4ed8; background: #eef4ff; }
+  .telchip.road { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
+
+  /* 言ってよい / 言ってはいけない */
+  .say { display: flex; gap: 8px; margin: 7px 0; }
+  .say > div { flex: 1; border-radius: 10px; padding: 8px 12px; font-size: 12.5px; }
+  .say .ok { background: var(--accent-soft); border: 1px solid #b7ddd4; }
+  .say .ng { background: var(--warn-soft); border: 1px solid #efc9c9; }
+  .say .head { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+  .say .ok .head { color: var(--accent); }
+  .say .ng .head { color: var(--warn); }
+  .say ul { margin: 0 0 0 16px; }
+
+  /* 会社が不利になる言動 */
+  .never { border: 2px solid var(--warn); border-radius: 11px; background: var(--warn-soft); padding: 10px 15px; margin: 11px 0; }
+  .never .head { font-weight: 800; color: var(--warn); font-size: 15px; margin-bottom: 5px; }
+  .never ol { margin: 0 0 0 19px; padding: 0; font-size: 13px; }
+  .never li { margin: 3px 0; }
+
+  /* 絵つきの目次。ページ番号は紙だけの案内なので画面では隠す */
+  .toc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  .toc-cards a { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 6px; background: var(--surface);
+    text-decoration: none; color: var(--ink); font-size: 12.5px; line-height: 1.4; }
+  .toc-cards a:hover, .toc-cards a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+  .toc-cards svg { width: 38px; height: 38px; }
+  .toc-cards .pg { display: none; }
 
   /* スマホ。1行に入る文字数を稼ぐため、余白と文字を少しだけ詰める */
   @media (max-width: 560px) {
@@ -87,6 +142,15 @@
     .step b.no { font-size: 11.5px; margin-right: 5px; }
     .hint, .warn { padding: 7px 10px; font-size: 13px; }
     .toc { grid-template-columns: 1fr; font-size: 13px; }
+    .step b.no { font-size: 15.5px; }
+    .flow { grid-template-columns: repeat(2, 1fr); }
+    .flow .box:last-child { grid-column: 1 / -1; }
+    .case { gap: 10px; padding: 8px 11px; }
+    .case svg { width: 46px; height: 46px; }
+    .dial { flex-direction: column; }
+    .tel { padding: 10px 14px; }
+    .say { flex-direction: column; }
+    .toc-cards { grid-template-columns: repeat(2, 1fr); }
     .mailbox .subject { font-size: 12px; }
     table { font-size: 12.5px; }
     th, td { padding: 4px 6px; }

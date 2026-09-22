@@ -45,7 +45,7 @@ const HAUKUR_TROUBLE_GUIDE: ManualDocument = {
   tabLabel: '🚚 トラブル別対応',
   htmlUrl: '/manuals/haukur_trouble.html',
   pdfUrl: '/manuals/haukur_trouble.pdf',
-  pdfFileName: 'トラブル別対応_ドライバー様向け.pdf',
+  pdfFileName: 'HAUKUR運送_トラブル別対応_ドライバー様用.pdf',
 }
 const TENANT_MANUALS: Record<string, { owner: ManualDocument[]; member: ManualDocument[] }> = {
   'HAUKUR運送': {
@@ -55,7 +55,7 @@ const TENANT_MANUALS: Record<string, { owner: ManualDocument[]; member: ManualDo
         tabLabel: '📘 操作手順書',
         htmlUrl: '/manuals/haukur_owner.html',
         pdfUrl: '/manuals/haukur_owner.pdf',
-        pdfFileName: '操作手順書_西野雄太郎様向け.pdf',
+        pdfFileName: 'HAUKUR運送_操作手順書_代表者様用.pdf',
       },
       HAUKUR_TROUBLE_GUIDE,
     ],
@@ -65,7 +65,7 @@ const TENANT_MANUALS: Record<string, { owner: ManualDocument[]; member: ManualDo
         tabLabel: '📘 操作手順書',
         htmlUrl: '/manuals/haukur_driver.html',
         pdfUrl: '/manuals/haukur_driver.pdf',
-        pdfFileName: '操作手順書_ドライバー様向け.pdf',
+        pdfFileName: 'HAUKUR運送_操作手順書_ドライバー様用.pdf',
       },
       HAUKUR_TROUBLE_GUIDE,
     ],
