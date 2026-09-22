@@ -20,7 +20,15 @@
     font-feature-settings: "palt" 1;
   }
   main { max-width: 720px; margin: 0 auto; padding-block: 14px 56px; padding-inline: var(--pad); }
-  p, li, .step, .hint, .warn, figcaption { text-wrap: pretty; }
+  /* 日本語の折り返し。放っておくと「くださ|い」のように単語の途中で割れるので、文節の切れ目で折る */
+  body { line-break: strict; word-break: normal; }
+  p, li, td, th, .step, .hint, .warn, .case-lead, .subtitle, .footer, .flow .box, .toc-cards a, .toc, figcaption {
+    word-break: auto-phrase; text-wrap: pretty;
+  }
+  h1, h2, h3 { word-break: auto-phrase; }
+  /* 「① 荷物全体 ／ ② 破損箇所のアップ ／ …」の1項目を行またぎで割らない */
+  .unit { display: inline-block; }
+  .basis { margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--line); font-size: 11.5px; color: var(--muted); line-height: 1.65; }
   h1, h2, h3 { text-wrap: balance; }
   h1 { font-size: 25px; margin: 6px 0 2px; letter-spacing: .5px; line-height: 1.4; }
   .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
@@ -64,7 +72,7 @@
 
   .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 9px 13px; margin: 9px 0 14px; }
   .mailbox .subject { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
-  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: auto-phrase; }
   .mailbox .var { background: var(--amber-soft); color: var(--amber); border-radius: 4px; padding: 0 3px; }
   .mailbox .from { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
 
@@ -174,6 +182,8 @@
 <div class="hint">
   基本ルールは <b>「安全確保 → 119・110 → 写真で記録 → HAUKURへLINE → 指示に従う」</b> の5つです。<br>
   <b>人の命と通報が先、会社への連絡はそのあと。</b>それ以外で迷った場合も、自己判断せずHAUKURへLINEしてください。
+  <div class="basis">根拠：道路交通法第72条第1項（直ちに停止し、負傷者を救護し、危険を防止したうえで警察官に報告する）。
+  国土交通省の運行管理者向け指導資料でも、運転者の手順は「負傷者の救護 → 危険の除去 → 安全な場所への退避 → 警察への報告 → 事業者への報告」の順です。</div>
 </div>
 <div class="flow"><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="安全確保"><path d="M32 6l20 7v16c0 13-8 21-20 27-12-6-20-14-20-27V13Z"/><path d="M22 31l7 7 14-15"/></svg><span>① 安全確保</span></span><span class="box"><svg viewBox="0 0 24 24" stroke="none" fill="#0f7b6c" role="img" aria-label="電話"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z"/></svg><span>② 119・110</span></span><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="写真"><rect x="6" y="18" width="52" height="34" rx="6"/><circle cx="32" cy="35" r="11"/><path d="M22 18l4-6h12l4 6"/></svg><span>③ 写真で記録</span></span><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="LINE"><path d="M8 12h48a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H30l-12 10V44H8a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z"/><path d="M18 24h28M18 32h18"/></svg><span>④ HAUKURへLINE</span></span><span class="box"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="指示"><path d="M20 9h24L32 32l12 23H20l12-23Z"/><path d="M17 9h30M17 55h30"/></svg><span>⑤ 指示に従う</span></span></div>
 <div class="never">
@@ -240,14 +250,14 @@
 <div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="ひびの入った段ボールの絵"><rect x="9" y="24" width="46" height="30" rx="3"/><path d="M9 34h46M32 24v10"/><path d="M30 38l-5 6 5 3-5 7" stroke="#dc2626"/><path d="M14 15l4 5M32 11v6M50 15l-4 5" stroke="#dc2626"/></svg><div class="case-lead"><b>割れた・へこんだ・濡れた・荷崩れした</b>触りすぎない。開けない。捨てない。まず写真を撮ってLINE。</div></div>
 <div class="step"><b class="no">① 荷物を確認</b>
   <ul>
-    <li>何が・何個 ／ どの程度の破損か ／ いつ気づいたか（積込時・走行後・配達先で）</li>
+    <li><span class="unit">何が・何個 ／</span> <span class="unit">どの程度の破損か ／</span> <span class="unit">いつ気づいたか（積込時・走行後・配達先で）</span></li>
     <li>中身を確かめるために<b>勝手に開梱しない</b>（開けると責任の切り分けができなくなります）</li>
     <li>冷凍・冷蔵品は、庫内温度・商品の温度・ドアが開いていた時間も確認する</li>
   </ul>
 </div>
 <div class="step"><b class="no">② 写真を撮る（4枚＋α）</b>
   <ul>
-    <li>① 荷物全体 ／ ② 破損箇所のアップ ／ ③ 外箱・梱包の状態 ／ ④ 送り状（伝票番号が読めるように）</li>
+    <li><span class="unit">① 荷物全体 ／</span> <span class="unit">② 破損箇所のアップ ／</span> <span class="unit">③ 外箱・梱包の状態 ／</span> <span class="unit">④ 送り状（伝票番号が読めるように）</span></li>
     <li>濡れ・温度異常があるときは、荷室内と<b>温度計の表示</b>も撮る</li>
   </ul>
 </div>
@@ -269,7 +279,7 @@
 <div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="家に×印が付いた絵"><path d="M4 54h56"/><path d="M9 54V30l16-13 16 13v24Z"/><path d="M19 54V42h12v12"/><circle cx="51" cy="19" r="10" stroke="#dc2626"/><path d="M47 15l8 8M55 15l-8 8" stroke="#dc2626"/></svg><div class="case-lead"><b>違う住所・違う人に渡した／置いてきた</b>自分で取り返しに行く前にLINE。相手への声かけは下の例のとおりに。</div></div>
 <div class="step"><b class="no">① 状況確認</b>
   <ul>
-    <li>どこへ届けたか ／ 本来の届け先はどこか ／ 伝票番号</li>
+    <li><span class="unit">どこへ届けたか ／</span> <span class="unit">本来の届け先はどこか ／</span> <span class="unit">伝票番号</span></li>
     <li>誰に渡したか（本人・家族・置き配・宅配ボックス）</li>
     <li>まだ回収できる状態か</li>
   </ul>
@@ -285,14 +295,14 @@
 <div class="step"><b class="no">① まず落ち着いて対応</b>
   <ul>
     <li><b>安全が確保できる範囲で</b>、相手の話を遮らずに聞く</li>
-    <li>言い訳・反論をしない ／ 感情的にならない</li>
+    <li><span class="unit">言い訳・反論をしない ／</span> <span class="unit">感情的にならない</span></li>
     <li>お詫びするのは「ご不便・ご不快をおかけしたこと」まで。<b>非を認める言い方はしない</b></li>
   </ul>
 </div>
 <div class="say"><div class="ok"><div class="head">◎ そのまま言ってOK</div><ul><li>「ご不快な思いをさせてしまい、申し訳ございません」</li><li>「状況を確認しますので、順番にお話しいただけますか」</li><li>「私ではお約束できませんので、会社に確認して折り返しご連絡いたします」</li><li>「担当者からご連絡いたします。お名前とご連絡先を伺えますでしょうか」</li><li>「お怒りのお気持ちは承りました。内容を正確に会社へ報告します」</li></ul></div><div class="ng"><div class="head">✕ 言ってはいけない</div><ul><li>「弁償します」「返金します」（補償の約束）</li><li>「私のミスです」「こちらの責任です」（過失を認める）</li><li>「それはお客様の勘違いです」「でも」（反論）</li><li>「必ず今日中に解決します」（期限の約束）</li><li>「よくあることです」「会社に言っても変わりませんよ」</li></ul></div></div>
 <div class="step"><b class="no">② 内容を確認</b>
   <ul>
-    <li>何についてのクレームか ／ いつ・どこで起きたか</li>
+    <li><span class="unit">何についてのクレームか ／</span> <span class="unit">いつ・どこで起きたか</span></li>
     <li>お客様が何を求めているか（謝罪・再配達・弁償・担当者からの連絡 など）</li>
     <li>相手のお名前・連絡先（教えていただけた場合）</li>
   </ul>
@@ -311,8 +321,8 @@
 <div class="case"><svg class="" viewBox="0 0 64 64" fill="none" stroke="#0f7b6c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="時計の針が赤くなっている絵"><circle cx="35" cy="34" r="19"/><path d="M35 34V21M35 34l9 6" stroke="#dc2626"/><path d="M4 24h9M2 34h8M4 44h9"/></svg><div class="case-lead"><b>指定時間に間に合わない</b>遅れてからでは遅い。「間に合わないかも」と思った時点で連絡する。</div></div>
 <div class="step"><b class="no">① 遅れる可能性が出たら、すぐ報告</b> 伝えること：
   <ul>
-    <li>現在地 ／ 遅延理由 ／ 何分くらい遅れそうか</li>
-    <li>配送先 ／ 指定時間</li>
+    <li><span class="unit">現在地 ／</span> <span class="unit">遅延理由 ／</span> <span class="unit">何分くらい遅れそうか</span></li>
+    <li><span class="unit">配送先 ／</span> <span class="unit">指定時間</span></li>
     <li>見込みが読めないときは<b>「未定」と書き、次に報告する時刻を決めて伝える</b></li>
   </ul>
 </div>
@@ -350,8 +360,8 @@
 <div class="step"><b class="no">③ 状況確認</b>
   <ul>
     <li>現在地（高速なら<b>上り／下り</b>と、路肩のキロポスト・非常電話番号）</li>
-    <li>エンジンがかかるか ／ 自走できるか ／ 警告灯の色と種類</li>
-    <li>荷物の状態 ／ レッカーが必要か</li>
+    <li><span class="unit">エンジンがかかるか ／</span> <span class="unit">自走できるか ／</span> <span class="unit">警告灯の色と種類</span></li>
+    <li><span class="unit">荷物の状態 ／</span> <span class="unit">レッカーが必要か</span></li>
   </ul>
 </div>
 <div class="step"><b class="no">④ HAUKURへLINE → 指示を待つ</b></div>

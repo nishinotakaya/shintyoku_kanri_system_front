@@ -20,7 +20,15 @@
     font-feature-settings: "palt" 1;
   }
   main { max-width: 720px; margin: 0 auto; padding-block: 14px 56px; padding-inline: var(--pad); }
-  p, li, .step, .hint, .warn, figcaption { text-wrap: pretty; }
+  /* 日本語の折り返し。放っておくと「くださ|い」のように単語の途中で割れるので、文節の切れ目で折る */
+  body { line-break: strict; word-break: normal; }
+  p, li, td, th, .step, .hint, .warn, .case-lead, .subtitle, .footer, .flow .box, .toc-cards a, .toc, figcaption {
+    word-break: auto-phrase; text-wrap: pretty;
+  }
+  h1, h2, h3 { word-break: auto-phrase; }
+  /* 「① 荷物全体 ／ ② 破損箇所のアップ ／ …」の1項目を行またぎで割らない */
+  .unit { display: inline-block; }
+  .basis { margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--line); font-size: 11.5px; color: var(--muted); line-height: 1.65; }
   h1, h2, h3 { text-wrap: balance; }
   h1 { font-size: 25px; margin: 6px 0 2px; letter-spacing: .5px; line-height: 1.4; }
   .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
@@ -64,7 +72,7 @@
 
   .mailbox { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 9px 13px; margin: 9px 0 14px; }
   .mailbox .subject { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
-  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .mailbox pre { margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: auto-phrase; }
   .mailbox .var { background: var(--amber-soft); color: var(--amber); border-radius: 4px; padding: 0 3px; }
   .mailbox .from { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
 
