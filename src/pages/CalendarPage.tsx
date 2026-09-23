@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { ExpenseResponse, WorkReportResponse, Me } from '../lib/api'
 import CalendarView from '../components/CalendarView'
-import UserPickerSelect from '../components/UserPickerSelect'
+import CalendarUserFilter from '../components/CalendarUserFilter'
 import DayDetailModal from '../components/DayDetailModal'
 import { billingMonthForToday } from '../lib/billingMonth'
 import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
@@ -236,17 +236,18 @@ export default function CalendarPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canPickUsers && pickableUsers.length > 1 && (
-            <UserPickerSelect
+            <CalendarUserFilter
               users={pickableUsers}
-              value={asUserId ?? me?.id ?? 0}
               meId={me?.id}
-              onChange={(userId) => {
-                setAsUserId(userId)
-                setExtraUserIds((prev) => prev.filter((id) => id !== userId))
-              }}
-              multiIds={extraUserIds}
-              onToggleMulti={(userId) => {
+              primaryUserId={asUserId ?? me?.id ?? 0}
+              visibleUserIds={extraUserIds}
+              onToggleVisible={(userId) => {
                 setExtraUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]))
+              }}
+              onOpenUser={(userId) => {
+                setAsUserId(userId)
+                // 主体になった人は重ね表示から外す（同じ人を二重に描かない）
+                setExtraUserIds((prev) => prev.filter((id) => id !== userId))
               }}
             />
           )}

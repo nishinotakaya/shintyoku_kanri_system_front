@@ -7,6 +7,7 @@ import { workedHoursBetween } from '../lib/workedHours'
 import { isDailyPay, overtimeHoursOf, standardHoursOf } from '../lib/transportPay'
 import type { TransportPaySetting } from '../lib/transportPay'
 import { billingPeriodRange, formatIsoDate, formatJpDate } from '../lib/billingPeriod'
+import { colorForUser } from '../lib/userColors'
 
 const wd = '日月火水木金土'
 
@@ -394,16 +395,23 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                 </div>
               )}
 
-              {/* 複数チェックされた他ユーザーの稼働チップ */}
-              {(extraByDate.get(c.date) ?? []).map((extra) => (
-                <div
-                  key={extra.userId}
-                  className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap rounded bg-sky-100 px-1 text-[9px] leading-4 text-sky-700"
-                  title={`${extra.userName} ${extra.totalH > 0 ? `${extra.totalH}h` : '稼働'}`}
-                >
-                  {extra.userName.split(/[\s\u3000]/)[0]} {extra.totalH > 0 ? `${extra.totalH}h` : '稼働'}
-                </div>
-              ))}
+              {/* 表示チェックを入れたメンバーの稼働チップ。色はメンバーごとに固定 */}
+              {(extraByDate.get(c.date) ?? []).map((extra) => {
+                const color = colorForUser(extra.userId)
+                return (
+                  <div
+                    key={extra.userId}
+                    className="mt-0.5 flex items-center gap-1 overflow-hidden rounded px-1 text-[9px] leading-4"
+                    style={{ backgroundColor: color.soft, color: color.text }}
+                    title={`${extra.userName} ${extra.totalH > 0 ? `${extra.totalH}h` : '稼働'}`}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color.base }} />
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                      {extra.userName.split(/[\s\u3000]/)[0]} {extra.totalH > 0 ? `${extra.totalH}h` : '稼働'}
+                    </span>
+                  </div>
+                )
+              })}
 
               {/* 作業内容（短縮、tooltip でフル表示） */}
               {c.reports.length > 0 && c.reports[0].content && (
