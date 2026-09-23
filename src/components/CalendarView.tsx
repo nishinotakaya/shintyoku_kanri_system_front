@@ -119,6 +119,38 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     return map
   }, [extraUserReports])
 
+  // 表示チェックを入れたメンバーの工数合計(締日期間)。主体と同じ期間・同じカテゴリ分けで数える。
+  // 運送の稼働は hours が入らないことがあるので出退勤から実働を出し、合計にだけ足す。
+  const memberTotals = useMemo(() => {
+    const { start, end } = billingPeriodRange(year, month, closingDay)
+    const periodStart = formatIsoDate(start)
+    const periodEnd = formatIsoDate(end)
+    return extraUserReports.map(({ userId, userName, reports: memberReports }) => {
+      let livingHours = 0
+      let tamaHours = 0
+      let transportHours = 0
+      memberReports.forEach((report) => {
+        if (report.work_date < periodStart || report.work_date > periodEnd) return
+        const hours = Number(report.hours) || 0
+        if (report.category === 'living') {
+          livingHours += hours
+        } else if (report.category === 'transport') {
+          transportHours += workedHoursBetween(report.clock_in, report.clock_out) || hours
+        } else {
+          tamaHours += hours
+        }
+      })
+      return {
+        userId,
+        surname: userName.split(/[\s　]/)[0] || userName,
+        livingHours,
+        tamaHours,
+        transportHours,
+        totalHours: livingHours + tamaHours + transportHours,
+      }
+    })
+  }, [extraUserReports, year, month, closingDay])
+
   // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）。
   // 運送(transport)ユーザーはタマ向けの既定ステータス（出社 / リビング リモート / TL@… ）が
   // 当てはまらないので、最初は空にして「…自由入力」で足したものが選択肢に増えていくようにする。
@@ -331,6 +363,29 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                       </tr>
                     )
                   })()}
+                  {/* 表示チェックを入れたメンバーの工数合計。カレンダーのチップと同じ色で並べる */}
+                  {memberTotals.length > 0 && (
+                    <tr>
+                      <td colSpan={4} className="pt-1 text-left text-[9px] text-[var(--color-text-sub)]">表示中のメンバー（実績）</td>
+                    </tr>
+                  )}
+                  {memberTotals.map((member) => {
+                    const color = colorForUser(member.userId)
+                    return (
+                      <tr
+                        key={member.userId}
+                        title={member.transportHours > 0 ? `運送 ${member.transportHours.toFixed(1)}h を合計に含む` : undefined}
+                      >
+                        <td className="text-left pr-2 whitespace-nowrap" style={{ color: color.text }}>
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ backgroundColor: color.base }} />
+                          {member.surname}
+                        </td>
+                        <td className="text-right px-2 text-violet-700">{member.livingHours.toFixed(1)}h</td>
+                        <td className="text-right px-2 text-emerald-700">{member.tamaHours.toFixed(1)}h</td>
+                        <td className="text-right pl-2 font-semibold" style={{ color: color.text }}>{member.totalHours.toFixed(1)}h</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
