@@ -244,11 +244,9 @@ export default function CalendarPage() {
               onToggleVisible={(userId) => {
                 setExtraUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]))
               }}
-              onOpenUser={(userId) => {
-                setAsUserId(userId)
-                // 主体になった人は重ね表示から外す（同じ人を二重に描かない）
-                setExtraUserIds((prev) => prev.filter((id) => id !== userId))
-              }}
+              // 主体になった人のチェックは消さずに持っておく（自分に戻したときに元の表示が戻る）。
+              // 二重描画は activeExtraIds 側で主体を除外して防ぐ。
+              onOpenUser={setAsUserId}
             />
           )}
           {importMsg && <span className="text-xs text-emerald-600">{importMsg}</span>}

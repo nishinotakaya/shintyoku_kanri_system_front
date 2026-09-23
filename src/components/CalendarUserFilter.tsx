@@ -32,6 +32,9 @@ export default function CalendarUserFilter({
   const isSelfPrimary = meId != null && primaryUserId === meId
   const searchable = users.length >= SEARCHABLE_THRESHOLD
 
+  // 自分は常に緑、ほかのメンバーはIDで決まる色。主体になっても日セルのチップと同じ色で出す
+  const colorOf = (userId: number) => (meId != null && userId === meId ? SELF_COLOR : colorForUser(userId))
+
   const others = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     return users
@@ -86,11 +89,11 @@ export default function CalendarUserFilter({
                 type="checkbox"
                 checked
                 disabled
-                aria-label="主体のカレンダーは常に表示"
+                aria-label="開いているカレンダーは常に表示"
                 className="h-4 w-4 shrink-0"
-                style={{ accentColor: SELF_COLOR.base }}
+                style={{ accentColor: colorOf(primaryUserId).base }}
               />
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: SELF_COLOR.base }} />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorOf(primaryUserId).base }} />
               <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold">
                 {primaryUser?.display_name ?? 'あなた'}{isSelfPrimary ? '（自分）' : ''}
               </span>
@@ -109,7 +112,7 @@ export default function CalendarUserFilter({
           <div className="px-3 pt-2 text-[11px] font-semibold text-[var(--color-text-sub)]">ほかのメンバー</div>
           <div className="max-h-60 overflow-y-auto px-1 py-1">
             {others.map((user) => {
-              const color = colorForUser(user.id)
+              const color = colorOf(user.id)
               const checked = visibleUserIds.includes(user.id)
               return (
                 <div key={user.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50">
