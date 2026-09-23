@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import * as holidayJp from '@holiday-jp/holiday_jp'
 import { api } from '../lib/api'
 import type { WorkReport, Expense, Me } from '../lib/api'
@@ -56,6 +56,82 @@ function expectedHours(status: string, _dow: number): { living: number; tama: nu
   // 火曜のリビング併用パターンが status に "リビング" 含まなければ通常タマ
   // 通常: 出社・リモート・場所名 → タマ 8h
   return { living: 0, tama: 8 }
+}
+
+// 業務報告 → 締日期間の実績。主体にもメンバーにも同じ計算を使う。
+// 運送(transport)は hours が空のことがあるので出退勤から実働を出し、タマには混ぜない。
+function summarizeReports(
+  reports: WorkReport[],
+  periodStart: string,
+  periodEnd: string,
+  paySetting: TransportPaySetting | null,
+) {
+  let livingHours = 0
+  let tamaHours = 0
+  let transportHours = 0
+  let transportWorkedDays = 0
+  let transportDistanceKm = 0
+  let transportOvertimeHours = 0
+  reports.forEach((report) => {
+    if (report.work_date < periodStart || report.work_date > periodEnd) return
+    const hours = Number(report.hours) || 0
+    if (report.category === 'living') {
+      livingHours += hours
+    } else if (report.category === 'transport') {
+      transportDistanceKm += Number(report.distance_km) || 0
+      const workedHours = workedHoursBetween(report.clock_in, report.clock_out) || hours
+      transportHours += workedHours
+      transportOvertimeHours += overtimeHoursOf(workedHours, paySetting)
+      // 稼働した日 = 開始・終了時間が両方入っている、または hours > 0
+      if ((!!report.clock_in && !!report.clock_out) || hours > 0) transportWorkedDays += 1
+    } else {
+      tamaHours += hours
+    }
+  })
+  return {
+    livingHours, tamaHours, transportHours,
+    transportWorkedDays, transportDistanceKm, transportOvertimeHours,
+    totalHours: livingHours + tamaHours + transportHours,
+  }
+}
+
+// チーム予定(シート) → 締日期間の予定。person 名は「西野」「川村」、surname は display_name の先頭 token
+// ("西野 鷹也" → "西野"、"川村卓也" → "川村卓也") なので互換マッチで判定する。
+// 予定行が1件も無い人は hasSchedule=false（0時間ではなく「—」と出すため）。
+function summarizeSchedules(
+  teamSchedules: TeamScheduleEntry[],
+  surname: string | undefined,
+  periodStart: string,
+  periodEnd: string,
+  todayIso: string,
+) {
+  let plannedLiving = 0
+  let plannedTama = 0
+  let plannedLivingToToday = 0
+  let plannedTamaToToday = 0
+  let hasSchedule = false
+  if (surname) {
+    const personMatches = (person: string) =>
+      person === surname || surname.includes(person) || person.includes(surname)
+    teamSchedules.forEach((entry) => {
+      if (!personMatches(entry.person)) return
+      if (entry.date < periodStart || entry.date > periodEnd) return
+      hasSchedule = true
+      const expected = expectedHours(entry.status, new Date(entry.date).getDay())
+      plannedLiving += expected.living
+      plannedTama += expected.tama
+      if (entry.date <= todayIso) {
+        plannedLivingToToday += expected.living
+        plannedTamaToToday += expected.tama
+      }
+    })
+  }
+  return { plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday, hasSchedule }
+}
+
+function isoToday() {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 }
 
 const STATUS_CLASS: Record<string, string> = {
@@ -119,37 +195,23 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     return map
   }, [extraUserReports])
 
-  // 表示チェックを入れたメンバーの工数合計(締日期間)。主体と同じ期間・同じカテゴリ分けで数える。
-  // 運送の稼働は hours が入らないことがあるので出退勤から実働を出し、合計にだけ足す。
+  // 表示チェックを入れたメンバーの集計(締日期間)。主体とまったく同じ計算を通す。
+  // 予定はチーム予定シートの人物行から拾うので、その人の行が無ければ hasSchedule=false（「—」と出す）。
   const memberTotals = useMemo(() => {
     const { start, end } = billingPeriodRange(year, month, closingDay)
     const periodStart = formatIsoDate(start)
     const periodEnd = formatIsoDate(end)
+    const todayIso = isoToday()
     return extraUserReports.map(({ userId, userName, reports: memberReports }) => {
-      let livingHours = 0
-      let tamaHours = 0
-      let transportHours = 0
-      memberReports.forEach((report) => {
-        if (report.work_date < periodStart || report.work_date > periodEnd) return
-        const hours = Number(report.hours) || 0
-        if (report.category === 'living') {
-          livingHours += hours
-        } else if (report.category === 'transport') {
-          transportHours += workedHoursBetween(report.clock_in, report.clock_out) || hours
-        } else {
-          tamaHours += hours
-        }
-      })
+      const surname = userName.split(/[\s\u3000]/)[0] || userName
       return {
         userId,
-        surname: userName.split(/[\s　]/)[0] || userName,
-        livingHours,
-        tamaHours,
-        transportHours,
-        totalHours: livingHours + tamaHours + transportHours,
+        surname,
+        ...summarizeReports(memberReports, periodStart, periodEnd, paySetting),
+        ...summarizeSchedules(teamSchedules, surname, periodStart, periodEnd, todayIso),
       }
     })
-  }, [extraUserReports, year, month, closingDay])
+  }, [extraUserReports, year, month, closingDay, teamSchedules, paySetting])
 
   // ステータスの選択肢: 固定リスト + 取込データに現れたステータス（作業日・東栄＠リモート等も選べる）。
   // 運送(transport)ユーザーはタマ向けの既定ステータス（出社 / リビング リモート / TL@… ）が
@@ -165,63 +227,11 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
     const { start, end } = billingPeriodRange(year, month, closingDay)
     const periodStart = formatIsoDate(start)
     const periodEnd = formatIsoDate(end)
-
-    // 実績（カテゴリごとに正しく集計。運送(transport)は「タマ」に含めない）
-    let livingHours = 0
-    let tamaHours = 0
-    let transportWorkedDays = 0
-    let transportDistanceKm = 0
-    let transportWorkedHours = 0
-    let transportOvertimeHours = 0
-    reports.forEach((report) => {
-      if (report.work_date < periodStart || report.work_date > periodEnd) return
-      const hours = Number(report.hours) || 0
-      if (report.category === 'living') {
-        livingHours += hours
-      } else if (report.category === 'transport') {
-        transportDistanceKm += Number(report.distance_km) || 0
-        const workedHours = workedHoursBetween(report.clock_in, report.clock_out)
-        transportWorkedHours += workedHours
-        transportOvertimeHours += overtimeHoursOf(workedHours, paySetting)
-        // 稼働した日 = 開始・終了時間が両方入っている、または hours > 0
-        const worked = (!!report.clock_in && !!report.clock_out) || hours > 0
-        if (worked) transportWorkedDays += 1
-      } else {
-        tamaHours += hours
-      }
-    })
-
-    // 予定（自分のチーム予定から推計）
-    // person 名は team_schedules では「西野」「川村」「大隅」、currentSurname は display_name の先頭 token
-    // ("西野 鷹也" → "西野"、"川村卓也" → "川村卓也") なので互換マッチで判定
-    const personMatches = (person: string) =>
-      !!currentSurname && (person === currentSurname || currentSurname.includes(person) || person.includes(currentSurname))
-
-    let plannedLiving = 0
-    let plannedTama = 0
-    // 本日までの予定 (今日時点で消化されていなければならない予定時間)
-    let plannedLivingToToday = 0
-    let plannedTamaToToday = 0
-    const today = new Date()
-    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-    if (currentSurname) {
-      teamSchedules.forEach((entry) => {
-        if (!personMatches(entry.person)) return
-        if (entry.date < periodStart || entry.date > periodEnd) return
-        const dt = new Date(entry.date)
-        const eh = expectedHours(entry.status, dt.getDay())
-        plannedLiving += eh.living
-        plannedTama += eh.tama
-        if (entry.date <= todayIso) {
-          plannedLivingToToday += eh.living
-          plannedTamaToToday += eh.tama
-        }
-      })
-    }
-
     return {
-      livingHours, tamaHours, plannedLiving, plannedTama, plannedLivingToToday, plannedTamaToToday,
-      transportWorkedDays, transportDistanceKm, transportWorkedHours, transportOvertimeHours, periodStart, periodEnd,
+      ...summarizeReports(reports, periodStart, periodEnd, paySetting),
+      ...summarizeSchedules(teamSchedules, currentSurname, periodStart, periodEnd, isoToday()),
+      periodStart,
+      periodEnd,
     }
   }, [reports, year, month, teamSchedules, currentSurname, closingDay, paySetting])
 
@@ -317,12 +327,35 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                   <tr>
                     <td className="text-left pr-2 text-[var(--color-text-sub)] font-semibold">合計</td>
                     <td className="text-right px-2 text-sky-700 font-semibold">{periodTotals.transportWorkedDays}日</td>
-                    <td className="text-right px-2 text-indigo-700 font-semibold">{periodTotals.transportWorkedHours.toFixed(1)}h</td>
+                    <td className="text-right px-2 text-indigo-700 font-semibold">{periodTotals.transportHours.toFixed(1)}h</td>
                     {isDailyPay(paySetting) && (
                       <td className="text-right px-2 text-rose-700 font-semibold">{periodTotals.transportOvertimeHours.toFixed(1)}h</td>
                     )}
                     <td className="text-right pl-2 text-emerald-700 font-semibold">{periodTotals.transportDistanceKm.toFixed(1)}km</td>
                   </tr>
+                  {/* 表示チェックを入れたメンバー(外注ドライバー等)。時間外は本人の契約時間に依存するので出さない */}
+                  {memberTotals.length > 0 && (
+                    <tr>
+                      <td colSpan={isDailyPay(paySetting) ? 5 : 4} className="pt-1 text-left text-[9px] text-[var(--color-text-sub)]">表示中のメンバー</td>
+                    </tr>
+                  )}
+                  {memberTotals.map((member) => {
+                    const color = colorForUser(member.userId)
+                    return (
+                      <tr key={member.userId}>
+                        <td className="text-left pr-2 whitespace-nowrap" style={{ color: color.text }}>
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ backgroundColor: color.base }} />
+                          {member.surname}
+                        </td>
+                        <td className="text-right px-2 text-sky-700">{member.transportWorkedDays}日</td>
+                        <td className="text-right px-2 text-indigo-700">{member.transportHours.toFixed(1)}h</td>
+                        {isDailyPay(paySetting) && (
+                          <td className="text-right px-2 text-[var(--color-text-sub)]" title="時間外はご本人の契約時間で判定するため出していません">—</td>
+                        )}
+                        <td className="text-right pl-2 text-emerald-700">{member.transportDistanceKm.toFixed(1)}km</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (
@@ -364,26 +397,57 @@ export default function CalendarView({ year, month, reports, expenses, teamSched
                     )
                   })()}
                   {/* 表示チェックを入れたメンバーの工数合計。カレンダーのチップと同じ色で並べる */}
+                  {/* 表示チェックを入れたメンバー。主体と同じ 予定/実績/差 をその人の色で並べる */}
                   {memberTotals.length > 0 && (
                     <tr>
-                      <td colSpan={4} className="pt-1 text-left text-[9px] text-[var(--color-text-sub)]">表示中のメンバー（実績）</td>
+                      <td colSpan={4} className="pt-1 text-left text-[9px] text-[var(--color-text-sub)]">表示中のメンバー</td>
                     </tr>
                   )}
                   {memberTotals.map((member) => {
                     const color = colorForUser(member.userId)
+                    const diffLiving = member.livingHours - member.plannedLivingToToday
+                    const diffTama = member.tamaHours - member.plannedTamaToToday
+                    const fmtDiff = (value: number) => `${value > 0 ? '+' : value < 0 ? '' : '±'}${value.toFixed(1)}h`
+                    const diffClass = (value: number) =>
+                      value > 0 ? 'text-emerald-600 font-semibold' : value < 0 ? 'text-red-500 font-semibold' : 'text-[var(--color-text-sub)]'
+                    const noPlan = <td className="text-right px-2 text-[var(--color-text-sub)]">—</td>
                     return (
-                      <tr
-                        key={member.userId}
-                        title={member.transportHours > 0 ? `運送 ${member.transportHours.toFixed(1)}h を合計に含む` : undefined}
-                      >
-                        <td className="text-left pr-2 whitespace-nowrap" style={{ color: color.text }}>
-                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ backgroundColor: color.base }} />
-                          {member.surname}
-                        </td>
-                        <td className="text-right px-2 text-violet-700">{member.livingHours.toFixed(1)}h</td>
-                        <td className="text-right px-2 text-emerald-700">{member.tamaHours.toFixed(1)}h</td>
-                        <td className="text-right pl-2 font-semibold" style={{ color: color.text }}>{member.totalHours.toFixed(1)}h</td>
-                      </tr>
+                      <Fragment key={member.userId}>
+                        <tr title={member.hasSchedule ? undefined : 'チーム予定にこの人の行が無いので予定は出せません'}>
+                          <td className="text-left pr-2 whitespace-nowrap" style={{ color: color.text }}>
+                            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ backgroundColor: color.base }} />
+                            {member.surname}
+                            <span className="ml-1 text-[9px] text-[var(--color-text-sub)]">予定</span>
+                          </td>
+                          {member.hasSchedule ? (
+                            <>
+                              <td className="text-right px-2 text-violet-500">{member.plannedLiving.toFixed(1)}h</td>
+                              <td className="text-right px-2 text-emerald-500">{member.plannedTama.toFixed(1)}h</td>
+                              <td className="text-right pl-2 text-amber-500">{(member.plannedLiving + member.plannedTama).toFixed(1)}h</td>
+                            </>
+                          ) : (
+                            <>{noPlan}{noPlan}{noPlan}</>
+                          )}
+                        </tr>
+                        <tr title={member.transportHours > 0 ? `運送 ${member.transportHours.toFixed(1)}h を合計に含む` : undefined}>
+                          <td className="text-left pr-2 pl-3 text-[9px] text-[var(--color-text-sub)]">実績</td>
+                          <td className="text-right px-2 text-violet-700">{member.livingHours.toFixed(1)}h</td>
+                          <td className="text-right px-2 text-emerald-700">{member.tamaHours.toFixed(1)}h</td>
+                          <td className="text-right pl-2 font-semibold" style={{ color: color.text }}>{member.totalHours.toFixed(1)}h</td>
+                        </tr>
+                        <tr title="本日までの予定との差 (+ なら進捗、- なら遅れ)">
+                          <td className="text-left pr-2 pl-3 text-[9px] text-[var(--color-text-sub)]">差(本日)</td>
+                          {member.hasSchedule ? (
+                            <>
+                              <td className={`text-right px-2 ${diffClass(diffLiving)}`}>{fmtDiff(diffLiving)}</td>
+                              <td className={`text-right px-2 ${diffClass(diffTama)}`}>{fmtDiff(diffTama)}</td>
+                              <td className={`text-right pl-2 ${diffClass(diffLiving + diffTama)}`}>{fmtDiff(diffLiving + diffTama)}</td>
+                            </>
+                          ) : (
+                            <>{noPlan}{noPlan}{noPlan}</>
+                          )}
+                        </tr>
+                      </Fragment>
                     )
                   })}
                 </tbody>
