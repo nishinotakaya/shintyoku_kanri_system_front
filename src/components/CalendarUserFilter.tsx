@@ -35,6 +35,9 @@ export default function CalendarUserFilter({
   // 自分は常に緑、ほかのメンバーはIDで決まる色。主体になっても日セルのチップと同じ色で出す
   const colorOf = (userId: number) => (meId != null && userId === meId ? SELF_COLOR : colorForUser(userId))
 
+  // ボタンの「＋n人」は実際に重ねて表示している人数。主体のカレンダーは重ねていないので数えない
+  const overlayCount = visibleUserIds.filter((userId) => userId !== primaryUserId).length
+
   const others = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     return users
@@ -63,7 +66,7 @@ export default function CalendarUserFilter({
         title="カレンダーに表示するメンバー"
       >
         {isSelfPrimary ? '👥 表示するメンバー' : `👤 ${surnameOf(primaryUser?.display_name)}さんのカレンダー`}
-        {visibleUserIds.length > 0 && ` ＋${visibleUserIds.length}人`} ▾
+        {overlayCount > 0 && ` ＋${overlayCount}人`} ▾
       </button>
 
       {open && (
