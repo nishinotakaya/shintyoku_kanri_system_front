@@ -208,7 +208,7 @@ export default function BusinessExpensesPage() {
 
   // 月次一覧のチェックボックス選択（一括freee連携・一括削除用）
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [bulkBusy, setBulkBusy] = useState<'freee' | 'delete' | null>(null)
+  const [bulkBusy, setBulkBusy] = useState<'freee' | 'delete' | 'classify' | null>(null)
 
   const load = async () => {
     const r = await api.get<{ expenses: BusinessExpense[]; summary: Summary }>('/business_expenses', { params: { month } })
@@ -383,7 +383,8 @@ export default function BusinessExpensesPage() {
   const registerBankTxn = async (txn: BankTxn) => {
     setFreeeBusy(`reg:${txn.id}`)
     try {
-      await api.post(`/bank_transactions/${txn.id}/register`, { account_category: txn.suggested_account_item })
+      // 科目はサーバー側(摘要ルール→AI→freee推奨)が決める。freee の推奨は当てにならないので送らない
+      await api.post(`/bank_transactions/${txn.id}/register`, {})
       setBankTxns((prev) => prev.filter((t) => t.id !== txn.id))
       await Promise.all([load(), loadTax()])
     } catch (e: any) {
@@ -561,6 +562,8 @@ export default function BusinessExpensesPage() {
 
   const filtered = useMemo(() => (catFilter ? items.filter((it) => it.account_category === catFilter) : items), [items, catFilter])
   const maxCatTotal = Math.max(1, ...(summary?.by_category.map((c) => c.total) ?? [1]))
+  // 勘定科目が入っていない経費（対象外は集計に入らないので除く）。AI仕訳バナーの出し分けに使う
+  const uncategorizedCount = items.filter((it) => !it.account_category && it.status !== 'excluded').length
   // 免税事業者からの外注費仕入税額控除率（経過措置）の表示用テキスト。例: 「1〜9月分=80% / 10〜12月分=70%」
   // 控除率は日付で変わる値なので、API から帯が取れないときは具体的な数値を出さない
   const exemptSupplierDeductionBands = tax?.consumption_tax.exempt_supplier_deduction_bands
@@ -621,6 +624,23 @@ export default function BusinessExpensesPage() {
       await load()
     } catch (e: any) {
       setMsg(`freee連携失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    } finally { setBulkBusy(null) }
+  }
+  // 未分類のまま登録された経費に AI が勘定科目を入れる。
+  // 選択中があればその中の未分類だけ、無ければ表示中の月の未分類すべてが対象。
+  const classifyUncategorized = async () => {
+    const ids = Array.from(selectedIds)
+    setBulkBusy('classify')
+    try {
+      const r = await api.post<{ updated: number; skipped: number; total: number }>(
+        '/business_expenses/classify_uncategorized', ids.length > 0 ? { ids } : { month })
+      setMsg(r.data.total === 0
+        ? '未分類の経費はありません'
+        : `🤖 ${r.data.updated}件にAIが勘定科目を入れました${r.data.skipped > 0 ? `（判定できず ${r.data.skipped}件）` : ''}`)
+      await load()
+      if (view === 'year') await loadTax()
+    } catch (e: any) {
+      setMsg(`AI仕訳失敗: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     } finally { setBulkBusy(null) }
   }
   const bulkDestroy = async () => {
@@ -722,6 +742,16 @@ export default function BusinessExpensesPage() {
             </div>
           )}
 
+          {uncategorizedCount > 0 && (
+            <button onClick={classifyUncategorized} disabled={!!bulkBusy}
+              className="w-full rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-100 disabled:opacity-50"
+              title="摘要からAIが勘定科目を判定して入れます。確信度が低いものは要確認として残ります">
+              {bulkBusy === 'classify'
+                ? '🤖 AIが仕訳中…'
+                : <>🗂 勘定科目が未分類の経費が {uncategorizedCount} 件あります <span className="font-semibold underline">AIに決めてもらう →</span></>}
+            </button>
+          )}
+
           {summary && summary.by_category.length > 0 && (
             <div className="rounded-xl border border-[var(--color-border)] bg-white p-3 space-y-1.5">
               {summary.by_category.slice(0, 5).map((c) => (
@@ -755,6 +785,11 @@ export default function BusinessExpensesPage() {
                     className="rounded-lg bg-[#2864f0] px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50"
                     title="選択した経費のうちfreee未連携分を一括計上">
                     {bulkBusy === 'freee' ? '連携中…' : `🟦 選択${selectedIds.size}件を freee 連携`}
+                  </button>
+                  <button onClick={classifyUncategorized} disabled={!!bulkBusy}
+                    className="rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50"
+                    title="選択した経費のうち未分類のものにAIが勘定科目を入れる">
+                    {bulkBusy === 'classify' ? '仕訳中…' : `🤖 選択${selectedIds.size}件をAIで仕訳`}
                   </button>
                   <button onClick={bulkDestroy} disabled={!!bulkBusy}
                     className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90 disabled:opacity-50">
@@ -869,7 +904,7 @@ export default function BusinessExpensesPage() {
                         <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{yen(t.amount)}</span>
                         <button onClick={() => registerBankTxn(t)} disabled={!!freeeBusy}
                           className="shrink-0 rounded bg-[#2864f0] px-2 py-0.5 text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                          title={t.suggested_account_item ? `${t.suggested_account_item} として事業経費で登録` : '事業経費で登録'}>
+                          title="AIが勘定科目を判定して事業経費に登録（判定できなければ要確認で残る）">
                           {freeeBusy === `reg:${t.id}` ? '…' : '事業で登録'}
                         </button>
                         <button onClick={() => markPrivateTxn(t)} disabled={!!freeeBusy}
@@ -1102,7 +1137,7 @@ export default function BusinessExpensesPage() {
               <div className="text-sm font-bold text-[#1a3a7a]">🧾 自動で経理（freee 未処理明細）</div>
               <button onClick={() => setWalletRows(null)} className="text-[var(--color-text-sub)] hover:text-red-500">✕</button>
             </div>
-            <div className="mb-2 text-[11px] text-[var(--color-text-sub)]">銀行・カードの未登録の明細です。freeeの推奨科目が入っています。科目を確認・変更して、チェックした行を経費に反映します。</div>
+            <div className="mb-2 text-[11px] text-[var(--color-text-sub)]">銀行・カードの未登録の明細です。<b>AIが判定した勘定科目</b>が入っています（freeeの推奨より摘要からの判定を優先）。科目を確認・変更して、チェックした行を経費に反映します。</div>
             <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--color-border)]">
               {walletRows.map((row, i) => (
                 <div key={row.import_hash} className={`flex items-center gap-2 border-b border-gray-50 px-2 py-1.5 text-xs last:border-b-0 ${row.duplicate ? 'opacity-40' : ''}`}>
