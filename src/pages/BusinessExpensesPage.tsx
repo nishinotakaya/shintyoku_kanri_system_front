@@ -495,6 +495,18 @@ export default function BusinessExpensesPage() {
       setMsg(`対象外にできませんでした: ${e?.response?.data?.error ?? e?.message ?? ''}`)
     }
   }
+  // 確定済みの行を要確認に戻す。AIの判定に納得がいかない行を保留しておくために使う
+  const markNeedsReview = async () => {
+    if (!editing) return
+    try {
+      await api.patch(`/business_expenses/${editing.id}`, { status: 'needs_review' })
+      setEditing(null)
+      await load()
+      setMsg('⚠️ 要確認に戻しました')
+    } catch (e: any) {
+      setMsg(`要確認に戻せませんでした: ${e?.response?.data?.error ?? e?.message ?? ''}`)
+    }
+  }
   const restoreExcluded = async () => {
     if (!editing) return
     try {
@@ -1251,6 +1263,9 @@ export default function BusinessExpensesPage() {
                   {editing.status === 'excluded'
                     ? <button onClick={restoreExcluded} className="rounded-md border border-gray-300 px-3 py-2 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="集計に戻す">↩ 対象外を解除</button>
                     : <button onClick={() => setExcludeReasonDraft((prev) => (prev === null ? '' : null))} className="rounded-md border border-gray-300 px-3 py-2 text-xs text-[var(--color-text-sub)] hover:bg-gray-50" title="行を残したまま集計から外す（削除すると freee 再取込で復活するため）">⛔ 対象外</button>}
+                  {editing.status === 'confirmed' && (
+                    <button onClick={markNeedsReview} className="rounded-md border border-amber-300 px-3 py-2 text-xs text-amber-700 hover:bg-amber-50" title="判断を保留して要確認に戻す">⚠️ 要確認に戻す</button>
+                  )}
                   {editing.status === 'needs_review'
                     ? <button onClick={saveAndAdvanceReview} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 確認して次へ</button>
                     : <button onClick={() => saveEditing()} className="flex-1 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow">✓ 保存</button>}
