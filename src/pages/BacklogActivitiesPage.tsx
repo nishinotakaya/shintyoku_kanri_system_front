@@ -849,12 +849,63 @@ function StatusBadge({ status, muted }: { status: string | null; muted?: boolean
 const WBS_EXCEL_FONT_FAMILY = '"Meiryo UI", Meiryo, sans-serif'
 
 // 開始日・終了日の期間フィルター。各境界は yyyy-mm-dd(空文字は制限なし)。
-type WbsDateFilter = { startFrom: string; startTo: string; endFrom: string; endTo: string }
-const EMPTY_WBS_DATE_FILTER: WbsDateFilter = { startFrom: '', startTo: '', endFrom: '', endTo: '' }
+// WBS 表の列(WBSレベル/タスク/担当者/進捗率/工数/開始/終了)ごとの絞り込み条件。値は修正後があればその値で判定する。
+type WbsProgressFilter = '' | 'not_started' | 'in_progress' | 'done'
+type WbsFilter = {
+  wbsLevel: string
+  title: string
+  assignee: string
+  progress: WbsProgressFilter
+  workloadMin: string
+  workloadMax: string
+  startFrom: string
+  startTo: string
+  endFrom: string
+  endTo: string
+}
+const EMPTY_WBS_FILTER: WbsFilter = {
+  wbsLevel: '', title: '', assignee: '', progress: '', workloadMin: '', workloadMax: '', startFrom: '', startTo: '', endFrom: '', endTo: '',
+}
+const WBS_PROGRESS_FILTER_OPTIONS: { value: WbsProgressFilter; label: string }[] = [
+  { value: '', label: '全て' },
+  { value: 'not_started', label: '未着手 (0%)' },
+  { value: 'in_progress', label: '進行中 (1〜99%)' },
+  { value: 'done', label: '完了 (100%)' },
+]
+const WBS_TEXT_FILTER_INPUT_CLASS = 'rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs'
 const WBS_DATE_FILTER_INPUT_CLASS = 'rounded border border-slate-300 bg-white px-1 py-0.5 text-xs'
 
 // yyyy-mm-dd の日付が from〜to に収まるか(文字列比較で日付順になる)。境界が空なら制限なし。
 // 境界が指定されているのに日付が無いタスクは「期間に入らない」として除外する。
+function matchesProgressFilter(progressRate: number | null, progressFilter: WbsProgressFilter): boolean {
+  if (progressFilter === '') return true
+  const progressPercent = Math.round((progressRate ?? 0) * 100)
+  if (progressFilter === 'not_started') return progressPercent <= 0
+  if (progressFilter === 'done') return progressPercent >= 100
+  return progressPercent > 0 && progressPercent < 100
+}
+
+function isWorkloadWithinBounds(workload: number | null, minText: string, maxText: string): boolean {
+  if (minText === '' && maxText === '') return true
+  if (workload == null) return false
+  if (minText !== '' && workload < Number(minText)) return false
+  if (maxText !== '' && workload > Number(maxText)) return false
+  return true
+}
+
+function matchesWbsFilter(task: NotionTaskOption, filter: WbsFilter): boolean {
+  const wbsLevelQuery = filter.wbsLevel.trim()
+  if (wbsLevelQuery && !(task.wbs_level ?? '').startsWith(wbsLevelQuery)) return false
+  const titleQuery = filter.title.trim().toLowerCase()
+  if (titleQuery && !(effectiveTaskValue(task, 'title') ?? '').toLowerCase().includes(titleQuery)) return false
+  if (filter.assignee && effectiveTaskValue(task, 'assignee_name') !== filter.assignee) return false
+  if (!matchesProgressFilter(effectiveTaskValue(task, 'progress_rate'), filter.progress)) return false
+  if (!isWorkloadWithinBounds(effectiveTaskValue(task, 'workload'), filter.workloadMin, filter.workloadMax)) return false
+  if (!isDateWithinBounds(effectiveTaskValue(task, 'start_date'), filter.startFrom, filter.startTo)) return false
+  if (!isDateWithinBounds(effectiveTaskValue(task, 'end_date'), filter.endFrom, filter.endTo)) return false
+  return true
+}
+
 function isDateWithinBounds(dateValue: string | null, from: string, to: string): boolean {
   if (!from && !to) return true
   if (!dateValue) return false
@@ -875,8 +926,7 @@ function NotionView({ tasks, onPatch, onReload }: {
   onPatch: (notionBlockId: string, patch: Record<string, string>) => void
   onReload: () => Promise<void>
 }) {
-  const [assigneeFilter, setAssigneeFilter] = useState('')
-  const [dateFilter, setDateFilter] = useState<WbsDateFilter>(EMPTY_WBS_DATE_FILTER)
+  const [wbsFilter, setWbsFilter] = useState<WbsFilter>(EMPTY_WBS_FILTER)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
   const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
@@ -899,18 +949,13 @@ function NotionView({ tasks, onPatch, onReload }: {
     [tasks],
   )
 
-  const sortedTasks = useMemo(() => {
-    const filtered = tasks.filter((task) => {
-      if (assigneeFilter && effectiveTaskValue(task, 'assignee_name') !== assigneeFilter) return false
-      if (!isDateWithinBounds(effectiveTaskValue(task, 'start_date'), dateFilter.startFrom, dateFilter.startTo)) return false
-      if (!isDateWithinBounds(effectiveTaskValue(task, 'end_date'), dateFilter.endFrom, dateFilter.endTo)) return false
-      return true
-    })
-    return [...filtered].sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level))
-  }, [tasks, assigneeFilter, dateFilter])
-  const isFiltered = assigneeFilter !== '' || dateFilter !== EMPTY_WBS_DATE_FILTER
-  const clearFilters = () => { setAssigneeFilter(''); setDateFilter(EMPTY_WBS_DATE_FILTER) }
-  const updateDateFilter = (key: keyof WbsDateFilter, value: string) => setDateFilter((prev) => ({ ...prev, [key]: value }))
+  const sortedTasks = useMemo(
+    () => tasks.filter((task) => matchesWbsFilter(task, wbsFilter)).sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level)),
+    [tasks, wbsFilter],
+  )
+  const isFiltered = Object.values(wbsFilter).some((value) => value !== '')
+  const clearFilters = () => setWbsFilter(EMPTY_WBS_FILTER)
+  const updateWbsFilter = <Key extends keyof WbsFilter>(key: Key, value: WbsFilter[Key]) => setWbsFilter((prev) => ({ ...prev, [key]: value }))
 
   // スクロール枠の幅(固定列の可否の判定に使う)。枠はタスクがある時だけ描画される。
   const scrollContainerWidthPx = useScrollContainerWidthPx(scrollContainerRef, tasks.length > 0)
@@ -1123,26 +1168,48 @@ function NotionView({ tasks, onPatch, onReload }: {
         >
           {markingSubmitted ? '更新中…' : `✅ 提出済にする（変更 ${unsubmittedChangeCount} 件）`}
         </button>
-        <span className="mx-1 h-5 w-px bg-slate-300" />
-        <label className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        <span className="text-xs font-semibold text-slate-600">絞り込み</span>
+        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+          WBSレベル
+          <input type="text" value={wbsFilter.wbsLevel} onChange={(e) => updateWbsFilter('wbsLevel', e.target.value)} placeholder="例: 1.2" className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-16`} title="入力した番号で始まる WBS レベル(配下を含む)" />
+        </label>
+        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+          タスク
+          <input type="search" value={wbsFilter.title} onChange={(e) => updateWbsFilter('title', e.target.value)} placeholder="タスク名で検索" className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-40`} />
+        </label>
+        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
           担当者
-          <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="rounded border border-slate-300 bg-white px-1.5 py-1 text-xs">
+          <select value={wbsFilter.assignee} onChange={(e) => updateWbsFilter('assignee', e.target.value)} className={WBS_TEXT_FILTER_INPUT_CLASS}>
             <option value="">全て</option>
             {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
-        <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
-          開始日
-          <input type="date" value={dateFilter.startFrom} onChange={(e) => updateDateFilter('startFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に開始するタスク" />
+        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+          進捗率
+          <select value={wbsFilter.progress} onChange={(e) => updateWbsFilter('progress', e.target.value as WbsProgressFilter)} className={WBS_TEXT_FILTER_INPUT_CLASS}>
+            {WBS_PROGRESS_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+          工数
+          <input type="number" min={0} step={0.5} value={wbsFilter.workloadMin} onChange={(e) => updateWbsFilter('workloadMin', e.target.value)} className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-14`} title="この人日以上" />
           〜
-          <input type="date" value={dateFilter.startTo} onChange={(e) => updateDateFilter('startTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに開始するタスク" />
+          <input type="number" min={0} step={0.5} value={wbsFilter.workloadMax} onChange={(e) => updateWbsFilter('workloadMax', e.target.value)} className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-14`} title="この人日以下" />
         </label>
         <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
-          終了日
-          <input type="date" value={dateFilter.endFrom} onChange={(e) => updateDateFilter('endFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に終了するタスク" />
+          開始
+          <input type="date" value={wbsFilter.startFrom} onChange={(e) => updateWbsFilter('startFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に開始するタスク" />
           〜
-          <input type="date" value={dateFilter.endTo} onChange={(e) => updateDateFilter('endTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに終了するタスク" />
+          <input type="date" value={wbsFilter.startTo} onChange={(e) => updateWbsFilter('startTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに開始するタスク" />
+        </label>
+        <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
+          終了
+          <input type="date" value={wbsFilter.endFrom} onChange={(e) => updateWbsFilter('endFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に終了するタスク" />
+          〜
+          <input type="date" value={wbsFilter.endTo} onChange={(e) => updateWbsFilter('endTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに終了するタスク" />
         </label>
         {isFiltered && (
           <span className="inline-flex items-center gap-2 text-xs text-slate-500">
