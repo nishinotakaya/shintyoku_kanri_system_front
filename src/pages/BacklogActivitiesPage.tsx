@@ -1237,10 +1237,11 @@ function NotionView({ tasks, onPatch, onReload }: {
                         borderBottom: `2px solid ${WBS_EXCEL_COLORS.borderMedium}`, // Excel 行7 は B〜H に縦罫線なし・下罫線 medium のみ
                         boxShadow: `1px 0 0 0 ${WBS_EXCEL_COLORS.headerBackground}`, // sticky セルは別レイヤーに描かれ境界に 1px の継ぎ目が出るので、同色の影で右隣へ 1px 重ねて埋める
                       }}
-                      className={`${stickyColumnsEnabled ? 'sticky z-40' : ''} whitespace-pre-line px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
+                      className={`${stickyColumnsEnabled ? 'sticky z-40' : 'relative'} whitespace-pre-line px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
                     >
-                      <div className={`flex items-center gap-1 ${column.align === 'left' ? 'justify-between' : 'justify-center'}`}>
-                        <span>{column.label}</span>
+                      {column.label}
+                      {/* 狭い列(進捗率・工数など)でも見出しが折れないよう、フィルタボタンはセル右下に重ねる */}
+                      <span className="absolute bottom-1 right-1">
                         <SheetColumnFilter
                           columnLabel={column.label.replace('\n', '')}
                           options={wbsColumnFilterOptions(tasks, columnFilters, column.key)}
@@ -1249,7 +1250,7 @@ function NotionView({ tasks, onPatch, onReload }: {
                           onApply={(selectedValues) => applyColumnFilter(column.key, selectedValues)}
                           onSort={(direction) => setWbsSort({ columnKey: column.key, direction })}
                         />
-                      </div>
+                      </span>
                     </th>
                   ))}
                   <th rowSpan={3} className="border-0 bg-white p-0" />
