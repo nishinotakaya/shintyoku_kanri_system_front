@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type Re
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
 import { downloadBlob } from '../lib/downloadBlob'
+import { SheetColumnFilter, type SheetColumnFilterOption, type SheetSortDirection } from '../components/SheetColumnFilter'
 import { effectiveTaskValue, hasTaskOverride, isRedCell, type NotionTaskEffectiveField } from '../lib/notionTaskEffective'
 import {
   DAY_WIDTH_PX,
@@ -848,70 +849,72 @@ function StatusBadge({ status, muted }: { status: string | null; muted?: boolean
 // 元 xlsm の本文フォント。プロジェクト情報行〜表全体で共通して使う。
 const WBS_EXCEL_FONT_FAMILY = '"Meiryo UI", Meiryo, sans-serif'
 
-// 開始日・終了日の期間フィルター。各境界は yyyy-mm-dd(空文字は制限なし)。
-// WBS 表の列(WBSレベル/タスク/担当者/進捗率/工数/開始/終了)ごとの絞り込み条件。値は修正後があればその値で判定する。
-type WbsProgressFilter = '' | 'not_started' | 'in_progress' | 'done'
-type WbsFilter = {
-  wbsLevel: string
-  title: string
-  assignee: string
-  progress: WbsProgressFilter
-  workloadMin: string
-  workloadMax: string
-  startFrom: string
-  startTo: string
-  endFrom: string
-  endTo: string
-}
-const EMPTY_WBS_FILTER: WbsFilter = {
-  wbsLevel: '', title: '', assignee: '', progress: '', workloadMin: '', workloadMax: '', startFrom: '', startTo: '', endFrom: '', endTo: '',
-}
-const WBS_PROGRESS_FILTER_OPTIONS: { value: WbsProgressFilter; label: string }[] = [
-  { value: '', label: '全て' },
-  { value: 'not_started', label: '未着手 (0%)' },
-  { value: 'in_progress', label: '進行中 (1〜99%)' },
-  { value: 'done', label: '完了 (100%)' },
-]
-const WBS_TEXT_FILTER_INPUT_CLASS = 'rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs'
-const WBS_DATE_FILTER_INPUT_CLASS = 'rounded border border-slate-300 bg-white px-1 py-0.5 text-xs'
+// WBS 表の列見出しフィルタ(スプレッドシートと同じ「値でフィルタ」＋並べ替え)。値は修正後があればその値で判定する。
+type WbsColumnKey = (typeof WBS_TABLE_COLUMNS)[number]['key']
+type WbsColumnFilters = Partial<Record<WbsColumnKey, string[]>>
+type WbsSort = { columnKey: WbsColumnKey; direction: SheetSortDirection } | null
+const BLANK_FILTER_LABEL = '(空白)'
 
-// yyyy-mm-dd の日付が from〜to に収まるか(文字列比較で日付順になる)。境界が空なら制限なし。
-// 境界が指定されているのに日付が無いタスクは「期間に入らない」として除外する。
-function matchesProgressFilter(progressRate: number | null, progressFilter: WbsProgressFilter): boolean {
-  if (progressFilter === '') return true
-  const progressPercent = Math.round((progressRate ?? 0) * 100)
-  if (progressFilter === 'not_started') return progressPercent <= 0
-  if (progressFilter === 'done') return progressPercent >= 100
-  return progressPercent > 0 && progressPercent < 100
+// 列ごとのセル値。value はフィルタ・並べ替えのキー、label はフィルタ一覧に出す表示値。
+function wbsColumnCell(task: NotionTaskOption, columnKey: WbsColumnKey): { value: string; label: string } {
+  switch (columnKey) {
+    case 'wbs_level': {
+      const wbsLevel = task.wbs_level ?? ''
+      return { value: wbsLevel, label: wbsLevel }
+    }
+    case 'title':
+    case 'assignee_name': {
+      const text = effectiveTaskValue(task, columnKey) ?? ''
+      return { value: text, label: text }
+    }
+    case 'progress_rate': {
+      const progressLabel = `${Math.round((effectiveTaskValue(task, 'progress_rate') ?? 0) * 100)}%`
+      return { value: progressLabel, label: progressLabel }
+    }
+    case 'workload': {
+      const workload = effectiveTaskValue(task, 'workload')
+      const workloadText = workload == null ? '' : String(workload)
+      return { value: workloadText, label: workloadText }
+    }
+    case 'start_date':
+    case 'end_date': {
+      const dateText = effectiveTaskValue(task, columnKey) ?? ''
+      return { value: dateText, label: dateText ? `${formatDateAsMonthDay(dateText)}（${dateText.slice(0, 4)}年）` : '' }
+    }
+  }
 }
 
-function isWorkloadWithinBounds(workload: number | null, minText: string, maxText: string): boolean {
-  if (minText === '' && maxText === '') return true
-  if (workload == null) return false
-  if (minText !== '' && workload < Number(minText)) return false
-  if (maxText !== '' && workload > Number(maxText)) return false
-  return true
+// 空白は昇順・降順どちらでも末尾に置く(スプレッドシートと同じ)。
+function compareWbsColumnValues(columnKey: WbsColumnKey, leftValue: string, rightValue: string): number {
+  if (leftValue === rightValue) return 0
+  if (leftValue === '') return 1
+  if (rightValue === '') return -1
+  if (columnKey === 'wbs_level') return compareWbsLevel(leftValue, rightValue)
+  if (columnKey === 'progress_rate' || columnKey === 'workload') return parseFloat(leftValue) - parseFloat(rightValue)
+  return leftValue.localeCompare(rightValue, 'ja')
 }
 
-function matchesWbsFilter(task: NotionTaskOption, filter: WbsFilter): boolean {
-  const wbsLevelQuery = filter.wbsLevel.trim()
-  if (wbsLevelQuery && !(task.wbs_level ?? '').startsWith(wbsLevelQuery)) return false
-  const titleQuery = filter.title.trim().toLowerCase()
-  if (titleQuery && !(effectiveTaskValue(task, 'title') ?? '').toLowerCase().includes(titleQuery)) return false
-  if (filter.assignee && effectiveTaskValue(task, 'assignee_name') !== filter.assignee) return false
-  if (!matchesProgressFilter(effectiveTaskValue(task, 'progress_rate'), filter.progress)) return false
-  if (!isWorkloadWithinBounds(effectiveTaskValue(task, 'workload'), filter.workloadMin, filter.workloadMax)) return false
-  if (!isDateWithinBounds(effectiveTaskValue(task, 'start_date'), filter.startFrom, filter.startTo)) return false
-  if (!isDateWithinBounds(effectiveTaskValue(task, 'end_date'), filter.endFrom, filter.endTo)) return false
-  return true
+function matchesWbsColumnFilters(task: NotionTaskOption, columnFilters: WbsColumnFilters, ignoredColumnKey?: WbsColumnKey): boolean {
+  return Object.entries(columnFilters).every(([columnKey, selectedValues]) => {
+    if (columnKey === ignoredColumnKey || !selectedValues) return true
+    return selectedValues.includes(wbsColumnCell(task, columnKey as WbsColumnKey).value)
+  })
 }
 
-function isDateWithinBounds(dateValue: string | null, from: string, to: string): boolean {
-  if (!from && !to) return true
-  if (!dateValue) return false
-  if (from && dateValue < from) return false
-  if (to && dateValue > to) return false
-  return true
+// フィルタ一覧の候補は「他の列のフィルタを通った行」の値(Excel のオートフィルタと同じ)。選択中の値は件数0でも残す。
+function wbsColumnFilterOptions(tasks: NotionTaskOption[], columnFilters: WbsColumnFilters, columnKey: WbsColumnKey): SheetColumnFilterOption[] {
+  const optionsByValue = new Map<string, SheetColumnFilterOption>()
+  for (const task of tasks) {
+    if (!matchesWbsColumnFilters(task, columnFilters, columnKey)) continue
+    const cell = wbsColumnCell(task, columnKey)
+    const existingOption = optionsByValue.get(cell.value)
+    if (existingOption) existingOption.count += 1
+    else optionsByValue.set(cell.value, { value: cell.value, label: cell.label || BLANK_FILTER_LABEL, count: 1 })
+  }
+  for (const selectedValue of columnFilters[columnKey] ?? []) {
+    if (!optionsByValue.has(selectedValue)) optionsByValue.set(selectedValue, { value: selectedValue, label: selectedValue || BLANK_FILTER_LABEL, count: 0 })
+  }
+  return [...optionsByValue.values()].sort((left, right) => compareWbsColumnValues(columnKey, left.value, right.value))
 }
 
 // 固定列(WBS_TABLE_COLUMNS)の右に最低これだけガントが見える幅が無いときは、列を固定せず表全体を横スクロールさせる。
@@ -926,7 +929,8 @@ function NotionView({ tasks, onPatch, onReload }: {
   onPatch: (notionBlockId: string, patch: Record<string, string>) => void
   onReload: () => Promise<void>
 }) {
-  const [wbsFilter, setWbsFilter] = useState<WbsFilter>(EMPTY_WBS_FILTER)
+  const [columnFilters, setColumnFilters] = useState<WbsColumnFilters>({})
+  const [wbsSort, setWbsSort] = useState<WbsSort>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
   const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
@@ -944,18 +948,26 @@ function NotionView({ tasks, onPatch, onReload }: {
       .finally(() => setExcelTemplateLoaded(true))
   }, [])
 
-  const assignees = useMemo(
-    () => [...new Set(tasks.map((task) => effectiveTaskValue(task, 'assignee_name')).filter((name): name is string => !!name))],
-    [tasks],
-  )
-
-  const sortedTasks = useMemo(
-    () => tasks.filter((task) => matchesWbsFilter(task, wbsFilter)).sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level)),
-    [tasks, wbsFilter],
-  )
-  const isFiltered = Object.values(wbsFilter).some((value) => value !== '')
-  const clearFilters = () => setWbsFilter(EMPTY_WBS_FILTER)
-  const updateWbsFilter = <Key extends keyof WbsFilter>(key: Key, value: WbsFilter[Key]) => setWbsFilter((prev) => ({ ...prev, [key]: value }))
+  const sortedTasks = useMemo(() => {
+    const filteredTasks = tasks.filter((task) => matchesWbsColumnFilters(task, columnFilters))
+    if (!wbsSort) return filteredTasks.sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level))
+    const directionSign = wbsSort.direction === 'asc' ? 1 : -1
+    return filteredTasks.sort((a, b) => {
+      const leftValue = wbsColumnCell(a, wbsSort.columnKey).value
+      const rightValue = wbsColumnCell(b, wbsSort.columnKey).value
+      if (leftValue === '' || rightValue === '') return compareWbsColumnValues(wbsSort.columnKey, leftValue, rightValue)
+      return directionSign * compareWbsColumnValues(wbsSort.columnKey, leftValue, rightValue) || compareWbsLevel(a.wbs_level, b.wbs_level)
+    })
+  }, [tasks, columnFilters, wbsSort])
+  const isFiltered = Object.keys(columnFilters).length > 0 || wbsSort !== null
+  const clearFilters = () => { setColumnFilters({}); setWbsSort(null) }
+  const applyColumnFilter = (columnKey: WbsColumnKey, selectedValues: string[] | null) =>
+    setColumnFilters((previous) => {
+      const next = { ...previous }
+      if (selectedValues === null) delete next[columnKey]
+      else next[columnKey] = selectedValues
+      return next
+    })
 
   // スクロール枠の幅(固定列の可否の判定に使う)。枠はタスクがある時だけ描画される。
   const scrollContainerWidthPx = useScrollContainerWidthPx(scrollContainerRef, tasks.length > 0)
@@ -1168,53 +1180,12 @@ function NotionView({ tasks, onPatch, onReload }: {
         >
           {markingSubmitted ? '更新中…' : `✅ 提出済にする（変更 ${unsubmittedChangeCount} 件）`}
         </button>
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <span className="text-xs font-semibold text-slate-600">絞り込み</span>
-        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-          WBSレベル
-          <input type="text" value={wbsFilter.wbsLevel} onChange={(e) => updateWbsFilter('wbsLevel', e.target.value)} placeholder="例: 1.2" className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-16`} title="入力した番号で始まる WBS レベル(配下を含む)" />
-        </label>
-        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-          タスク
-          <input type="search" value={wbsFilter.title} onChange={(e) => updateWbsFilter('title', e.target.value)} placeholder="タスク名で検索" className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-40`} />
-        </label>
-        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-          担当者
-          <select value={wbsFilter.assignee} onChange={(e) => updateWbsFilter('assignee', e.target.value)} className={WBS_TEXT_FILTER_INPUT_CLASS}>
-            <option value="">全て</option>
-            {assignees.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
-        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-          進捗率
-          <select value={wbsFilter.progress} onChange={(e) => updateWbsFilter('progress', e.target.value as WbsProgressFilter)} className={WBS_TEXT_FILTER_INPUT_CLASS}>
-            {WBS_PROGRESS_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-        <label className="inline-flex items-center gap-1 text-xs text-slate-500">
-          工数
-          <input type="number" min={0} step={0.5} value={wbsFilter.workloadMin} onChange={(e) => updateWbsFilter('workloadMin', e.target.value)} className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-14`} title="この人日以上" />
-          〜
-          <input type="number" min={0} step={0.5} value={wbsFilter.workloadMax} onChange={(e) => updateWbsFilter('workloadMax', e.target.value)} className={`${WBS_TEXT_FILTER_INPUT_CLASS} w-14`} title="この人日以下" />
-        </label>
-        <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
-          開始
-          <input type="date" value={wbsFilter.startFrom} onChange={(e) => updateWbsFilter('startFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に開始するタスク" />
-          〜
-          <input type="date" value={wbsFilter.startTo} onChange={(e) => updateWbsFilter('startTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに開始するタスク" />
-        </label>
-        <label className="inline-flex flex-wrap items-center gap-1 text-xs text-slate-500">
-          終了
-          <input type="date" value={wbsFilter.endFrom} onChange={(e) => updateWbsFilter('endFrom', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日以降に終了するタスク" />
-          〜
-          <input type="date" value={wbsFilter.endTo} onChange={(e) => updateWbsFilter('endTo', e.target.value)} className={WBS_DATE_FILTER_INPUT_CLASS} title="この日までに終了するタスク" />
-        </label>
+        <span className="mx-1 h-5 w-px bg-slate-300" />
+        <span className="text-xs text-slate-500">見出しの ▾ で絞り込み・並べ替え</span>
         {isFiltered && (
           <span className="inline-flex items-center gap-2 text-xs text-slate-500">
             {sortedTasks.length} / {tasks.length} 件
-            <button onClick={clearFilters} className="rounded border border-slate-300 px-2 py-0.5 hover:bg-slate-100">絞込を解除</button>
+            <button onClick={clearFilters} className="rounded border border-slate-300 px-2 py-0.5 hover:bg-slate-100">フィルタを解除</button>
           </span>
         )}
       </div>
@@ -1268,7 +1239,17 @@ function NotionView({ tasks, onPatch, onReload }: {
                       }}
                       className={`${stickyColumnsEnabled ? 'sticky z-40' : ''} whitespace-pre-line px-1.5 py-1.5 align-middle text-xs font-bold ${column.align === 'left' ? 'text-left' : 'text-center'}`}
                     >
-                      {column.label}
+                      <div className={`flex items-center gap-1 ${column.align === 'left' ? 'justify-between' : 'justify-center'}`}>
+                        <span>{column.label}</span>
+                        <SheetColumnFilter
+                          columnLabel={column.label.replace('\n', '')}
+                          options={wbsColumnFilterOptions(tasks, columnFilters, column.key)}
+                          selectedValues={columnFilters[column.key] ?? null}
+                          sortDirection={wbsSort?.columnKey === column.key ? wbsSort.direction : null}
+                          onApply={(selectedValues) => applyColumnFilter(column.key, selectedValues)}
+                          onSort={(direction) => setWbsSort({ columnKey: column.key, direction })}
+                        />
+                      </div>
                     </th>
                   ))}
                   <th rowSpan={3} className="border-0 bg-white p-0" />
