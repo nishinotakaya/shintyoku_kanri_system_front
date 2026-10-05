@@ -6,6 +6,17 @@ import { showPdf } from '../lib/openPdf'
 import Modal from '../components/Modal'
 import RowActions from '../components/RowActions'
 import PurchaseOrderBulkMailModal from '../components/PurchaseOrderBulkMailModal'
+import { SheetColumnFilter } from '../components/SheetColumnFilter'
+import {
+  compareTextValues,
+  filterAndSortSheetRows,
+  sheetCell,
+  sheetColumnFilterOptions,
+  withColumnFilter,
+  type SheetCell,
+  type SheetColumnFilters,
+  type SheetSort,
+} from '../lib/sheetColumnFilter'
 
 // 注文書の期間が「締日(25) ベース」の月次サイクルでいくつ含まれるかを返す。
 // 例: 2026-02-26 〜 2026-05-25 (closing=25) → 2026-03 / 2026-04 / 2026-05 の 3 サイクル
@@ -83,6 +94,11 @@ type ExtractResult = {
 }
 
 
+// 注文書一覧の列見出しフィルタの列。
+type PurchaseOrderColumnKey = 'kind' | 'order_no' | 'recipient' | 'issuer' | 'subject' | 'period' | 'total_amount' | 'linked_invoice'
+const purchaseOrderColumnValueComparer = (columnKey: PurchaseOrderColumnKey): ((leftValue: string, rightValue: string) => number) =>
+  columnKey === 'total_amount' ? (leftValue, rightValue) => Number(leftValue) - Number(rightValue) : compareTextValues
+
 const CATEGORY_LABELS: Record<string, string> = {
   wings: 'Wings (タマ)',
   living: 'タマリビング',
@@ -119,25 +135,9 @@ export default function PurchaseOrdersPage() {
     const next = new Set(prev); next.has(k) ? next.delete(k) : next.add(k); return next
   })
 
-  // カラム別フィルター (空文字 = 絞り込みなし)
-  type FilterKey = 'order_no' | 'recipient' | 'issuer' | 'subject' | 'period'
-  const [filters, setFilters] = useState<Record<FilterKey, string>>({ order_no: '', recipient: '', issuer: '', subject: '', period: '' })
-  const setFilter = (key: FilterKey, v: string) => setFilters((prev) => ({ ...prev, [key]: v }))
-
-  // カラム別ソート
-  type SortKey = 'order_no' | 'recipient' | 'issuer' | 'subject' | 'period_start' | 'total_amount'
-  const [sortKey, setSortKey] = useState<SortKey | null>(null)
-  const [sortAsc, setSortAsc] = useState(true)
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      // 同じカラム再クリック: asc → desc → 解除 のサイクル
-      if (sortAsc) setSortAsc(false)
-      else { setSortKey(null); setSortAsc(true) }
-    } else {
-      setSortKey(key); setSortAsc(true)
-    }
-  }
-  const sortMark = (key: SortKey) => sortKey === key ? (sortAsc ? ' ▲' : ' ▼') : ''
+  // 列見出しフィルタ(スプレッドシート式: 値の複数選択＋並べ替え)
+  const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<PurchaseOrderColumnKey>>({})
+  const [purchaseOrderSort, setPurchaseOrderSort] = useState<SheetSort<PurchaseOrderColumnKey>>(null)
 
   const recipientLabel = (p: PO) =>
     p.kind === 'received' ? (p.user_display_name ?? '') : (p.recipient_user_display_name ?? p.recipient_name ?? '')
@@ -168,63 +168,52 @@ export default function PurchaseOrdersPage() {
     return matched ? Math.round(po.total_amount / cycles.length) : 0
   }
 
-  // フィルター候補: 受注者・発注者・案件名 は items から重複排除して select 用に
-  const recipientOptions = useMemo(() => Array.from(new Set(items.map(recipientLabel).filter(Boolean))).sort(), [items])
-  const issuerOptions    = useMemo(() => Array.from(new Set(items.map(issuerLabel).filter(Boolean))).sort(), [items])
-  const subjectOptions   = useMemo(() => Array.from(new Set(items.map((p) => p.subject).filter((s): s is string => !!s))).sort(), [items])
+  const purchaseOrderCell = (po: PO, columnKey: PurchaseOrderColumnKey): SheetCell => {
+    switch (columnKey) {
+      case 'kind': return sheetCell(po.kind === 'issued' ? '📤 発行' : '📥 受領')
+      case 'order_no': return sheetCell(po.order_no)
+      case 'recipient': return sheetCell(recipientLabel(po))
+      case 'issuer': return sheetCell(issuerLabel(po))
+      case 'subject': return sheetCell(po.subject)
+      case 'period': return sheetCell(po.period_start || po.period_end ? `${po.period_start ?? '—'} 〜 ${po.period_end ?? '—'}` : '')
+      case 'total_amount': return po.total_amount ? { value: String(po.total_amount), label: `¥${po.total_amount.toLocaleString()}` } : sheetCell('')
+      case 'linked_invoice':
+        if (po.kind === 'received') return sheetCell(`請求書 ${po.invoice_submission_count}件`)
+        return sheetCell(po.freee_deal_id ? 'freee 経費計上済' : 'freee 未計上')
+    }
+  }
 
-  // 月フィルター + カラム別フィルター + ソート
-  const filteredItems = useMemo(() => {
-    let arr = items
-    // 月フィルター
-    if (isFilterActive) {
-      arr = arr.filter((p) => {
-        const cycles = cyclesInPeriod(p.period_start, p.period_end)
-        if (cycles.length === 0) return true
-        return cycles.some((c) => c.year === filterYear && c.month === filterMonth)
-      })
-    }
-    // カラムフィルター
-    // - order_no: テキスト部分一致
-    // - recipient / issuer / subject: select 完全一致 (空文字 = 全部)
-    // - period: 日付ピッカー、その日付を period_start..period_end が含む行のみ
-    const textMatch = (haystack: string | null | undefined, needle: string) =>
-      !needle || (haystack ?? '').toString().toLowerCase().includes(needle.toLowerCase())
-    const exactMatch = (haystack: string, needle: string) => !needle || haystack === needle
-    const dateMatch = (start: string | null, end: string | null, needle: string) => {
-      if (!needle) return true
-      if (!start || !end) return false
-      return needle >= start && needle <= end
-    }
-    arr = arr.filter((p) =>
-      textMatch(p.order_no, filters.order_no) &&
-      exactMatch(recipientLabel(p), filters.recipient) &&
-      exactMatch(issuerLabel(p), filters.issuer) &&
-      exactMatch(p.subject ?? '', filters.subject) &&
-      dateMatch(p.period_start, p.period_end, filters.period)
-    )
-    // ソート
-    if (sortKey) {
-      const dir = sortAsc ? 1 : -1
-      const cmp = (a: PO, b: PO): number => {
-        const get = (p: PO): string | number => {
-          switch (sortKey) {
-            case 'order_no':     return p.order_no ?? ''
-            case 'recipient':    return recipientLabel(p)
-            case 'issuer':       return issuerLabel(p)
-            case 'subject':      return p.subject ?? ''
-            case 'period_start': return p.period_start ?? ''
-            case 'total_amount': return p.total_amount ?? 0
-          }
-        }
-        const va = get(a), vb = get(b)
-        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
-        return String(va).localeCompare(String(vb), 'ja') * dir
-      }
-      arr = [...arr].sort(cmp)
-    }
-    return arr
-  }, [items, filterYear, filterMonth, isFilterActive, filters, sortKey, sortAsc])
+  // 月フィルター(締日基準の請求月) → 列見出しフィルタ・並べ替え
+  const monthFilteredItems = useMemo(() => {
+    if (!isFilterActive) return items
+    return items.filter((p) => {
+      const cycles = cyclesInPeriod(p.period_start, p.period_end)
+      if (cycles.length === 0) return true
+      return cycles.some((c) => c.year === filterYear && c.month === filterMonth)
+    })
+  }, [items, filterYear, filterMonth, isFilterActive])
+  const filteredItems = useMemo(
+    () => filterAndSortSheetRows(monthFilteredItems, columnFilters, purchaseOrderSort, purchaseOrderCell, purchaseOrderColumnValueComparer, () => 0),
+    // purchaseOrderCell は me(発注者の表示名フォールバック)に依存する
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [monthFilteredItems, columnFilters, purchaseOrderSort, me],
+  )
+  const isColumnFiltered = Object.keys(columnFilters).length > 0 || purchaseOrderSort !== null
+  const clearColumnFilters = () => { setColumnFilters({}); setPurchaseOrderSort(null) }
+  const purchaseOrderHeader = (columnKey: PurchaseOrderColumnKey, label: string, align: 'left' | 'right' | 'center' = 'left') => (
+    <div className={`flex items-center gap-1.5 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-between'}`}>
+      <span>{label}</span>
+      <SheetColumnFilter
+        tone="light"
+        columnLabel={label}
+        options={sheetColumnFilterOptions(monthFilteredItems, columnFilters, columnKey, purchaseOrderCell, purchaseOrderColumnValueComparer(columnKey))}
+        selectedValues={columnFilters[columnKey] ?? null}
+        sortDirection={purchaseOrderSort?.columnKey === columnKey ? purchaseOrderSort.direction : null}
+        onApply={(selectedValues) => setColumnFilters((previous) => withColumnFilter(previous, columnKey, selectedValues))}
+        onSort={(direction) => setPurchaseOrderSort({ columnKey, direction })}
+      />
+    </div>
+  )
 
   const totalAmount = useMemo(
     () => filteredItems.reduce((acc, p) => acc + monthlyAmountFor(p), 0),
@@ -487,8 +476,11 @@ export default function PurchaseOrdersPage() {
           </div>
           <div className="mt-1 flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-[var(--color-text-sub)]">
-              {isFilterActive ? `${filteredItems.length} / ${items.length}` : items.length} 件
+              {isFilterActive || isColumnFiltered ? `${filteredItems.length} / ${items.length}` : items.length} 件
             </span>
+            {isColumnFiltered && (
+              <button onClick={clearColumnFilters} className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] hover:bg-gray-50">フィルタを解除</button>
+            )}
             <span className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-md">
               💰 {isFilterActive ? `${filterYear}年${filterMonth}月分` : '全期間'} 合計 <span className="font-mono tabular-nums">¥{totalAmount.toLocaleString()}</span>
             </span>
@@ -682,7 +674,7 @@ export default function PurchaseOrdersPage() {
         <div className="text-sm text-[var(--color-text-sub)]">読み込み中…</div>
       ) : items.length === 0 ? (
         <div className="text-sm text-[var(--color-text-sub)]">注文書が登録されていません</div>
-      ) : filteredItems.length === 0 ? (
+      ) : monthFilteredItems.length === 0 ? (
         <div className="text-sm text-[var(--color-text-sub)]">{filterYear}年{filterMonth}月分にかかる注文書はありません</div>
       ) : (
         <div className="glass overflow-x-auto rounded-xl shadow-md">
@@ -690,7 +682,7 @@ export default function PurchaseOrdersPage() {
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
                 {isAdmin && (
-                  <th rowSpan={2} className="px-2 py-2 text-center w-8 align-bottom">
+                  <th className="px-2 py-2 text-center w-8">
                     <input
                       type="checkbox"
                       checked={filteredItems.length > 0 && filteredItems.every((p) => checkedKeys.has(`${p.kind}-${p.id}`))}
@@ -709,44 +701,21 @@ export default function PurchaseOrdersPage() {
                     />
                   </th>
                 )}
-                <th rowSpan={2} className="px-2 py-2 text-left align-bottom">種別</th>
-                <th className="px-2 py-1 text-left whitespace-nowrap cursor-pointer select-none hover:text-fuchsia-500" onClick={() => toggleSort('order_no')}>注文番号{sortMark('order_no')}</th>
-                <th className="px-2 py-1 text-left whitespace-nowrap cursor-pointer select-none hover:text-fuchsia-500" onClick={() => toggleSort('recipient')}>受注者{sortMark('recipient')}</th>
-                <th className="px-2 py-1 text-left whitespace-nowrap cursor-pointer select-none hover:text-fuchsia-500" onClick={() => toggleSort('issuer')}>発注者{sortMark('issuer')}</th>
-                <th className="px-2 py-1 text-left cursor-pointer select-none hover:text-fuchsia-500" onClick={() => toggleSort('subject')}>案件名{sortMark('subject')}</th>
-                <th className="px-2 py-1 text-left whitespace-nowrap cursor-pointer select-none hover:text-fuchsia-500" onClick={() => toggleSort('period_start')}>期間{sortMark('period_start')}</th>
-                <th rowSpan={2} className="px-2 py-2 text-right whitespace-nowrap cursor-pointer select-none hover:text-fuchsia-500 align-bottom" onClick={() => toggleSort('total_amount')}>金額{sortMark('total_amount')}</th>
-                <th rowSpan={2} className="px-2 py-2 text-center align-bottom">紐付請求書</th>
-                <th rowSpan={2} className="px-2 py-2 text-center align-bottom">操作</th>
-              </tr>
-              <tr className="bg-gray-50">
-                <th className="px-1 pb-1 font-normal">
-                  <input value={filters.order_no} onChange={(e) => setFilter('order_no', e.target.value)} placeholder="ORD-…" className="w-full rounded border border-[var(--color-border)] px-1 py-0.5 text-[10px] font-normal" />
-                </th>
-                <th className="px-1 pb-1 font-normal">
-                  <select value={filters.recipient} onChange={(e) => setFilter('recipient', e.target.value)} className="w-full rounded border border-[var(--color-border)] px-1 py-0.5 text-[10px] font-normal bg-white">
-                    <option value="">全員</option>
-                    {recipientOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                </th>
-                <th className="px-1 pb-1 font-normal">
-                  <select value={filters.issuer} onChange={(e) => setFilter('issuer', e.target.value)} className="w-full rounded border border-[var(--color-border)] px-1 py-0.5 text-[10px] font-normal bg-white">
-                    <option value="">全員</option>
-                    {issuerOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                </th>
-                <th className="px-1 pb-1 font-normal">
-                  <select value={filters.subject} onChange={(e) => setFilter('subject', e.target.value)} className="w-full rounded border border-[var(--color-border)] px-1 py-0.5 text-[10px] font-normal bg-white">
-                    <option value="">全て</option>
-                    {subjectOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                </th>
-                <th className="px-1 pb-1 font-normal">
-                  <input type="date" value={filters.period} onChange={(e) => setFilter('period', e.target.value)} className="w-full rounded border border-[var(--color-border)] px-1 py-0.5 text-[10px] font-normal" title="指定日が含まれる注文書のみ表示" />
-                </th>
+                <th className="px-2 py-2 text-left">{purchaseOrderHeader('kind', '種別')}</th>
+                <th className="px-2 py-2 text-left whitespace-nowrap">{purchaseOrderHeader('order_no', '注文番号')}</th>
+                <th className="px-2 py-2 text-left whitespace-nowrap">{purchaseOrderHeader('recipient', '受注者')}</th>
+                <th className="px-2 py-2 text-left whitespace-nowrap">{purchaseOrderHeader('issuer', '発注者')}</th>
+                <th className="px-2 py-2 text-left">{purchaseOrderHeader('subject', '案件名')}</th>
+                <th className="px-2 py-2 text-left whitespace-nowrap">{purchaseOrderHeader('period', '期間')}</th>
+                <th className="px-2 py-2 text-right whitespace-nowrap">{purchaseOrderHeader('total_amount', '金額', 'right')}</th>
+                <th className="px-2 py-2 text-center whitespace-nowrap">{purchaseOrderHeader('linked_invoice', '紐付請求書', 'center')}</th>
+                <th className="px-2 py-2 text-center">操作</th>
               </tr>
             </thead>
             <tbody>
+              {filteredItems.length === 0 && (
+                <tr><td colSpan={isAdmin ? 10 : 9} className="px-2 py-6 text-center text-[var(--color-text-sub)]">フィルター条件に一致する注文書がありません</td></tr>
+              )}
               {filteredItems.map((po) => (
                 <tr key={`${po.kind}-${po.id}`} className={`border-t border-[var(--color-border)] ${po.kind === 'issued' ? 'bg-sky-50/30' : ''}`}>
                   {isAdmin && (
