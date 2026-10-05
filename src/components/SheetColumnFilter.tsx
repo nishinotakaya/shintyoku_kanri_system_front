@@ -14,6 +14,10 @@ const INACTIVE_BUTTON_CLASS_BY_TONE = {
   light: 'bg-slate-200 text-slate-600 hover:bg-slate-300',
 } as const
 const VIEWPORT_MARGIN_PX = 8
+// 下側の空きがこれ未満で、上側のほうが広ければ上に開く
+const MINIMUM_POPOVER_HEIGHT_BELOW_PX = 280
+
+type PopoverPlacement = { left: number; maxHeight: number } & ({ top: number } | { bottom: number })
 
 export function SheetColumnFilter({
   columnLabel,
@@ -36,7 +40,7 @@ export function SheetColumnFilter({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [isOpen, setIsOpen] = useState(false)
-  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 })
+  const [popoverPlacement, setPopoverPlacement] = useState<PopoverPlacement>({ top: 0, left: 0, maxHeight: 0 })
   const [searchText, setSearchText] = useState('')
   const [draftValues, setDraftValues] = useState<Set<string>>(new Set())
 
@@ -52,10 +56,15 @@ export function SheetColumnFilter({
     if (!isOpen || !buttonRef.current) return
     const buttonRect = buttonRef.current.getBoundingClientRect()
     const maxLeft = window.innerWidth - POPOVER_WIDTH_PX - VIEWPORT_MARGIN_PX
-    setPopoverPosition({
-      top: buttonRect.bottom + 4,
-      left: Math.max(VIEWPORT_MARGIN_PX, Math.min(buttonRect.left, maxLeft)),
-    })
+    const left = Math.max(VIEWPORT_MARGIN_PX, Math.min(buttonRect.left, maxLeft))
+    // OK ボタンが画面外に出ないよう、ポップアップの高さを画面内の空きに収める(値の一覧が縮む)
+    const spaceBelowPx = window.innerHeight - buttonRect.bottom - 4 - VIEWPORT_MARGIN_PX
+    const spaceAbovePx = buttonRect.top - 4 - VIEWPORT_MARGIN_PX
+    if (spaceBelowPx < MINIMUM_POPOVER_HEIGHT_BELOW_PX && spaceAbovePx > spaceBelowPx) {
+      setPopoverPlacement({ bottom: window.innerHeight - buttonRect.top + 4, left, maxHeight: spaceAbovePx })
+    } else {
+      setPopoverPlacement({ top: buttonRect.bottom + 4, left, maxHeight: spaceBelowPx })
+    }
   }, [isOpen])
 
   useEffect(() => {
@@ -125,8 +134,8 @@ export function SheetColumnFilter({
       {isOpen && createPortal(
         <div
           ref={popoverRef}
-          style={{ top: popoverPosition.top, left: popoverPosition.left, width: POPOVER_WIDTH_PX }}
-          className="fixed z-[1000] rounded-md border border-slate-200 bg-white text-left text-xs font-normal text-slate-700 shadow-xl"
+          style={{ ...popoverPlacement, width: POPOVER_WIDTH_PX }}
+          className="fixed z-[1000] flex flex-col rounded-md border border-slate-200 bg-white text-left text-xs font-normal text-slate-700 shadow-xl"
         >
           <div className="border-b border-slate-100 py-1">
             <button type="button" onClick={() => sortAndClose('asc')} className={`block w-full px-3 py-1.5 text-left hover:bg-slate-100 ${sortDirection === 'asc' ? 'font-bold text-emerald-700' : ''}`}>
@@ -136,7 +145,7 @@ export function SheetColumnFilter({
               Z → A で並べ替え
             </button>
           </div>
-          <div className="space-y-1.5 p-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
             <div className="font-semibold text-slate-600">値でフィルタ</div>
             <div className="flex gap-3 text-emerald-700">
               <button type="button" onClick={selectAllVisible} className="hover:underline">すべて選択</button>
@@ -151,7 +160,7 @@ export function SheetColumnFilter({
               placeholder="値を検索"
               className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
             />
-            <ul className="max-h-60 overflow-y-auto rounded border border-slate-100">
+            <ul className="max-h-60 min-h-[3rem] flex-1 overflow-y-auto rounded border border-slate-100">
               {visibleOptions.length === 0 && <li className="px-2 py-2 text-slate-400">該当する値がありません</li>}
               {visibleOptions.map((option) => (
                 <li key={option.value}>
