@@ -174,7 +174,6 @@ export default function BacklogActivitiesPage() {
   const [importingNotion, setImportingNotion] = useState(false)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string; url?: string } | null>(null)
   const [savingKey, setSavingKey] = useState<string | null>(null)
-  const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({})
   // スプシ出力先。Backlog(上司報告) と Notion(WBS) を別スプレッドシートに分けられる。
   const [showSheetUrls, setShowSheetUrls] = useState(false)
   const [backlogSheetUrl, setBacklogSheetUrl] = useState(DEFAULT_SHEET_URL)
@@ -195,8 +194,6 @@ export default function BacklogActivitiesPage() {
   const fetchData = async (userId: number) => {
     const r = await api.get<Payload>('/backlog_activities', { params: { user_id: userId } })
     setData(r.data)
-    const latest = r.data.summary.at(-1)?.month
-    setOpenMonths(latest ? { [latest]: true } : {})
   }
 
   useEffect(() => {
@@ -374,12 +371,6 @@ export default function BacklogActivitiesPage() {
     }
   }
 
-  const byMonth = useMemo(() => {
-    const map: Record<string, Activity[]> = {}
-    for (const a of data?.activities ?? []) (map[a.month] ??= []).push(a)
-    return map
-  }, [data])
-
   const months = useMemo(
     () => [...(data?.summary ?? [])].sort((a, b) => b.month.localeCompare(a.month)),
     [data],
@@ -532,39 +523,7 @@ export default function BacklogActivitiesPage() {
             ))}
           </div>
 
-          {months.map((m) => {
-            const open = openMonths[m.month] ?? false
-            const rows = byMonth[m.month] ?? []
-            return (
-              <div key={m.month} className="mb-3 rounded-xl border border-slate-200 bg-white overflow-hidden">
-                <button
-                  onClick={() => setOpenMonths((o) => ({ ...o, [m.month]: !open }))}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50"
-                >
-                  <span className="font-semibold text-slate-700">
-                    {m.month} <span className="text-slate-400 font-normal text-sm">（{rows.length}件）</span>
-                  </span>
-                  <span className="text-slate-400">{open ? '▲' : '▼'}</span>
-                </button>
-                {open && (
-                  <div className="divide-y divide-slate-100 border-t border-slate-100">
-                    {rows.map((a) => (
-                      <div key={a.id} className="flex gap-3 px-4 py-2.5 text-sm">
-                        <span className="text-slate-400 tabular-nums shrink-0 w-16">{a.occurred_on?.slice(5)}</span>
-                        <span className={`shrink-0 self-start px-1.5 py-0.5 rounded text-[11px] font-medium ${TYPE_STYLE[a.activity_type]}`}>
-                          {a.type_label}
-                        </span>
-                        <a href={a.url} target="_blank" rel="noreferrer" className="shrink-0 text-blue-600 hover:underline font-medium w-24">
-                          {a.issue_key}
-                        </a>
-                        <span className="text-slate-700 whitespace-pre-wrap break-words min-w-0">{a.content || a.summary}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {months.length > 0 && <ActivityLogView activities={data.activities} />}
 
           {months.length === 0 && (
             <div className="text-slate-400 text-sm py-10 text-center">
@@ -590,6 +549,94 @@ const PINNED_COLUMN_LEFT_CLASSES = ['left-0', 'left-[116px]', 'left-[240px]']
 const PINNED_COLUMNS_WIDTH_PX = 116 + 124 + 248
 // 固定列の右にこれだけ表示幅が無い(スマホ幅)ときは固定を外し、表全体を横スクロールさせる
 const MINIMUM_SCROLLABLE_WIDTH_BESIDE_PINNED_COLUMNS_PX = 240
+
+// 対応ログ（詳細）の列見出しフィルタ(WBS・上司報告サマリと同じスプレッドシート式)。
+type ActivityColumnKey = 'month' | 'occurred_on' | 'type_label' | 'issue_key' | 'summary' | 'content'
+const ACTIVITY_COLUMNS: { key: ActivityColumnKey; label: string; className: string }[] = [
+  { key: 'month', label: '月', className: 'w-24' },
+  { key: 'occurred_on', label: '日付', className: 'w-28' },
+  { key: 'type_label', label: '種別', className: 'w-28' },
+  { key: 'issue_key', label: '課題', className: 'w-28' },
+  { key: 'summary', label: '概要', className: 'w-64 min-w-[16rem]' },
+  { key: 'content', label: '内容', className: 'min-w-[28rem]' },
+]
+const ACTIVITY_TH = 'sticky top-0 z-20 bg-slate-100 border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-600 whitespace-nowrap'
+
+const activityColumnCell = (activity: Activity, columnKey: ActivityColumnKey): SheetCell => sheetCell(activity[columnKey])
+const activityColumnValueComparer = () => compareTextValues
+// 既定は新しい日付順(同日は課題順)
+const compareActivitiesByDefault = (leftActivity: Activity, rightActivity: Activity) =>
+  (rightActivity.occurred_on ?? '').localeCompare(leftActivity.occurred_on ?? '') || leftActivity.issue_key.localeCompare(rightActivity.issue_key)
+
+function ActivityLogView({ activities }: { activities: Activity[] }) {
+  const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<ActivityColumnKey>>({})
+  const [activitySort, setActivitySort] = useState<SheetSort<ActivityColumnKey>>(null)
+
+  const visibleActivities = useMemo(
+    () => filterAndSortSheetRows(activities, columnFilters, activitySort, activityColumnCell, activityColumnValueComparer, compareActivitiesByDefault),
+    [activities, columnFilters, activitySort],
+  )
+  const isFiltered = Object.keys(columnFilters).length > 0 || activitySort !== null
+  const clearFilters = () => { setColumnFilters({}); setActivitySort(null) }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+        <span>見出しの ▾ で絞り込み・並べ替え</span>
+        {isFiltered && (
+          <>
+            <span>{visibleActivities.length} / {activities.length} 件</span>
+            <button onClick={clearFilters} className="rounded border border-slate-300 px-2 py-0.5 hover:bg-slate-100">フィルタを解除</button>
+          </>
+        )}
+      </div>
+      {/* 見出しを固定するため縦スクロールも枠内で行う(横スクロール枠の中では sticky がページ基準にならない) */}
+      <div className="max-h-[75vh] max-w-full overflow-auto rounded-xl border border-slate-300 bg-white shadow-sm">
+        <table className="min-w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              {ACTIVITY_COLUMNS.map((column) => (
+                <th key={column.key} className={`${ACTIVITY_TH} ${column.className}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{column.label}</span>
+                    <SheetColumnFilter
+                      tone="light"
+                      columnLabel={column.label}
+                      options={sheetColumnFilterOptions(activities, columnFilters, column.key, activityColumnCell, compareTextValues)}
+                      selectedValues={columnFilters[column.key] ?? null}
+                      sortDirection={activitySort?.columnKey === column.key ? activitySort.direction : null}
+                      onApply={(selectedValues) => setColumnFilters((previous) => withColumnFilter(previous, column.key, selectedValues))}
+                      onSort={(direction) => setActivitySort({ columnKey: column.key, direction })}
+                    />
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleActivities.map((activity) => (
+              <tr key={activity.id} className="hover:bg-slate-50/60">
+                <td className={`${TD} whitespace-nowrap tabular-nums text-slate-500`}>{activity.month}</td>
+                <td className={`${TD} whitespace-nowrap tabular-nums text-slate-500`}>{activity.occurred_on ?? '—'}</td>
+                <td className={`${TD} whitespace-nowrap`}>
+                  <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${TYPE_STYLE[activity.activity_type]}`}>{activity.type_label}</span>
+                </td>
+                <td className={`${TD} whitespace-nowrap`}>
+                  <a href={activity.url} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">{activity.issue_key}</a>
+                </td>
+                <td className={`${TD} whitespace-pre-wrap break-words text-slate-600`}>{activity.summary}</td>
+                <td className={`${TD} whitespace-pre-wrap break-words text-slate-700`}>{activity.content || <span className="text-slate-300">—</span>}</td>
+              </tr>
+            ))}
+            {visibleActivities.length === 0 && (
+              <tr><td colSpan={ACTIVITY_COLUMNS.length} className="border border-slate-300 py-6 text-center text-sm text-slate-400">フィルター条件に一致する行がありません。</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
 
 // 上司報告サマリの列見出しフィルタ(WBS と同じスプレッドシート式)。
 type SummaryColumnKey = 'month' | 'issue_key' | 'summary' | 'status' | 'start_on' | 'shori_on' | 'done_on' | 'note' | 'notion'
