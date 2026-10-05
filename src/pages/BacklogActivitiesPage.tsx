@@ -509,21 +509,7 @@ export default function BacklogActivitiesPage() {
 
       {!loading && data && view === 'detail' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-            {months.map((m) => (
-              <div key={m.month} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-sm font-semibold text-slate-700 mb-2">{m.month}</div>
-                <div className="grid grid-cols-2 gap-y-1.5 text-sm">
-                  <Stat label="関与課題" value={m.issue_count} />
-                  <Stat label="コミット" value={m.commit_count} />
-                  <Stat label="報告/調整" value={m.report_count} accent />
-                  <Stat label="状態変更" value={m.status_count} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {months.length > 0 && <ActivityLogView activities={data.activities} />}
+          {months.length > 0 && <ActivityLogView activities={data.activities} months={months} />}
 
           {months.length === 0 && (
             <div className="text-slate-400 text-sm py-10 text-center">
@@ -568,9 +554,25 @@ const activityColumnValueComparer = () => compareTextValues
 const compareActivitiesByDefault = (leftActivity: Activity, rightActivity: Activity) =>
   (rightActivity.occurred_on ?? '').localeCompare(leftActivity.occurred_on ?? '') || leftActivity.issue_key.localeCompare(rightActivity.issue_key)
 
-function ActivityLogView({ activities }: { activities: Activity[] }) {
+function ActivityLogView({ activities, months }: { activities: Activity[]; months: MonthSummary[] }) {
   const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<ActivityColumnKey>>({})
   const [activitySort, setActivitySort] = useState<SheetSort<ActivityColumnKey>>(null)
+  const tableRef = useRef<HTMLDivElement>(null)
+
+  // 月別カードのクリックで「月」列を絞り込む。もう一度押すと解除、⌘/Ctrl+クリックで複数月を追加・除外。
+  const selectedMonths = columnFilters.month ?? []
+  const filterByMonthCard = (month: string, isMultiSelect: boolean) => {
+    const isOnlySelectedMonth = selectedMonths.length === 1 && selectedMonths[0] === month
+    let nextSelectedMonths: string[] | null
+    if (isMultiSelect) {
+      nextSelectedMonths = selectedMonths.includes(month) ? selectedMonths.filter((selectedMonth) => selectedMonth !== month) : [...selectedMonths, month]
+      if (nextSelectedMonths.length === 0) nextSelectedMonths = null
+    } else {
+      nextSelectedMonths = isOnlySelectedMonth ? null : [month]
+    }
+    setColumnFilters((previous) => withColumnFilter(previous, 'month', nextSelectedMonths))
+    if (nextSelectedMonths) tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const visibleActivities = useMemo(
     () => filterAndSortSheetRows(activities, columnFilters, activitySort, activityColumnCell, activityColumnValueComparer, compareActivitiesByDefault),
@@ -581,8 +583,36 @@ function ActivityLogView({ activities }: { activities: Activity[] }) {
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
-        <span>見出しの ▾ で絞り込み・並べ替え</span>
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {months.map((monthSummary) => {
+          const isSelected = selectedMonths.includes(monthSummary.month)
+          return (
+            <button
+              key={monthSummary.month}
+              type="button"
+              onClick={(event) => filterByMonthCard(monthSummary.month, event.metaKey || event.ctrlKey)}
+              title={isSelected ? 'もう一度押すと絞り込みを解除（⌘/Ctrl+クリックで複数月）' : 'この月で絞り込む（⌘/Ctrl+クリックで複数月）'}
+              className={`rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow ${
+                isSelected ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-slate-200'
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between text-sm font-semibold text-slate-700">
+                <span>{monthSummary.month}</span>
+                {isSelected && <span className="rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium text-white">絞り込み中</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-y-1.5 text-sm">
+                <Stat label="関与課題" value={monthSummary.issue_count} />
+                <Stat label="コミット" value={monthSummary.commit_count} />
+                <Stat label="報告/調整" value={monthSummary.report_count} accent />
+                <Stat label="状態変更" value={monthSummary.status_count} />
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div ref={tableRef} className="mb-2 flex scroll-mt-20 items-center gap-2 text-xs text-slate-500">
+        <span>月別カードを押すとその月で絞り込み（⌘/Ctrl+クリックで複数月）／見出しの ▾ で絞り込み・並べ替え</span>
         {isFiltered && (
           <>
             <span>{visibleActivities.length} / {activities.length} 件</span>
