@@ -558,6 +558,12 @@ function ActivityLogView({ activities, months }: { activities: Activity[]; month
   const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<ActivityColumnKey>>({})
   const [activitySort, setActivitySort] = useState<SheetSort<ActivityColumnKey>>(null)
   const tableRef = useRef<HTMLDivElement>(null)
+  // カードで絞り込んだ回数。描画し直した後に表へスクロールするため(絞り込みと同時に呼ぶと再描画で打ち消される)
+  const [monthCardSelectionCount, setMonthCardSelectionCount] = useState(0)
+  useEffect(() => {
+    if (monthCardSelectionCount === 0) return
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [monthCardSelectionCount])
 
   // 月別カードのクリックで「月」列を絞り込む。もう一度押すと解除、⌘/Ctrl+クリックで複数月を追加・除外。
   const selectedMonths = columnFilters.month ?? []
@@ -571,7 +577,7 @@ function ActivityLogView({ activities, months }: { activities: Activity[]; month
       nextSelectedMonths = isOnlySelectedMonth ? null : [month]
     }
     setColumnFilters((previous) => withColumnFilter(previous, 'month', nextSelectedMonths))
-    if (nextSelectedMonths) tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (nextSelectedMonths) setMonthCardSelectionCount((count) => count + 1)
   }
 
   const visibleActivities = useMemo(
