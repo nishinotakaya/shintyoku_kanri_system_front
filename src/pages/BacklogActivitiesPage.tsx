@@ -577,7 +577,7 @@ export default function BacklogActivitiesPage() {
   )
 }
 
-const TH = 'sticky top-[61px] z-20 bg-slate-100 border border-slate-300 px-3 py-2 font-semibold whitespace-nowrap'
+const TH = 'sticky top-0 z-20 bg-slate-100 border border-slate-300 px-3 py-2 font-semibold whitespace-nowrap'
 const TD = 'border border-slate-300 px-3 py-2 align-top'
 
 // 横スクロール時に左へ固定する先頭3列(月/課題/概要)。left は各列幅(116/124/248)の累積。Tailwind JIT のため文字列リテラルで持つ。
