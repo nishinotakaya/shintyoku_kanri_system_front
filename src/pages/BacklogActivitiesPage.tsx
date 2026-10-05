@@ -558,7 +558,7 @@ const ACTIVITY_COLUMNS: { key: ActivityColumnKey; label: string; className: stri
   { key: 'type_label', label: '種別', className: 'w-28' },
   { key: 'issue_key', label: '課題', className: 'w-28' },
   { key: 'summary', label: '概要', className: 'w-64 min-w-[16rem]' },
-  { key: 'content', label: '内容', className: 'min-w-[28rem]' },
+  { key: 'content', label: '内容', className: 'w-[36rem] min-w-[24rem] max-w-[36rem]' },
 ]
 const ACTIVITY_TH = 'sticky top-0 z-20 bg-slate-100 border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-600 whitespace-nowrap'
 
@@ -625,7 +625,7 @@ function ActivityLogView({ activities }: { activities: Activity[] }) {
                   <a href={activity.url} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">{activity.issue_key}</a>
                 </td>
                 <td className={`${TD} whitespace-pre-wrap break-words text-slate-600`}>{activity.summary}</td>
-                <td className={`${TD} whitespace-pre-wrap break-words text-slate-700`}>{activity.content || <span className="text-slate-300">—</span>}</td>
+                <td className={`${TD} whitespace-pre-wrap text-slate-700 [overflow-wrap:anywhere]`}>{activity.content || <span className="text-slate-300">—</span>}</td>
               </tr>
             ))}
             {visibleActivities.length === 0 && (
