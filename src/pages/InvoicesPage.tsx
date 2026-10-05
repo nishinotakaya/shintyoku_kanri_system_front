@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
@@ -16,6 +16,8 @@ import IssuedPdfEditModal from '../components/IssuedPdfEditModal'
 import MergedRowEditModal from '../components/MergedRowEditModal'
 import type { InvoiceClient } from '../components/InvoiceClientsEditor'
 import ScannedInvoiceUploader, { type ScannedInvoice } from '../components/ScannedInvoiceUploader'
+import { SheetColumnFilter } from '../components/SheetColumnFilter'
+import { compareTextValues, filterAndSortSheetRows, sheetCell, sheetColumnFilterOptions, withColumnFilter, type SheetCell, type SheetColumnFilters, type SheetSort } from '../lib/sheetColumnFilter'
 
 // 郵便番号(7桁)から住所(都道府県+市区町村+町域)を zipcloud の無料APIで取得する。API キー不要。
 async function fetchAddressByPostal(postal: string): Promise<string | null> {
@@ -109,6 +111,115 @@ type IssuedPdf = {
   freee_deal_id?: string | null
   freee_reported_at?: string | null
   generated_at: string | null
+}
+
+// 複数ユーザーの立替金集約 / 同一 PO の請求書マージを表す virtual 行（mergedRows で組み立てる）
+type MergedRow = { kind: 'merged_expense' | 'merged_invoice'; key: string; year: number; month: number; category: string; users: string[]; ids: number[]; po: string | null; total: number }
+
+// 一覧テーブルは4種類の行(保存済統合PDF / 集約行 / 孤立した発行済PDF / 個別申請)を縦に並べる。
+// 列見出しフィルタは全種類に同じ条件で効かせるので、行の種類ごとに「画面に出している値」をセルとして返す。
+type InvoiceColumnKey = 'year_month' | 'kind' | 'category' | 'applicant' | 'order_no' | 'amount' | 'status' | 'submitted_at'
+type InvoiceListRow =
+  | { rowType: 'saved_merged_pdf'; issuedPdf: IssuedPdf }
+  | { rowType: 'merged'; mergedRow: MergedRow }
+  | { rowType: 'orphan_issued_pdf'; issuedPdf: IssuedPdf }
+  | { rowType: 'submission'; submission: Submission }
+
+const savedMergedPdfListRow = (issuedPdf: IssuedPdf): InvoiceListRow => ({ rowType: 'saved_merged_pdf', issuedPdf })
+const mergedListRow = (mergedRow: MergedRow): InvoiceListRow => ({ rowType: 'merged', mergedRow })
+const orphanIssuedPdfListRow = (issuedPdf: IssuedPdf): InvoiceListRow => ({ rowType: 'orphan_issued_pdf', issuedPdf })
+const submissionListRow = (submission: Submission): InvoiceListRow => ({ rowType: 'submission', submission })
+
+const SUBMISSION_STATUS_LABELS: Record<Submission['status'], string> = { draft: '下書き', pending: '申請中', approved: '承認済', rejected: '却下' }
+
+const invoiceColumnValueComparer = (columnKey: InvoiceColumnKey): ((leftValue: string, rightValue: string) => number) =>
+  columnKey === 'amount' ? (leftValue, rightValue) => Number(leftValue) - Number(rightValue) : compareTextValues
+
+function yearMonthCell(year: number | null, month: number | null): SheetCell {
+  if (!year || !month) return sheetCell('')
+  return { value: `${year}-${String(month).padStart(2, '0')}`, label: `${year}/${String(month).padStart(2, '0')}` }
+}
+
+function amountCell(amount: number | null | undefined): SheetCell {
+  if (amount == null || amount === 0) return sheetCell('')
+  return { value: String(amount), label: `¥${amount.toLocaleString()}` }
+}
+
+// 申請日時は分単位だと値がばらけてフィルタにならないので日付単位にまとめる
+function dateCell(dateTime: string | null | undefined): SheetCell {
+  if (!dateTime) return sheetCell('')
+  const date = new Date(dateTime)
+  return {
+    value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+    label: `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`,
+  }
+}
+
+function categoryLabel(category: string | null | undefined): string {
+  if (!category) return ''
+  return CATEGORY_LABELS[category] ?? category
+}
+
+// 保存済統合PDFの申請者表示: source_user_names (バックエンド計算済) を優先、無ければ構成申請から推定、最後は user_display_name
+function issuedPdfApplicantNames(issuedPdf: IssuedPdf, submissionUserNameById: Map<number, string>): string {
+  const namesFromBackend = (issuedPdf.source_user_names ?? []).filter(Boolean)
+  const namesFromSubmissions = issuedPdf.source_submission_ids
+    .map((submissionId) => submissionUserNameById.get(submissionId))
+    .filter(Boolean) as string[]
+  const names = namesFromBackend.length > 0 ? namesFromBackend : namesFromSubmissions
+  return Array.from(new Set(names)).join(' + ') || (issuedPdf.user_display_name ?? '')
+}
+
+function issuedPdfCell(issuedPdf: IssuedPdf, isSavedMerged: boolean, columnKey: InvoiceColumnKey, submissionUserNameById: Map<number, string>): SheetCell {
+  const kindLabel = issuedPdf.kind === 'expense' ? '立替金' : '請求書'
+  switch (columnKey) {
+    case 'year_month': return yearMonthCell(issuedPdf.year, issuedPdf.month)
+    case 'kind': return sheetCell(isSavedMerged ? `💾 ${kindLabel} 統合(保存済)` : `📄 発行済 ${kindLabel}`)
+    case 'category': return sheetCell(categoryLabel(issuedPdf.category))
+    case 'applicant': return sheetCell(isSavedMerged
+      ? issuedPdfApplicantNames(issuedPdf, submissionUserNameById)
+      : (issuedPdf.source_user_names ?? [issuedPdf.user_display_name]).filter(Boolean).join(' + '))
+    case 'order_no': return sheetCell(issuedPdf.purchase_order_no)
+    case 'amount': return amountCell(issuedPdf.total_amount)
+    case 'status': return sheetCell(isSavedMerged ? '統合' : '発行済')
+    // 孤立PDFの行はこの列にファイル名を出しているが、日付ではないのでフィルタ上は空白扱い
+    case 'submitted_at': return isSavedMerged ? dateCell(issuedPdf.generated_at) : sheetCell('')
+  }
+}
+
+function mergedRowCell(mergedRow: MergedRow, columnKey: InvoiceColumnKey): SheetCell {
+  switch (columnKey) {
+    case 'year_month': return yearMonthCell(mergedRow.year, mergedRow.month)
+    case 'kind': return sheetCell(mergedRow.kind === 'merged_expense' ? '🔗 立替金 集約' : '🔗 請求書 PO マージ')
+    case 'category': return sheetCell(categoryLabel(mergedRow.category))
+    case 'applicant': return sheetCell(mergedRow.users.join(' + '))
+    case 'order_no': return sheetCell(mergedRow.po)
+    case 'amount': return amountCell(mergedRow.total)
+    case 'status': return sheetCell('統合')
+    case 'submitted_at': return sheetCell('')
+  }
+}
+
+function submissionCell(submission: Submission, columnKey: InvoiceColumnKey): SheetCell {
+  switch (columnKey) {
+    case 'year_month': return yearMonthCell(submission.year, submission.month)
+    case 'kind': return sheetCell(submission.kind === 'scanned' ? '📥 PDF取込' : KIND_LABELS[submission.kind])
+    case 'category': return sheetCell(categoryLabel(submission.category))
+    case 'applicant': return sheetCell(submission.user_display_name)
+    case 'order_no': return sheetCell(submission.effective_purchase_order_no || submission.purchase_order_no_override || submission.received_purchase_order_no)
+    case 'amount': return amountCell(submission.total_override || submission.default_total)
+    case 'status': return sheetCell(SUBMISSION_STATUS_LABELS[submission.status])
+    case 'submitted_at': return dateCell(submission.submitted_at)
+  }
+}
+
+function invoiceListCell(row: InvoiceListRow, columnKey: InvoiceColumnKey, submissionUserNameById: Map<number, string>): SheetCell {
+  switch (row.rowType) {
+    case 'saved_merged_pdf': return issuedPdfCell(row.issuedPdf, true, columnKey, submissionUserNameById)
+    case 'orphan_issued_pdf': return issuedPdfCell(row.issuedPdf, false, columnKey, submissionUserNameById)
+    case 'merged': return mergedRowCell(row.mergedRow, columnKey)
+    case 'submission': return submissionCell(row.submission, columnKey)
+  }
 }
 
 // 運送カテゴリの振込先入力。運送の請求書PDFは bank_info を改行区切りで
@@ -916,7 +1027,6 @@ export default function InvoicesPage() {
 
   // 同じ (year, month, category, kind=expense, status=approved) で複数ユーザーがある場合の集約 row（virtual）
   // 同じ PO に複数の invoice 申請があれば「PO マージ」row も追加
-  type MergedRow = { kind: 'merged_expense' | 'merged_invoice'; key: string; year: number; month: number; category: string; users: string[]; ids: number[]; po: string | null; total: number }
   // 一覧から手動で隠した集約行 (ゴミ箱ボタン押下分)。localStorage に永続化
   const [dismissedMergedKeys, setDismissedMergedKeys] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem('dismissedMergedKeys') || '[]')) } catch { return new Set() }
@@ -972,7 +1082,7 @@ export default function InvoicesPage() {
 
   // 発行済み統合PDF(IssuedInvoicePdf)のうち、元申請が一覧に存在しないもの(=孤立。例: 4月分など申請が無い確定PDF)を
   // 独立した行として表示する。これが無いと申請の無い発行済みPDFが一覧から消えて見える。
-  const issuedRows = useMemo(() => {
+  const issuedRowsBase = useMemo(() => {
     const itemIds = new Set(items.map((s) => s.id))
     return issuedPdfs
       .filter((p) => !(p.source_submission_ids ?? []).some((id) => itemIds.has(id)))
@@ -996,7 +1106,7 @@ export default function InvoicesPage() {
   }, [issuedPdfs, items, filterKind, filterStatus, filterMonth, filterUserKeys])
 
   // 表に出す発行済み統合PDF。合計もこの同じ集合を使うので、JSX 側の絞り込みと二重管理にしない。
-  const visibleIssuedPdfs = useMemo(() => {
+  const visibleIssuedPdfsBase = useMemo(() => {
     return issuedPdfs
       // 発行済みPDFは承認済み相当。下書き/申請中/却下で絞ったら表・合計の両方から外す（issuedRows / visibleMerged と条件を揃える）。
       .filter(() => filterStatus === 'all' || filterStatus === 'approved')
@@ -1025,7 +1135,7 @@ export default function InvoicesPage() {
   }, [issuedPdfs, filterStatus, filterMonth, filterKind, filterUserKeys, filterText])
 
   // 統合行も月/種別/ユーザーのフィルターを適用（従来は無条件表示で、月で絞ると申請0件時にテーブルごと消えていた）
-  const visibleMerged = useMemo(() => {
+  const visibleMergedBase = useMemo(() => {
     return mergedRows
       .filter((m) => filterKind === 'all' || (filterKind === 'invoice' && m.kind === 'merged_invoice') || (filterKind === 'expense' && m.kind === 'merged_expense'))
       .filter(() => filterStatus === 'all' || filterStatus === 'approved')
@@ -1054,7 +1164,7 @@ export default function InvoicesPage() {
     return ids
   }, [mergedRows, checkedMergedKeys])
 
-  const filtered = useMemo(() => {
+  const filteredBase = useMemo(() => {
     const text = filterText.trim().toLowerCase()
     const amount = (s: Submission) => s.total_override ?? s.default_total ?? 0
     return items
@@ -1114,6 +1224,58 @@ export default function InvoicesPage() {
         }
       })
   }, [items, filterKind, filterStatus, filterMonth, filterUserKeys, filterText, sortKey])
+
+  // 表の列見出しフィルタ(スプレッドシート式)。上のフィルターバーで絞った結果に、さらに4種類の行すべてへ同じ条件で掛ける。
+  // 合計(filteredTotals)もここで絞った行から出すので、表と合計がズレない。並べ替えは行の種類ごとの塊の中で効く。
+  const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<InvoiceColumnKey>>({})
+  const [invoiceSort, setInvoiceSort] = useState<SheetSort<InvoiceColumnKey>>(null)
+  const isColumnFiltered = Object.keys(columnFilters).length > 0 || invoiceSort !== null
+  const clearColumnFilters = () => {
+    setColumnFilters({})
+    setInvoiceSort(null)
+    setPage(1)
+  }
+  const submissionUserNameById = useMemo(() => new Map(items.map((submission) => [submission.id, submission.user_display_name])), [items])
+  const cellOfInvoiceRow = useCallback(
+    (row: InvoiceListRow, columnKey: InvoiceColumnKey) => invoiceListCell(row, columnKey, submissionUserNameById),
+    [submissionUserNameById],
+  )
+  // 行の種類ごとの塊(保存済統合PDF / 集約行 / 孤立PDF / 個別申請)を、塊の並びは変えずに中だけ絞り込み・並べ替える
+  const filterAndSortInvoiceGroup = useCallback(
+    <Item,>(groupItems: Item[], toListRow: (item: Item) => InvoiceListRow) =>
+      filterAndSortSheetRows(groupItems, columnFilters, invoiceSort, (item, columnKey) => cellOfInvoiceRow(toListRow(item), columnKey), invoiceColumnValueComparer, () => 0),
+    [columnFilters, invoiceSort, cellOfInvoiceRow],
+  )
+  const invoiceListRowsBase: InvoiceListRow[] = useMemo(() => [
+    ...visibleIssuedPdfsBase.map(savedMergedPdfListRow),
+    ...visibleMergedBase.map(mergedListRow),
+    ...issuedRowsBase.map(orphanIssuedPdfListRow),
+    ...filteredBase.map(submissionListRow),
+  ], [visibleIssuedPdfsBase, visibleMergedBase, issuedRowsBase, filteredBase])
+  const visibleIssuedPdfs = useMemo(() => filterAndSortInvoiceGroup(visibleIssuedPdfsBase, savedMergedPdfListRow), [visibleIssuedPdfsBase, filterAndSortInvoiceGroup])
+  const visibleMerged = useMemo(() => filterAndSortInvoiceGroup(visibleMergedBase, mergedListRow), [visibleMergedBase, filterAndSortInvoiceGroup])
+  const issuedRows = useMemo(() => filterAndSortInvoiceGroup(issuedRowsBase, orphanIssuedPdfListRow), [issuedRowsBase, filterAndSortInvoiceGroup])
+  const filtered = useMemo(() => filterAndSortInvoiceGroup(filteredBase, submissionListRow), [filteredBase, filterAndSortInvoiceGroup])
+  const invoiceListRowCount = invoiceListRowsBase.length
+  const visibleInvoiceListRowCount = visibleIssuedPdfs.length + visibleMerged.length + issuedRows.length + filtered.length
+
+  const invoiceHeader = (columnKey: InvoiceColumnKey, label: string, align: 'left' | 'right' | 'center' = 'left') => (
+    <div className={`flex items-center gap-1.5 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-between'}`}>
+      <span>{label}</span>
+      <SheetColumnFilter
+        tone="light"
+        columnLabel={label}
+        options={sheetColumnFilterOptions(invoiceListRowsBase, columnFilters, columnKey, cellOfInvoiceRow, invoiceColumnValueComparer(columnKey))}
+        selectedValues={columnFilters[columnKey] ?? null}
+        sortDirection={invoiceSort?.columnKey === columnKey ? invoiceSort.direction : null}
+        onApply={(selectedValues) => {
+          setColumnFilters((previous) => withColumnFilter(previous, columnKey, selectedValues))
+          setPage(1)
+        }}
+        onSort={(direction) => setInvoiceSort({ columnKey, direction })}
+      />
+    </div>
+  )
 
   // 合計は「ラボップへ実際に出す 1 通」= 統合を単位に数える。
   // 個別申請(西野ぶん・川村ぶん)は統合の内訳なので二重計上しない。
@@ -1449,7 +1611,8 @@ export default function InvoicesPage() {
       })()}
 
       <div className={`${filtersOpen ? 'flex' : 'hidden'} flex-wrap items-center gap-2 sm:flex`}>
-        <div className="flex gap-1">
+        {/* 種別・ステータス・申請者・並び順は PC では表の列見出しフィルタで操作する。スマホ(カード表示)用にだけ残す */}
+        <div className="flex gap-1 sm:hidden">
           {(['all', 'invoice', 'expense'] as const).map((k) => (
             <button key={k} onClick={() => setFilterKind(k)}
               className={`rounded px-2 py-1 text-[11px] font-semibold ${filterKind === k ? 'bg-fuchsia-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
@@ -1457,7 +1620,7 @@ export default function InvoicesPage() {
             </button>
           ))}
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 sm:hidden">
           {(['all', 'draft', 'pending', 'approved', 'rejected'] as const).map((s) => (
             <button key={s} onClick={() => setFilterStatus(s)}
               className={`rounded px-2 py-1 text-[11px] font-semibold ${filterStatus === s ? 'bg-sky-500 text-white' : 'bg-white border border-[var(--color-border)] text-[var(--color-text-sub)]'}`}>
@@ -1469,7 +1632,7 @@ export default function InvoicesPage() {
           className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs" />
         {filterMonth && <button onClick={() => setFilterMonth('')} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
         {me?.admin && (
-          <div className="relative">
+          <div className="relative sm:hidden">
             <button type="button" onClick={() => setUserMenuOpen((v) => !v)}
               className="flex items-center gap-1 rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs text-[var(--color-text)]">
               <span>{filterUserKeys.length === 0 ? '全申請者' : `申請者 ${filterUserKeys.length}人`}</span>
@@ -1499,7 +1662,7 @@ export default function InvoicesPage() {
             )}
           </div>
         )}
-        {filterUserKeys.length > 0 && <button onClick={() => setFilterUserKeys([])} className="text-[11px] text-[var(--color-text-sub)]">×</button>}
+        {filterUserKeys.length > 0 && <button onClick={() => setFilterUserKeys([])} className="text-[11px] text-[var(--color-text-sub)] sm:hidden">×</button>}
         <input
           type="search"
           value={filterText}
@@ -1511,7 +1674,7 @@ export default function InvoicesPage() {
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
           title="並び順"
-          className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs"
+          className="rounded border border-[var(--color-border)] bg-white px-2 py-1 text-xs sm:hidden"
         >
           <option value="date_desc">📅 日付（新しい順）</option>
           <option value="date_asc">📅 日付（古い順）</option>
@@ -1522,8 +1685,11 @@ export default function InvoicesPage() {
         </select>
         <div className="ml-auto hidden flex-wrap items-center gap-2 sm:flex">
           <span className="text-[11px] text-[var(--color-text-sub)]">
-            {filtered.length} / {items.length} 件
+            {visibleInvoiceListRowCount} / {invoiceListRowCount} 行
           </span>
+          {isColumnFiltered && (
+            <button onClick={clearColumnFilters} className="rounded border border-[var(--color-border)] bg-white px-2 py-0.5 text-[11px] hover:bg-gray-50">フィルタを解除</button>
+          )}
           {/* 売上/外注支払の分割は管理者(西野)専用の見方。一般ユーザーには総合計だけ出す */}
           {me?.admin && (
             <>
@@ -1543,7 +1709,7 @@ export default function InvoicesPage() {
 
       {loading ? (
         <div className="text-sm text-[var(--color-text-sub)]">読み込み中…</div>
-      ) : filtered.length === 0 && visibleMerged.length === 0 && issuedRows.length === 0 ? (
+      ) : invoiceListRowCount === 0 ? (
         <div className="text-sm text-[var(--color-text-sub)]">該当する申請がありません</div>
       ) : (
         <>
@@ -1639,18 +1805,25 @@ export default function InvoicesPage() {
             <thead className="bg-gray-50 text-[var(--color-text-sub)]">
               <tr>
                 {canBulk && <th className="px-1 py-2 text-center w-6"></th>}
-                <th className="px-2 py-2 text-left">年月</th>
-                <th className="px-2 py-2 text-left">種別</th>
-                <th className="px-2 py-2 text-left">カテゴリ</th>
-                <th className="px-2 py-2 text-left">申請者</th>
-                <th className="px-2 py-2 text-left">注文番号</th>
-                <th className="px-2 py-2 text-right">金額</th>
-                <th className="px-2 py-2 text-center">ステータス</th>
-                <th className="px-2 py-2 text-left">申請日時</th>
+                <th className="px-2 py-2 text-left">{invoiceHeader('year_month', '年月')}</th>
+                <th className="px-2 py-2 text-left">{invoiceHeader('kind', '種別')}</th>
+                <th className="px-2 py-2 text-left">{invoiceHeader('category', 'カテゴリ')}</th>
+                <th className="px-2 py-2 text-left">{invoiceHeader('applicant', '申請者')}</th>
+                <th className="px-2 py-2 text-left">{invoiceHeader('order_no', '注文番号')}</th>
+                <th className="px-2 py-2 text-right">{invoiceHeader('amount', '金額', 'right')}</th>
+                <th className="px-2 py-2 text-center">{invoiceHeader('status', 'ステータス', 'center')}</th>
+                <th className="px-2 py-2 text-left">{invoiceHeader('submitted_at', '申請日時')}</th>
                 <th className="px-2 py-2 text-center">DL</th>
               </tr>
             </thead>
             <tbody>
+              {visibleInvoiceListRowCount === 0 && (
+                <tr>
+                  <td colSpan={canBulk ? 10 : 9} className="px-2 py-6 text-center text-[var(--color-text-sub)]">
+                    列のフィルタに一致する行がありません
+                  </td>
+                </tr>
+              )}
               {/* 保存済 統合 PDF (issued_invoice_pdfs) を最上部に表示。filterMonth/filterKind/filterUserKeys/filterText も適用 */}
               {visibleIssuedPdfs
                 .map((p) => {
