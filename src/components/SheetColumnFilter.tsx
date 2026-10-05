@@ -9,6 +9,10 @@ export type SheetColumnFilterOption = { value: string; label: string; count: num
 export type SheetSortDirection = 'asc' | 'desc'
 
 const POPOVER_WIDTH_PX = 240
+const INACTIVE_BUTTON_CLASS_BY_TONE = {
+  dark: 'bg-white/15 text-white hover:bg-white/30',
+  light: 'bg-slate-200 text-slate-600 hover:bg-slate-300',
+} as const
 const VIEWPORT_MARGIN_PX = 8
 
 export function SheetColumnFilter({
@@ -18,6 +22,7 @@ export function SheetColumnFilter({
   sortDirection,
   onApply,
   onSort,
+  tone = 'dark',
 }: {
   columnLabel: string
   options: SheetColumnFilterOption[]
@@ -25,6 +30,8 @@ export function SheetColumnFilter({
   sortDirection: SheetSortDirection | null
   onApply: (nextSelectedValues: string[] | null) => void
   onSort: (direction: SheetSortDirection) => void
+  // 見出しの背景色に合わせたボタン配色(dark=濃色見出し / light=淡色見出し)
+  tone?: 'dark' | 'light'
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -110,7 +117,7 @@ export function SheetColumnFilter({
         title={`${columnLabel}で絞り込み・並べ替え`}
         aria-label={`${columnLabel}で絞り込み・並べ替え`}
         className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-[10px] leading-none ${
-          isActive ? 'bg-emerald-500 text-white' : 'bg-white/15 text-white hover:bg-white/30'
+          isActive ? 'bg-emerald-500 text-white' : INACTIVE_BUTTON_CLASS_BY_TONE[tone]
         }`}
       >
         {isActive ? '▼' : sortDirection === 'asc' ? '↑' : sortDirection === 'desc' ? '↓' : '▾'}

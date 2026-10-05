@@ -1,8 +1,18 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { api } from '../lib/api'
 import { toast } from '../lib/toast'
 import { downloadBlob } from '../lib/downloadBlob'
-import { SheetColumnFilter, type SheetColumnFilterOption, type SheetSortDirection } from '../components/SheetColumnFilter'
+import { SheetColumnFilter } from '../components/SheetColumnFilter'
+import {
+  compareTextValues,
+  filterAndSortSheetRows,
+  sheetCell,
+  sheetColumnFilterOptions,
+  withColumnFilter,
+  type SheetCell,
+  type SheetColumnFilters,
+  type SheetSort,
+} from '../lib/sheetColumnFilter'
 import { effectiveTaskValue, hasTaskOverride, isRedCell, type NotionTaskEffectiveField } from '../lib/notionTaskEffective'
 import {
   DAY_WIDTH_PX,
@@ -567,12 +577,8 @@ export default function BacklogActivitiesPage() {
   )
 }
 
-type SortState = { key: string; dir: 'asc' | 'desc' }
-
 const TH = 'sticky top-[61px] z-20 bg-slate-100 border border-slate-300 px-3 py-2 font-semibold whitespace-nowrap'
 const TD = 'border border-slate-300 px-3 py-2 align-top'
-const NOTION_NONE = '__none'
-const NOTION_LINKED = '__linked'
 
 // 横スクロール時に左へ固定する先頭3列(月/課題/概要)。left は各列幅(116/124/248)の累積。Tailwind JIT のため文字列リテラルで持つ。
 const PINNED_COLUMN_WIDTH_CLASSES = [
@@ -585,6 +591,22 @@ const PINNED_COLUMNS_WIDTH_PX = 116 + 124 + 248
 // 固定列の右にこれだけ表示幅が無い(スマホ幅)ときは固定を外し、表全体を横スクロールさせる
 const MINIMUM_SCROLLABLE_WIDTH_BESIDE_PINNED_COLUMNS_PX = 240
 
+// 上司報告サマリの列見出しフィルタ(WBS と同じスプレッドシート式)。
+type SummaryColumnKey = 'month' | 'issue_key' | 'summary' | 'status' | 'start_on' | 'shori_on' | 'done_on' | 'note' | 'notion'
+const SUMMARY_NOT_LINKED_LABEL = '未紐付け'
+const SUMMARY_LINKED_WITHOUT_ASSIGNEE_LABEL = '紐付けあり（担当者なし）'
+
+// 開始日・完了日は実績(Backlog)、Notion 列は紐付け先タスクの担当者で絞り込む。
+function summaryColumnCell(row: SummaryRow, columnKey: SummaryColumnKey, notionById: Record<string, NotionTaskOption>): SheetCell {
+  if (columnKey !== 'notion') return sheetCell(row[columnKey])
+  if (!row.notion_block_id) return sheetCell(SUMMARY_NOT_LINKED_LABEL)
+  return sheetCell(notionById[row.notion_block_id]?.assignee_name || SUMMARY_LINKED_WITHOUT_ASSIGNEE_LABEL)
+}
+
+const compareSummaryRowsByDefault = (leftRow: SummaryRow, rightRow: SummaryRow) =>
+  rightRow.month.localeCompare(leftRow.month) || leftRow.issue_key.localeCompare(rightRow.issue_key)
+const summaryColumnValueComparer = () => compareTextValues
+
 function SummaryView({
   rows, legend, notionTasks, savingKey, onSaveNote, onSaveStatus, onSaveNotion,
 }: {
@@ -596,8 +618,8 @@ function SummaryView({
   onSaveStatus: (row: SummaryRow, status: string) => void
   onSaveNotion: (row: SummaryRow, notionBlockId: string) => void
 }) {
-  const [sort, setSort] = useState<SortState>({ key: 'month', dir: 'desc' })
-  const [filters, setFilters] = useState({ month: '', issue_key: '', summary: '', status: '', note: '', notion: '' })
+  const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<SummaryColumnKey>>({})
+  const [summarySort, setSummarySort] = useState<SheetSort<SummaryColumnKey>>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerWidthPx = useScrollContainerWidthPx(scrollContainerRef, true)
@@ -607,8 +629,6 @@ function SummaryView({
   // 見出し行は TH 側の sticky top を活かしたまま、左固定(left)だけを付け外しする
   const pinnedHeadClass = (index: number) =>
     `${pinnedColumnsEnabled ? `${PINNED_COLUMN_LEFT_CLASSES[index]} z-30` : ''} ${PINNED_COLUMN_WIDTH_CLASSES[index]}`
-  const pinnedFilterClass = (index: number) =>
-    `sticky top-[94px] z-30 ${pinnedColumnsEnabled ? PINNED_COLUMN_LEFT_CLASSES[index] : ''} bg-slate-50 ${PINNED_COLUMN_WIDTH_CLASSES[index]} border border-slate-300 px-1.5 py-1`
   const pinnedBodyClass = (index: number) =>
     `${pinnedColumnsEnabled ? `sticky ${PINNED_COLUMN_LEFT_CLASSES[index]} z-10` : ''} bg-white ${PINNED_COLUMN_WIDTH_CLASSES[index]}`
 
@@ -623,33 +643,30 @@ function SummaryView({
     [notionTasks],
   )
 
-  const setFilter = (key: keyof typeof filters, value: string) => setFilters((f) => ({ ...f, [key]: value }))
-  const toggleSort = (key: string) =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
-
-  const visible = useMemo(() => {
-    const has = (hay: string, needle: string) => hay.toLowerCase().includes(needle.trim().toLowerCase())
-    const filtered = rows.filter((row) => {
-      if (filters.month && !has(row.month, filters.month)) return false
-      if (filters.issue_key && !has(row.issue_key, filters.issue_key)) return false
-      if (filters.summary && !has(row.summary, filters.summary)) return false
-      if (filters.status && row.status !== filters.status) return false
-      if (filters.note && !has(row.note, filters.note)) return false
-      if (filters.notion) {
-        if (filters.notion === NOTION_NONE) return !row.notion_block_id
-        if (filters.notion === NOTION_LINKED) return !!row.notion_block_id
-        const linked = notionById[row.notion_block_id]
-        if (!linked || linked.assignee_name !== filters.notion) return false
-      }
-      return true
-    })
-    const dir = sort.dir === 'asc' ? 1 : -1
-    return [...filtered].sort((a, b) => {
-      const av = String((a as Record<string, unknown>)[sort.key] ?? '')
-      const bv = String((b as Record<string, unknown>)[sort.key] ?? '')
-      return av.localeCompare(bv, 'ja') * dir || b.month.localeCompare(a.month) || a.issue_key.localeCompare(b.issue_key)
-    })
-  }, [rows, filters, sort, notionById])
+  const summaryCell = useCallback(
+    (row: SummaryRow, columnKey: SummaryColumnKey) => summaryColumnCell(row, columnKey, notionById),
+    [notionById],
+  )
+  const visible = useMemo(
+    () => filterAndSortSheetRows(rows, columnFilters, summarySort, summaryCell, summaryColumnValueComparer, compareSummaryRowsByDefault),
+    [rows, columnFilters, summarySort, summaryCell],
+  )
+  const isFiltered = Object.keys(columnFilters).length > 0 || summarySort !== null
+  const clearFilters = () => { setColumnFilters({}); setSummarySort(null) }
+  const summaryHeader = (columnKey: SummaryColumnKey, label: string) => (
+    <div className="flex items-center justify-between gap-2">
+      <span>{label}</span>
+      <SheetColumnFilter
+        tone="light"
+        columnLabel={label}
+        options={sheetColumnFilterOptions(rows, columnFilters, columnKey, summaryCell, compareTextValues)}
+        selectedValues={columnFilters[columnKey] ?? null}
+        sortDirection={summarySort?.columnKey === columnKey ? summarySort.direction : null}
+        onApply={(selectedValues) => setColumnFilters((previous) => withColumnFilter(previous, columnKey, selectedValues))}
+        onSort={(direction) => setSummarySort({ columnKey, direction })}
+      />
+    </div>
+  )
 
   if (rows.length === 0) {
     return <div className="text-slate-400 text-sm py-10 text-center">サマリがありません。「Backlog 同期」または「スプシから取込」を押してください。</div>
@@ -672,42 +689,29 @@ function SummaryView({
         </div>
       </div>
 
+      <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+        <span>見出しの ▾ で絞り込み・並べ替え（開始日・完了日は実績、Notion は担当者で絞り込み）</span>
+        {isFiltered && (
+          <>
+            <span>{visible.length} / {rows.length} 件</span>
+            <button onClick={clearFilters} className="rounded border border-slate-300 px-2 py-0.5 hover:bg-slate-100">フィルタを解除</button>
+          </>
+        )}
+      </div>
+
       <div ref={scrollContainerRef} className="max-w-full overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
         <table className="min-w-max text-sm border-collapse">
           <thead>
             <tr className="bg-slate-100 text-slate-600 text-left text-xs">
-              <SortTh label="月" k="month" sort={sort} onSort={toggleSort} className={pinnedHeadClass(0)} />
-              <SortTh label="課題" k="issue_key" sort={sort} onSort={toggleSort} className={pinnedHeadClass(1)} />
-              <SortTh label="概要" k="summary" sort={sort} onSort={toggleSort} className={pinnedHeadClass(2)} />
-              <SortTh label="状態推移" k="status" sort={sort} onSort={toggleSort} />
-              <SortTh label="開始日 (予定→実績)" k="start_on" sort={sort} onSort={toggleSort} />
-              <SortTh label="処理済日" k="shori_on" sort={sort} onSort={toggleSort} />
-              <SortTh label="完了日 (予定→実績)" k="done_on" sort={sort} onSort={toggleSort} />
-              <th className={`${TH} w-96 min-w-[24rem]`}>備考</th>
-              <th className={TH}>Notion (WBS)</th>
-            </tr>
-            <tr className="bg-slate-50 text-xs">
-              <th className={pinnedFilterClass(0)}><FilterInput value={filters.month} onChange={(v) => setFilter('month', v)} placeholder="月で絞込" /></th>
-              <th className={pinnedFilterClass(1)}><FilterInput value={filters.issue_key} onChange={(v) => setFilter('issue_key', v)} placeholder="課題で絞込" /></th>
-              <th className={pinnedFilterClass(2)}><FilterInput value={filters.summary} onChange={(v) => setFilter('summary', v)} placeholder="概要で絞込" /></th>
-              <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1">
-                <select value={filters.status} onChange={(e) => setFilter('status', e.target.value)} className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-xs">
-                  <option value="">全て</option>
-                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </th>
-              <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-              <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-              <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1" />
-              <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1"><FilterInput value={filters.note} onChange={(v) => setFilter('note', v)} placeholder="備考で絞込" /></th>
-              <th className="sticky top-[94px] z-10 bg-slate-50 border border-slate-300 px-1.5 py-1">
-                <select value={filters.notion} onChange={(e) => setFilter('notion', e.target.value)} className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-xs" title="担当者・紐付け状況で絞込">
-                  <option value="">全て</option>
-                  {assignees.map((a) => <option key={a} value={a}>{a}</option>)}
-                  <option value={NOTION_LINKED}>紐付けあり</option>
-                  <option value={NOTION_NONE}>未紐付け</option>
-                </select>
-              </th>
+              <th className={`${TH} ${pinnedHeadClass(0)}`}>{summaryHeader('month', '月')}</th>
+              <th className={`${TH} ${pinnedHeadClass(1)}`}>{summaryHeader('issue_key', '課題')}</th>
+              <th className={`${TH} ${pinnedHeadClass(2)}`}>{summaryHeader('summary', '概要')}</th>
+              <th className={TH}>{summaryHeader('status', '状態推移')}</th>
+              <th className={TH}>{summaryHeader('start_on', '開始日 (予定→実績)')}</th>
+              <th className={TH}>{summaryHeader('shori_on', '処理済日')}</th>
+              <th className={TH}>{summaryHeader('done_on', '完了日 (予定→実績)')}</th>
+              <th className={`${TH} w-96 min-w-[24rem]`}>{summaryHeader('note', '備考')}</th>
+              <th className={TH}>{summaryHeader('notion', 'Notion (WBS)')}</th>
             </tr>
           </thead>
           <tbody>
@@ -851,12 +855,9 @@ const WBS_EXCEL_FONT_FAMILY = '"Meiryo UI", Meiryo, sans-serif'
 
 // WBS 表の列見出しフィルタ(スプレッドシートと同じ「値でフィルタ」＋並べ替え)。値は修正後があればその値で判定する。
 type WbsColumnKey = (typeof WBS_TABLE_COLUMNS)[number]['key']
-type WbsColumnFilters = Partial<Record<WbsColumnKey, string[]>>
-type WbsSort = { columnKey: WbsColumnKey; direction: SheetSortDirection } | null
-const BLANK_FILTER_LABEL = '(空白)'
 
 // 列ごとのセル値。value はフィルタ・並べ替えのキー、label はフィルタ一覧に出す表示値。
-function wbsColumnCell(task: NotionTaskOption, columnKey: WbsColumnKey): { value: string; label: string } {
+function wbsColumnCell(task: NotionTaskOption, columnKey: WbsColumnKey): SheetCell {
   switch (columnKey) {
     case 'wbs_level': {
       const wbsLevel = task.wbs_level ?? ''
@@ -884,38 +885,13 @@ function wbsColumnCell(task: NotionTaskOption, columnKey: WbsColumnKey): { value
   }
 }
 
-// 空白は昇順・降順どちらでも末尾に置く(スプレッドシートと同じ)。
-function compareWbsColumnValues(columnKey: WbsColumnKey, leftValue: string, rightValue: string): number {
-  if (leftValue === rightValue) return 0
-  if (leftValue === '') return 1
-  if (rightValue === '') return -1
-  if (columnKey === 'wbs_level') return compareWbsLevel(leftValue, rightValue)
-  if (columnKey === 'progress_rate' || columnKey === 'workload') return parseFloat(leftValue) - parseFloat(rightValue)
-  return leftValue.localeCompare(rightValue, 'ja')
+function wbsColumnValueComparer(columnKey: WbsColumnKey): (leftValue: string, rightValue: string) => number {
+  if (columnKey === 'wbs_level') return compareWbsLevel
+  if (columnKey === 'progress_rate' || columnKey === 'workload') return (leftValue, rightValue) => parseFloat(leftValue) - parseFloat(rightValue)
+  return compareTextValues
 }
 
-function matchesWbsColumnFilters(task: NotionTaskOption, columnFilters: WbsColumnFilters, ignoredColumnKey?: WbsColumnKey): boolean {
-  return Object.entries(columnFilters).every(([columnKey, selectedValues]) => {
-    if (columnKey === ignoredColumnKey || !selectedValues) return true
-    return selectedValues.includes(wbsColumnCell(task, columnKey as WbsColumnKey).value)
-  })
-}
-
-// フィルタ一覧の候補は「他の列のフィルタを通った行」の値(Excel のオートフィルタと同じ)。選択中の値は件数0でも残す。
-function wbsColumnFilterOptions(tasks: NotionTaskOption[], columnFilters: WbsColumnFilters, columnKey: WbsColumnKey): SheetColumnFilterOption[] {
-  const optionsByValue = new Map<string, SheetColumnFilterOption>()
-  for (const task of tasks) {
-    if (!matchesWbsColumnFilters(task, columnFilters, columnKey)) continue
-    const cell = wbsColumnCell(task, columnKey)
-    const existingOption = optionsByValue.get(cell.value)
-    if (existingOption) existingOption.count += 1
-    else optionsByValue.set(cell.value, { value: cell.value, label: cell.label || BLANK_FILTER_LABEL, count: 1 })
-  }
-  for (const selectedValue of columnFilters[columnKey] ?? []) {
-    if (!optionsByValue.has(selectedValue)) optionsByValue.set(selectedValue, { value: selectedValue, label: selectedValue || BLANK_FILTER_LABEL, count: 0 })
-  }
-  return [...optionsByValue.values()].sort((left, right) => compareWbsColumnValues(columnKey, left.value, right.value))
-}
+const compareTasksByWbsLevel = (leftTask: NotionTaskOption, rightTask: NotionTaskOption) => compareWbsLevel(leftTask.wbs_level, rightTask.wbs_level)
 
 // 固定列(WBS_TABLE_COLUMNS)の右に最低これだけガントが見える幅が無いときは、列を固定せず表全体を横スクロールさせる。
 // sticky のままだと left オフセットが枠幅を超える列(進捗率〜終了)が画面外に固定され、スマホでは永遠に見えない。
@@ -929,8 +905,8 @@ function NotionView({ tasks, onPatch, onReload }: {
   onPatch: (notionBlockId: string, patch: Record<string, string>) => void
   onReload: () => Promise<void>
 }) {
-  const [columnFilters, setColumnFilters] = useState<WbsColumnFilters>({})
-  const [wbsSort, setWbsSort] = useState<WbsSort>(null)
+  const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<WbsColumnKey>>({})
+  const [wbsSort, setWbsSort] = useState<SheetSort<WbsColumnKey>>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [openTaskBlockIds, setOpenTaskBlockIds] = useState<Record<string, boolean>>({})
   const [excelTemplate, setExcelTemplate] = useState<WbsExcelTemplateInfo | null>(null)
@@ -948,26 +924,14 @@ function NotionView({ tasks, onPatch, onReload }: {
       .finally(() => setExcelTemplateLoaded(true))
   }, [])
 
-  const sortedTasks = useMemo(() => {
-    const filteredTasks = tasks.filter((task) => matchesWbsColumnFilters(task, columnFilters))
-    if (!wbsSort) return filteredTasks.sort((a, b) => compareWbsLevel(a.wbs_level, b.wbs_level))
-    const directionSign = wbsSort.direction === 'asc' ? 1 : -1
-    return filteredTasks.sort((a, b) => {
-      const leftValue = wbsColumnCell(a, wbsSort.columnKey).value
-      const rightValue = wbsColumnCell(b, wbsSort.columnKey).value
-      if (leftValue === '' || rightValue === '') return compareWbsColumnValues(wbsSort.columnKey, leftValue, rightValue)
-      return directionSign * compareWbsColumnValues(wbsSort.columnKey, leftValue, rightValue) || compareWbsLevel(a.wbs_level, b.wbs_level)
-    })
-  }, [tasks, columnFilters, wbsSort])
+  const sortedTasks = useMemo(
+    () => filterAndSortSheetRows(tasks, columnFilters, wbsSort, wbsColumnCell, wbsColumnValueComparer, compareTasksByWbsLevel),
+    [tasks, columnFilters, wbsSort],
+  )
   const isFiltered = Object.keys(columnFilters).length > 0 || wbsSort !== null
   const clearFilters = () => { setColumnFilters({}); setWbsSort(null) }
   const applyColumnFilter = (columnKey: WbsColumnKey, selectedValues: string[] | null) =>
-    setColumnFilters((previous) => {
-      const next = { ...previous }
-      if (selectedValues === null) delete next[columnKey]
-      else next[columnKey] = selectedValues
-      return next
-    })
+    setColumnFilters((previous) => withColumnFilter(previous, columnKey, selectedValues))
 
   // スクロール枠の幅(固定列の可否の判定に使う)。枠はタスクがある時だけ描画される。
   const scrollContainerWidthPx = useScrollContainerWidthPx(scrollContainerRef, tasks.length > 0)
@@ -1244,7 +1208,7 @@ function NotionView({ tasks, onPatch, onReload }: {
                       <span className="absolute bottom-1 right-1">
                         <SheetColumnFilter
                           columnLabel={column.label.replace('\n', '')}
-                          options={wbsColumnFilterOptions(tasks, columnFilters, column.key)}
+                          options={sheetColumnFilterOptions(tasks, columnFilters, column.key, wbsColumnCell, wbsColumnValueComparer(column.key))}
                           selectedValues={columnFilters[column.key] ?? null}
                           sortDirection={wbsSort?.columnKey === column.key ? wbsSort.direction : null}
                           onApply={(selectedValues) => applyColumnFilter(column.key, selectedValues)}
@@ -1505,29 +1469,6 @@ function NotionTaskDetailPanel({ task, onPatch }: { task: NotionTaskOption; onPa
         </div>
       </div>
     </div>
-  )
-}
-
-function SortTh({ label, k, sort, onSort, className }: { label: string; k: string; sort: SortState; onSort: (k: string) => void; className?: string }) {
-  const active = sort.key === k
-  return (
-    <th className={`${TH} ${className ?? ''}`}>
-      <button onClick={() => onSort(k)} className="inline-flex items-center gap-1 hover:text-slate-900">
-        {label}
-        <span className={`text-[10px] ${active ? 'text-emerald-600' : 'text-slate-300'}`}>{active ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
-      </button>
-    </th>
-  )
-}
-
-function FilterInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-xs font-normal text-slate-700 placeholder:text-slate-300 focus:border-emerald-400 focus:outline-none"
-    />
   )
 }
 
