@@ -152,6 +152,8 @@ const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1fUMfik4FnsqIZ
 // 主_リビング_進捗管理_川村_西野 の Notion(WBS) タブ。アプリ→スプシの出力は廃止（シートは人が編集するマスタ）
 const NOTION_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1rhRJ8vr3m8_HRZsawMR61r5PI0DcgzYZslHez43LZ8I/edit#gid=1287451848'
 const STATUS_OPTIONS = ['処理中', '処理済み', '完了'] as const
+// 開いたままの画面に他の人の WBS 編集を反映する自動更新の間隔
+const AUTO_REFRESH_INTERVAL_MS = 60_000
 
 const TYPE_STYLE: Record<Activity['activity_type'], string> = {
   comment: 'bg-emerald-100 text-emerald-700',
@@ -203,6 +205,36 @@ export default function BacklogActivitiesPage() {
     fetchData(selectedUserId)
       .catch(() => setNotice({ kind: 'err', text: '対応ログの取得に失敗しました' }))
       .finally(() => setLoading(false))
+  }, [selectedUserId])
+
+  // 他の人(川村さん)が WBS を編集しても、開いたままの画面に反映されるよう定期的に取り直す。
+  // 取得開始後にこの画面で保存・同期が走っていたら(data が差し替わっていたら)、古い結果で上書きしない。
+  const dataRef = useRef<Payload | null>(null)
+  dataRef.current = data
+  useEffect(() => {
+    if (selectedUserId == null) return
+    let cancelled = false
+    const refreshSilently = async () => {
+      if (document.visibilityState !== 'visible') return
+      const dataAtStart = dataRef.current
+      try {
+        const r = await api.get<Payload>('/backlog_activities', { params: { user_id: selectedUserId } })
+        if (cancelled) return
+        setData((prev) => (prev === dataAtStart ? r.data : prev))
+      } catch {
+        // 自動更新の失敗は通知しない(次回の更新で回復する)
+      }
+    }
+    const timer = setInterval(refreshSilently, AUTO_REFRESH_INTERVAL_MS)
+    const onVisible = () => { if (document.visibilityState === 'visible') void refreshSilently() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
   }, [selectedUserId])
 
   const sync = async () => {
@@ -482,7 +514,7 @@ export default function BacklogActivitiesPage() {
         </div>
       )}
       {data?.synced_at && (
-        <p className="text-xs text-slate-400 mb-4">最終同期: {new Date(data.synced_at).toLocaleString('ja-JP')}</p>
+        <p className="text-xs text-slate-400 mb-4">最終同期: {new Date(data.synced_at).toLocaleString('ja-JP')}<span className="ml-2">（1分ごと・タブに戻った時に自動で最新を取得）</span></p>
       )}
 
       {loading && <div className="text-slate-400 text-sm py-10 text-center">読み込み中…</div>}
@@ -1447,14 +1479,14 @@ function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, op
               title={effectiveTitle || undefined}
             >
               <EditableCell kind="text" raw={effectiveTitle}
-                display={<OverrideMarkedValue value={`${wbsIndent(task.wbs_level)}${effectiveTitle || '—'}`} overridden={hasTaskOverride(task, 'title')} previousValue={task.title} />}
+                display={<OverrideMarkedValue value={`${wbsIndent(task.wbs_level)}${effectiveTitle || '—'}`} overridden={hasTaskOverride(task, 'title')} previousValue={task.title} onRevert={() => onPatch(task.notion_block_id, { title_prev: '' })} />}
                 onSave={(value) => onPatch(task.notion_block_id, { title_prev: value })} />
             </span>
           </span>
         </td>
         <td className={`${stickyCellClassName} text-center`} style={{ ...stickyCellStyleFor('assignee_name'), ...pinnedLeft(2) }}>
           <EditableCell kind="text" raw={effectiveAssigneeName ?? ''}
-            display={<OverrideMarkedValue value={effectiveAssigneeName || '—'} overridden={hasTaskOverride(task, 'assignee_name')} previousValue={task.assignee_name} />}
+            display={<OverrideMarkedValue value={effectiveAssigneeName || '—'} overridden={hasTaskOverride(task, 'assignee_name')} previousValue={task.assignee_name} onRevert={() => onPatch(task.notion_block_id, { assignee_name_prev: '' })} />}
             onSave={(value) => onPatch(task.notion_block_id, { assignee_name_prev: value })} />
         </td>
         <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('progress_rate'), ...pinnedLeft(3) }}>
@@ -1464,23 +1496,23 @@ function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, op
             style={{ backgroundImage: `linear-gradient(to right, ${WBS_EXCEL_COLORS.progressBarTrack} ${progressPercent}%, transparent ${progressPercent}%)` }}
           >
             <EditableCell kind="rate" raw={effectiveProgressRate == null ? '' : String(progressPercent)}
-              display={<OverrideMarkedValue value={`${progressPercent}%`} overridden={hasTaskOverride(task, 'progress_rate')} previousValue={task.progress_rate == null ? null : `${Math.round(task.progress_rate * 100)}%`} />}
+              display={<OverrideMarkedValue value={`${progressPercent}%`} overridden={hasTaskOverride(task, 'progress_rate')} previousValue={task.progress_rate == null ? null : `${Math.round(task.progress_rate * 100)}%`} onRevert={() => onPatch(task.notion_block_id, { progress_rate_prev: '' })} />}
               onSave={(value) => onPatch(task.notion_block_id, { progress_rate_prev: value })} />
           </div>
         </td>
         <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('workload'), ...pinnedLeft(4) }}>
           <EditableCell kind="text" raw={effectiveWorkload == null ? '' : String(effectiveWorkload)}
-            display={<OverrideMarkedValue value={effectiveWorkload == null ? '—' : String(effectiveWorkload)} overridden={hasTaskOverride(task, 'workload')} previousValue={task.workload == null ? null : String(task.workload)} />}
+            display={<OverrideMarkedValue value={effectiveWorkload == null ? '—' : String(effectiveWorkload)} overridden={hasTaskOverride(task, 'workload')} previousValue={task.workload == null ? null : String(task.workload)} onRevert={() => onPatch(task.notion_block_id, { workload_prev: '' })} />}
             onSave={(value) => onPatch(task.notion_block_id, { workload_prev: value })} />
         </td>
         <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('start_date'), ...pinnedLeft(5) }}>
           <EditableCell kind="date" raw={effectiveStartDate ?? ''}
-            display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveStartDate) || '—'} overridden={hasTaskOverride(task, 'start_date')} previousValue={task.start_date} />}
+            display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveStartDate) || '—'} overridden={hasTaskOverride(task, 'start_date')} previousValue={task.start_date} onRevert={() => onPatch(task.notion_block_id, { start_date_prev: '' })} />}
             onSave={(value) => onPatch(task.notion_block_id, { start_date_prev: value })} />
         </td>
         <td className={`${stickyCellClassName} text-center tabular-nums`} style={{ ...stickyCellStyleFor('end_date'), ...pinnedLeft(6) }}>
           <EditableCell kind="date" raw={effectiveEndDate ?? ''}
-            display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveEndDate) || '—'} overridden={hasTaskOverride(task, 'end_date')} previousValue={task.end_date} />}
+            display={<OverrideMarkedValue value={formatDateAsMonthDay(effectiveEndDate) || '—'} overridden={hasTaskOverride(task, 'end_date')} previousValue={task.end_date} onRevert={() => onPatch(task.notion_block_id, { end_date_prev: '' })} />}
             onSave={(value) => onPatch(task.notion_block_id, { end_date_prev: value })} />
         </td>
         {/* Excel 列 I 相当。塗りなし・見出し無しのスペーサー(sticky には含めない) */}
@@ -1515,13 +1547,28 @@ function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, op
   )
 }
 
-// 修正後(_prev)が入っているセルの右上に小さな点を出し、ツールチップで修正前の値を示す。
-function OverrideMarkedValue({ value, overridden, previousValue }: { value: string; overridden: boolean; previousValue: string | number | null | undefined }) {
+// 修正後(_prev)が入っているセルの右上に小さな青丸を出し、ツールチップで修正前の値を示す。
+// 青丸を押すと修正後を消して修正前(Notion 同期値)に戻す。セルのダブルクリック編集とは別の操作なので伝播させない。
+function OverrideMarkedValue({ value, overridden, previousValue, onRevert }: {
+  value: string
+  overridden: boolean
+  previousValue: string | number | null | undefined
+  onRevert: () => void
+}) {
   if (!overridden) return <span className="whitespace-pre">{value}</span>
+  const previousLabel = previousValue ?? '—'
   return (
-    <span className="relative inline-block whitespace-pre pr-2" title={`修正前: ${previousValue ?? '—'}`}>
+    <span className="relative inline-block whitespace-pre pr-2" title={`修正前: ${previousLabel}`}>
       {value}
-      <span className="absolute -right-0.5 -top-0.5 text-[8px] text-sky-500">●</span>
+      <button
+        type="button"
+        onClick={(event) => { event.stopPropagation(); onRevert() }}
+        onDoubleClick={(event) => event.stopPropagation()}
+        title={`修正前（${previousLabel}）に戻す`}
+        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center text-[8px] leading-none text-sky-500 hover:text-sky-700 hover:scale-150"
+      >
+        ●
+      </button>
     </span>
   )
 }
