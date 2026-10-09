@@ -103,6 +103,7 @@ type NotionTaskOption = {
   assignee_name: string | null
   assignee_name_prev?: string | null // 修正後(担当者)
   wbs_level: string | null
+  manual: boolean // 画面から手動追加した行（Notion 同期では消えない・削除可）
   title: string
   title_prev?: string | null // 修正後(タスク名)
   start_date: string | null
@@ -403,6 +404,42 @@ export default function BacklogActivitiesPage() {
     }
   }
 
+  // 基準行の直下に手動タスクを追加する。返ってきた notion_tasks で置き換える。
+  const notionTaskBusyRef = useRef(false)
+  const addNotionTask = async (afterNotionBlockId: string) => {
+    if (notionTaskBusyRef.current) return
+    notionTaskBusyRef.current = true
+    try {
+      const r = await api.post<{ ok: boolean; created_notion_block_id: string; notion_tasks: NotionTaskOption[] }>(
+        '/backlog_activities/notion_task',
+        { after_notion_block_id: afterNotionBlockId },
+        { params: { user_id: selectedUserId } },
+      )
+      setData((prev) => (prev ? { ...prev, notion_tasks: r.data.notion_tasks } : prev))
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'タスクの追加に失敗しました')
+    } finally {
+      notionTaskBusyRef.current = false
+    }
+  }
+
+  // 手動追加したタスクを削除する（Notion 由来は backend が 422）。
+  const deleteNotionTask = async (notionBlockId: string) => {
+    if (notionTaskBusyRef.current) return
+    notionTaskBusyRef.current = true
+    try {
+      const r = await api.delete<{ ok: boolean; notion_tasks: NotionTaskOption[] }>(
+        '/backlog_activities/notion_task',
+        { data: { notion_block_id: notionBlockId }, params: { user_id: selectedUserId } },
+      )
+      setData((prev) => (prev ? { ...prev, notion_tasks: r.data.notion_tasks } : prev))
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'タスクの削除に失敗しました')
+    } finally {
+      notionTaskBusyRef.current = false
+    }
+  }
+
   const months = useMemo(
     () => [...(data?.summary ?? [])].sort((a, b) => b.month.localeCompare(a.month)),
     [data],
@@ -535,6 +572,8 @@ export default function BacklogActivitiesPage() {
         <NotionView
           tasks={data.notion_tasks ?? []}
           onPatch={saveNotionTask}
+          onAddTask={addNotionTask}
+          onDeleteTask={deleteNotionTask}
           onReload={() => (selectedUserId == null ? Promise.resolve() : fetchData(selectedUserId))}
         />
       )}
@@ -902,6 +941,7 @@ function SummaryView({
 // 修正後(prev 列)編集の楽観更新を NotionTaskOption に反映する。
 function applyNotionPatch(task: NotionTaskOption, patch: Record<string, string>): NotionTaskOption {
   const next = { ...task }
+  if ('wbs_level' in patch && task.manual) next.wbs_level = patch.wbs_level.trim() || null
   if ('title_prev' in patch) next.title_prev = patch.title_prev.trim() || null
   if ('assignee_name_prev' in patch) next.assignee_name_prev = patch.assignee_name_prev.trim() || null
   if ('workload_prev' in patch) {
@@ -1015,9 +1055,11 @@ const MINIMUM_GANTT_VISIBLE_DAYS_FOR_STICKY_COLUMNS = 7
 // Excel 出力・提出済判定の対象になる修正後フィールド(WBS_TABLE_COLUMNS のうち WBSレベルを除く6列)。
 const WBS_SUBMITTABLE_FIELDS: NotionTaskEffectiveField[] = ['title', 'assignee_name', 'progress_rate', 'workload', 'start_date', 'end_date']
 
-function NotionView({ tasks, onPatch, onReload }: {
+function NotionView({ tasks, onPatch, onAddTask, onDeleteTask, onReload }: {
   tasks: NotionTaskOption[]
   onPatch: (notionBlockId: string, patch: Record<string, string>) => void
+  onAddTask: (afterNotionBlockId: string) => void
+  onDeleteTask: (notionBlockId: string) => void
   onReload: () => Promise<void>
 }) {
   const [columnFilters, setColumnFilters] = useState<SheetColumnFilters<WbsColumnKey>>({})
@@ -1408,6 +1450,8 @@ function NotionView({ tasks, onPatch, onReload }: {
                     open={!!openTaskBlockIds[task.notion_block_id]}
                     onToggleOpen={() => toggleTaskOpen(task.notion_block_id)}
                     onPatch={onPatch}
+                    onAddTask={onAddTask}
+                    onDeleteTask={onDeleteTask}
                   />
                 ))}
               </tbody>
@@ -1421,7 +1465,7 @@ function NotionView({ tasks, onPatch, onReload }: {
 
 // ガントの1タスク行。左7列はスティッキーな編集可能セル(Excel入力セル色)、
 // スペーサーを挟んで右はトラック1本(絶対配置バー2本、経過=グレー/残り=紫)。
-function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, open, onToggleOpen, onPatch }: {
+function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, open, onToggleOpen, onPatch, onAddTask, onDeleteTask }: {
   task: NotionTaskOption
   ganttRange: { rangeStart: Date; rangeEnd: Date; days: Date[] }
   todayIndex: number
@@ -1429,6 +1473,8 @@ function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, op
   open: boolean
   onToggleOpen: () => void
   onPatch: (notionBlockId: string, patch: Record<string, string>) => void
+  onAddTask: (afterNotionBlockId: string) => void
+  onDeleteTask: (notionBlockId: string) => void
 }) {
   const effectiveTitle = effectiveTaskValue(task, 'title')
   const effectiveAssigneeName = effectiveTaskValue(task, 'assignee_name')
@@ -1457,16 +1503,45 @@ function NotionGanttRow({ task, ganttRange, todayIndex, stickyColumnsEnabled, op
     boxShadow: `1px 0 0 0 ${backgroundColor}`,
     borderBottom: `1.5px solid ${WBS_EXCEL_COLORS.borderMedium}`, // border-separate なので上罫線は前行の下罫線に任せる
   })
-  const stickyCellStyle = stickyCellStyleWithBackground(WBS_EXCEL_COLORS.inputCellBackground)
+  // 手動追加行は左7列の編集セルを緑にする（未提出の赤は優先）。
+  const editableCellBackground = task.manual ? WBS_EXCEL_COLORS.manualRowBackground : WBS_EXCEL_COLORS.inputCellBackground
+  const stickyCellStyle = stickyCellStyleWithBackground(editableCellBackground)
   // 未提出の修正後があり、かつ登録済みテンプレ(xlsm)の該当セル値と異なる編集セルは、Excel テンプレの赤(#FF9999)で目立たせる。
   const stickyCellStyleFor = (field: NotionTaskEffectiveField) =>
-    stickyCellStyleWithBackground(isRedCell(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : WBS_EXCEL_COLORS.inputCellBackground)
+    stickyCellStyleWithBackground(isRedCell(task, field) ? WBS_EXCEL_COLORS.unsubmittedChangeBackground : editableCellBackground)
 
   return (
     <Fragment>
       <tr className="h-10">
         <td className={`${stickyCellClassName} text-left tabular-nums`} style={{ ...stickyCellStyle, ...pinnedLeft(0) }}>
-          {task.wbs_level || ''}
+          <span className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); onAddTask(task.notion_block_id) }}
+              onDoubleClick={(event) => event.stopPropagation()}
+              className="shrink-0 px-0.5 text-[11px] leading-none text-slate-600 hover:text-slate-900"
+              title="この行の下にタスクを追加"
+            >＋</button>
+            {task.manual && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (window.confirm('このタスクを削除しますか？')) onDeleteTask(task.notion_block_id)
+                }}
+                onDoubleClick={(event) => event.stopPropagation()}
+                className="shrink-0 px-0.5 text-[11px] leading-none text-slate-600 hover:text-red-600"
+                title="このタスクを削除"
+              >−</button>
+            )}
+            {task.manual ? (
+              <EditableCell kind="text" raw={task.wbs_level ?? ''}
+                display={<span className="tabular-nums">{task.wbs_level || '—'}</span>}
+                onSave={(value) => onPatch(task.notion_block_id, { wbs_level: value })} />
+            ) : (
+              <span>{task.wbs_level || ''}</span>
+            )}
+          </span>
         </td>
         <td className={`${stickyCellClassName} text-left`} style={{ ...stickyCellStyleFor('title'), ...pinnedLeft(1) }}>
           <span className="flex items-center gap-1">

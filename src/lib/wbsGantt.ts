@@ -25,6 +25,7 @@ export const WBS_EXCEL_COLORS = {
   headerText: '#ffffff',
   inputCellBackground: '#DCE6F1', // accent1(4F81BD) tint 0.8
   unsubmittedChangeBackground: '#FF9999', // 修正後値がまだ提出済スナップショットに反映されていないセルの背景
+  manualRowBackground: '#C6EFCE', // 手動追加行の編集セル背景（Excel の「良い」緑）
   progressBarTrack: '#BFBFBF',
   ganttElapsedBar: '#A6A6A6',
   ganttRemainingBar: '#8064A2', // accent4
