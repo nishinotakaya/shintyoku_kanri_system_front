@@ -16,6 +16,7 @@ import FolderSaveButtons, { fetchExportBlob } from '../components/FolderSaveButt
 import InvoiceSubmissionPanel from '../components/InvoiceSubmissionPanel'
 import SelfInvoiceMailModal from '../components/SelfInvoiceMailModal'
 import { billingMonthForToday } from '../lib/billingMonth'
+import { APP_NAME } from '../lib/brand'
 // CalendarView moved to /calendar page
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
@@ -192,7 +193,7 @@ export default function Dashboard() {
   }, [reports, expenses])
 
   useEffect(() => {
-    document.title = `勤怠 ${year}年${month}月 — 進捗管理システム`
+    document.title = `勤怠 ${year}年${month}月 — ${APP_NAME}`
     api.get('/me').then((r) => {
       setMe(r.data as Me)
       if (r.data.default_transit_from && r.data.default_transit_fee) {

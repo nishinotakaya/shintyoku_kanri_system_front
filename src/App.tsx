@@ -28,6 +28,7 @@ import ToastHost from './components/ToastHost'
 import { api, IMPERSONATION_ENDED_NOTICE_KEY } from './lib/api'
 import type { Me } from './lib/api'
 import { canUseFeature } from './lib/featureFlags'
+import { APP_NAME } from './lib/brand'
 
 type SubmissionLite = { id: number; year: number; month: number; category: string; kind: 'invoice' | 'expense'; user_display_name: string }
 
@@ -127,7 +128,6 @@ function RequireFeature({ feature, adminOnly, children }: { feature?: FeatureKey
   if (!feature || canUseFeature(me, feature)) return <>{children}</>
   return <Navigate to={firstVisiblePath(me)} replace />
 }
-const BRAND = '進捗管理システム'
 const SEEN_BELL_KEY = 'bellSeenApplicationIds'
 const appKey = (s: SubmissionLite) => `${s.kind}-${s.id}`
 
@@ -188,7 +188,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const item = NAV.find((n) => n.to === loc.pathname)
     const tab = item?.tabTitle ?? item?.label
-    document.title = tab ? `${tab} — ${BRAND}` : BRAND
+    document.title = tab ? `${tab} — ${APP_NAME}` : APP_NAME
   }, [loc.pathname])
 
   // admin: 申請中件数を 60 秒毎にポーリング
@@ -269,7 +269,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       >
         <Link to="/" className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--color-border)] min-w-[14rem]">
           <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md shrink-0" />
-          <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">進捗管理システム</div>
+          <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">{APP_NAME}</div>
         </Link>
         <nav className="flex-1 px-3 py-3 space-y-0.5 min-w-[14rem]">
           {NAV.filter((n) => navVisible(n, me)).map((n) => {

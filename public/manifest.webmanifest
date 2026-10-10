@@ -1,6 +1,6 @@
 {
-  "name": "勤怠・経費アプリ",
-  "short_name": "勤怠経費",
+  "name": "WorkTempo",
+  "short_name": "WorkTempo",
   "description": "勤怠・請求書・経費(レシート撮影)管理",
   "start_url": "/",
   "scope": "/",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signUp } from '../lib/auth'
+import { APP_NAME } from '../lib/brand'
 
 export default function SignUp() {
   const [form, setForm] = useState({ email: '', password: '', display_name: '', company_name: 'Wings株式会社' })
@@ -8,7 +9,7 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false)
   const nav = useNavigate()
 
-  useEffect(() => { document.title = '新規登録 — 進捗管理システム' }, [])
+  useEffect(() => { document.title = `新規登録 — ${APP_NAME}` }, [])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

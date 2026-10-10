@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signIn } from '../lib/auth'
+import { APP_NAME } from '../lib/brand'
 
 // アプリ内ブラウザ(WebView)判定。Google は WebView 内の OAuth を
 // 403 (disallowed_useragent) で拒否するため、Google ログインボタンの代わりに案内を出す。
@@ -18,7 +19,7 @@ export default function SignIn() {
   const [inAppBrowser] = useState(isInAppBrowser)
   const nav = useNavigate()
 
-  useEffect(() => { document.title = 'ログイン — 進捗管理システム' }, [])
+  useEffect(() => { document.title = `ログイン — ${APP_NAME}` }, [])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,7 +40,7 @@ export default function SignIn() {
       <div className="glass w-full max-w-md rounded-3xl p-8 shadow-xl">
         <div className="mb-8 text-center">
           <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-fuchsia-500 shadow-lg shadow-fuchsia-500/20" />
-          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--color-text)]">進捗管理システム</h1>
+          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--color-text)]">{APP_NAME}</h1>
           <p className="mt-1 text-sm text-[var(--color-text-sub)]">ログインして続行</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
