@@ -29,6 +29,7 @@ import { api, IMPERSONATION_ENDED_NOTICE_KEY } from './lib/api'
 import type { Me } from './lib/api'
 import { canUseFeature } from './lib/featureFlags'
 import { APP_NAME } from './lib/brand'
+import BrandLogo from './components/BrandLogo'
 
 type SubmissionLite = { id: number; year: number; month: number; category: string; kind: 'invoice' | 'expense'; user_display_name: string }
 
@@ -267,9 +268,8 @@ function Layout({ children }: { children: React.ReactNode }) {
         }`}
         aria-hidden={!sidebarOpen}
       >
-        <Link to="/" className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--color-border)] min-w-[14rem]">
-          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-light)] shadow-md shrink-0" />
-          <div className="text-sm font-bold tracking-tight text-[var(--color-text)] whitespace-nowrap">{APP_NAME}</div>
+        <Link to="/" aria-label={`${APP_NAME} ホーム`} className="flex items-center px-5 py-4 md:py-5 border-b border-[var(--color-border)] min-w-[14rem]">
+          <BrandLogo variant="sidebar" />
         </Link>
         <nav className="flex-1 px-3 py-3 space-y-0.5 min-w-[14rem]">
           {NAV.filter((n) => navVisible(n, me)).map((n) => {
@@ -363,6 +363,11 @@ function Layout({ children }: { children: React.ReactNode }) {
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
+            {!sidebarOpen && (
+              <Link to="/" aria-label={`${APP_NAME} ホーム`} className="shrink-0">
+                <BrandLogo variant="compact" />
+              </Link>
+            )}
             {me?.admin && (
               <div className="relative">
                 <button
