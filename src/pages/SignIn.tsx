@@ -99,6 +99,12 @@ export default function SignIn() {
             form.method = 'POST'
             const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001').replace(/\/$/, '')
             form.action = `${apiBase}/api/v1/auth/auth/google_oauth2`
+            // ログイン後に同じURL(旧URL/新URL)へ戻れるよう、今のオリジンを渡す(サーバ側で許可リストと照合)
+            const originInput = document.createElement('input')
+            originInput.type = 'hidden'
+            originInput.name = 'origin'
+            originInput.value = window.location.origin
+            form.appendChild(originInput)
             document.body.appendChild(form)
             form.submit()
           }}
