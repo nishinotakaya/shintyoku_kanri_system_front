@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { publicApi } from '../lib/contracts'
 import { toast } from '../lib/toast'
+import { APP_NAME } from '../lib/brand'
 
 type InvitationInfo = {
   email: string
@@ -24,7 +25,7 @@ export default function InvitePage() {
   const [submitting, setSubmitting] = useState(false)
   const [completed, setCompleted] = useState(false)
 
-  useEffect(() => { document.title = '招待から登録 — 勤怠アプリ' }, [])
+  useEffect(() => { document.title = `招待から登録 — ${APP_NAME}` }, [])
 
   useEffect(() => {
     if (!token) return
