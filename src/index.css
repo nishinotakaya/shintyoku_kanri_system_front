@@ -5,6 +5,7 @@
 @theme {
   --font-sans: system-ui, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --font-brand: "Outfit", system-ui, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Roboto, sans-serif; /* ロゴ(BrandLogo)専用。@fontsource/outfit を main.tsx で読む */
   --color-primary: #6c5ce7;
   --color-primary-light: #a29bfe;
   --color-accent: #00b894;

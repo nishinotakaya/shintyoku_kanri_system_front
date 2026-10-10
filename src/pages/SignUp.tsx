@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signUp } from '../lib/auth'
 import { APP_NAME } from '../lib/brand'
+import BrandLogo from '../components/BrandLogo'
 
 export default function SignUp() {
   const [form, setForm] = useState({ email: '', password: '', display_name: '', company_name: 'Wings株式会社' })
@@ -42,8 +43,10 @@ export default function SignUp() {
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="glass w-full max-w-md rounded-3xl p-8 shadow-xl">
         <div className="mb-6 text-center">
-          <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-fuchsia-500" />
-          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--color-text)]">新規登録</h1>
+          <div className="flex justify-center">
+            <BrandLogo variant="hero" />
+          </div>
+          <h1 className="mt-5 text-lg font-semibold tracking-tight text-[var(--color-text)]">新規登録</h1>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           {field('email', 'メール', 'email')}

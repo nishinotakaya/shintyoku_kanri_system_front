@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signIn } from '../lib/auth'
 import { APP_NAME } from '../lib/brand'
+import BrandLogo from '../components/BrandLogo'
 
 // アプリ内ブラウザ(WebView)判定。Google は WebView 内の OAuth を
 // 403 (disallowed_useragent) で拒否するため、Google ログインボタンの代わりに案内を出す。
@@ -39,9 +40,10 @@ export default function SignIn() {
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="glass w-full max-w-md rounded-3xl p-8 shadow-xl">
         <div className="mb-8 text-center">
-          <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-fuchsia-500 shadow-lg shadow-fuchsia-500/20" />
-          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--color-text)]">{APP_NAME}</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-sub)]">ログインして続行</p>
+          <div className="flex justify-center">
+            <BrandLogo variant="hero" />
+          </div>
+          <h1 className="mt-5 text-sm font-normal text-[var(--color-text-sub)]">ログインして続行</h1>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           <label className="block">

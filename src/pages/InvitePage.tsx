@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { publicApi } from '../lib/contracts'
 import { toast } from '../lib/toast'
 import { APP_NAME } from '../lib/brand'
+import BrandLogo from '../components/BrandLogo'
 
 type InvitationInfo = {
   email: string
@@ -127,8 +128,10 @@ export default function InvitePage() {
   return shell(
     <>
       <div className="mb-6 text-center">
-        <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-fuchsia-500" />
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--color-text)]">招待から登録</h1>
+        <div className="flex justify-center">
+          <BrandLogo variant="hero" />
+        </div>
+        <h1 className="mt-5 text-lg font-semibold tracking-tight text-[var(--color-text)]">招待から登録</h1>
         <p className="mt-2 text-sm text-[var(--color-text-sub)]">パスワードを設定すると登録が完了します。</p>
       </div>
       <form onSubmit={onSubmit} className="space-y-4">
